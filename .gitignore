@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-server/
+sidecar-bundle/
+*.tsbuildinfo
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker persistent data
+docker/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test
+coverage/
+.playwright/
+test-results/
+playwright-report/
+
+# Claude Code
+.claude/
+
+# Plans (local development artifacts)
+.plans/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Backup files
+*.bak

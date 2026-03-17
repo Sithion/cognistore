@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "../dist-server",
+    "rootDir": ".",
+    "baseUrl": "./",
+    "paths": {
+      "@ai-knowledge/sdk": ["../../packages/sdk/dist"],
+      "@ai-knowledge/shared": ["../../packages/shared/dist"]
+    }
+  },
+  "include": ["."],
+  "exclude": ["../node_modules", "../dist"]
+}
