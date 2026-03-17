@@ -1,33 +1,22 @@
 # AI Knowledge Base
 
-[![CI](https://github.com/Sithion/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/Sithion/knowledge-base/actions/workflows/ci.yml)
-
 Semantic knowledge management system for AI agents. Works as an MCP plugin (Claude Code, Copilot) or as an npm package in any TypeScript project.
 
 ## Quick Start
 
-### Option 1: npx (Recommended)
-
-No clone required. Just run:
-
 ```bash
-npx @ai-knowledge/cli install
-```
-
-This will:
-1. Create `~/.ai-knowledge/` with Docker configuration
-2. Start PostgreSQL (pgvector) and Ollama containers
-3. Pull the embedding model (`all-minilm`)
-4. Configure MCP servers for Claude Code and GitHub Copilot
-
-### Option 2: Clone Repository
-
-```bash
-git clone https://github.com/Sithion/knowledge-base.git
+# Clone and install
+git clone https://github.com/your-org/knowledge-base.git
 cd knowledge-base
-pnpm install && pnpm build
-npx kb install
+./scripts/install.sh
 ```
+
+The install script automatically:
+1. Detects your OS (macOS/Linux)
+2. Installs Docker if not present (Colima on macOS, Docker Engine on Linux)
+3. Starts PostgreSQL (pgvector), Ollama, and the Dashboard
+4. Pulls the embedding model (`all-minilm`)
+5. Prints service URLs when ready
 
 ## Services
 
@@ -37,24 +26,12 @@ npx kb install
 | PostgreSQL | `5433` | Database with pgvector for semantic search |
 | Ollama | `11435` | Local embedding model server |
 
-## Dashboard
-
-The web dashboard provides a central hub for managing knowledge entries:
-
-- **Semantic search** with type and scope filters
-- **Tag-based browsing** — clickable tag bar with toggle filtering
-- **Add Knowledge modal** — quick entry creation from anywhere via the floating action button
-- **Multi-language support** — English, Spanish, Portuguese (BR)
-- **Statistics** — entry counts by type/scope, tag cloud
-
-Access at `http://localhost:3847` after installation.
-
 ## Architecture
 
 ```
 knowledge-base/
 ├── apps/
-│   ├── cli/              # CLI tool (npx @ai-knowledge/cli)
+│   ├── cli/              # CLI tool
 │   ├── dashboard/        # Web dashboard (React + Fastify)
 │   └── mcp-server/       # MCP server for Claude Code / Copilot
 ├── packages/
@@ -64,66 +41,25 @@ knowledge-base/
 │   └── sdk/              # Public SDK (main entry point)
 ├── docker/
 │   ├── docker-compose.yml
-│   └── init/             # SQL schema (runs on first start)
+│   ├── init/             # SQL schema (runs on first start)
+│   └── ollama/           # Model pull scripts
 └── scripts/
-    └── install.sh        # Legacy installer (use npx instead)
+    └── install.sh        # Automated installer
 ```
-
-## Installation Details
-
-### npx Installation Flow
-
-```bash
-npx @ai-knowledge/cli install [options]
-```
-
-**Options:**
-- `--no-dashboard` — Skip dashboard container
-- `--skip-config` — Skip agent config injection
-- `--verbose` — Show full Docker output
-
-**What happens:**
-1. Creates `~/.ai-knowledge/` directory
-2. Copies `docker-compose.yml`, init SQL, and `.env` to the install directory
-3. Starts Docker services (PostgreSQL + Ollama)
-4. Waits for health checks to pass
-5. Pulls the `all-minilm` embedding model into Ollama
-6. Configures MCP servers in:
-   - `~/.claude/mcp-config.json` (Claude Code)
-   - `~/.copilot/mcp-config.json` (GitHub Copilot)
-
-**Uninstall:**
-```bash
-npx @ai-knowledge/cli uninstall
-```
-
-### Data Directory
-
-All Docker configuration lives in `~/.ai-knowledge/`:
-
-```
-~/.ai-knowledge/
-├── docker-compose.yml    # Docker services configuration
-├── .env                  # Environment variables (ports, credentials)
-└── init/
-    └── 001-schema.sql    # Database schema
-```
-
-Docker volumes (`kb_pgdata`, `kb_ollama`) store persistent data independently.
 
 ## Usage
 
 ### As MCP Plugin (Claude Code)
 
-After installation, the MCP server is automatically configured. It uses `npx` to run:
+Add to `~/.claude/mcp-config.json`:
 
 ```json
 {
   "mcpServers": {
     "ai-knowledge": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@ai-knowledge/mcp-server"],
+      "command": "node",
+      "args": ["path/to/knowledge-base/apps/mcp-server/dist/index.js"],
       "env": {
         "DATABASE_URL": "postgresql://knowledge:knowledge_secret@localhost:5433/knowledge_base",
         "OLLAMA_HOST": "http://localhost:11435",
@@ -154,21 +90,9 @@ await sdk.addKnowledge({
 
 // Semantic search (query is compared against tag embeddings)
 const results = await sdk.getKnowledge('database security');
+// Returns entries ranked by cosine similarity
 
 await sdk.close();
-```
-
-### CLI Commands
-
-```bash
-kb install          # Install infrastructure
-kb uninstall        # Remove infrastructure
-kb add              # Add a knowledge entry
-kb search <query>   # Semantic search
-kb tags             # List all tags
-kb health           # Check service health
-kb db:start         # Start Docker services
-kb db:stop          # Stop Docker services
 ```
 
 ## How It Works
@@ -179,18 +103,6 @@ kb db:stop          # Stop Docker services
 
 3. **Everything is local**: No data leaves your machine. The embedding model runs locally via Ollama, and the database is a local PostgreSQL instance.
 
-## Publishing
-
-The CLI package (`@ai-knowledge/cli`) is automatically published to npm on every merge to `main`.
-
-**Version management:** Edit `apps/cli/package.json` and increment the version number. The publish workflow will detect the change and publish it.
-
-**Requirements:**
-- All CI checks must pass (see [CI/CD Pipeline](documentation/ci-cd.md))
-- npm organization and access token configured (see `.github/BRANCH_PROTECTION.md`)
-
-For detailed CI/CD documentation, see [CI/CD and Publishing](documentation/ci-cd.md).
-
 ## Development
 
 ```bash
@@ -198,7 +110,7 @@ For detailed CI/CD documentation, see [CI/CD and Publishing](documentation/ci-cd
 pnpm install
 
 # Start infrastructure
-docker compose -f docker/docker-compose.yml up -d
+docker-compose -f docker/docker-compose.yml up -d
 
 # Build all packages
 pnpm build
@@ -207,13 +119,15 @@ pnpm build
 pnpm dev --filter @ai-knowledge/dashboard
 ```
 
-## npm Packages
+## Docker Profiles
 
-| Package | Description |
-|---------|-------------|
-| `@ai-knowledge/cli` | CLI tool — `npx @ai-knowledge/cli install` |
-| `@ai-knowledge/mcp-server` | MCP server for Claude Code / Copilot |
-| `@ai-knowledge/sdk` | TypeScript SDK for programmatic usage |
+```bash
+# Core only (PostgreSQL + Ollama)
+docker-compose -f docker/docker-compose.yml up -d
+
+# Full stack (+ Dashboard)
+docker-compose -f docker/docker-compose.yml --profile dashboard up -d
+```
 
 ## Tech Stack
 
@@ -225,3 +139,4 @@ pnpm dev --filter @ai-knowledge/dashboard
 - **Dashboard**: React 19 + Vite + Fastify
 - **Validation**: Zod
 - **i18n**: react-i18next (EN, ES, PT)
+

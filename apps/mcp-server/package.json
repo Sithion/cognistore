@@ -1,22 +1,17 @@
 {
   "name": "@ai-knowledge/mcp-server",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "type": "module",
-  "description": "MCP server for AI Knowledge Base — integrates with Claude Code and GitHub Copilot",
-  "license": "MIT",
   "main": "./dist/index.js",
   "bin": {
     "ai-knowledge-mcp": "./dist/index.js"
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist",
-    "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi"
+    "test": "npx playwright test"
   },
   "dependencies": {
     "@ai-knowledge/sdk": "workspace:*",

@@ -61,6 +61,7 @@ export interface SearchResult {
 }
 
 export interface HealthStatus {
-  database: { connected: boolean; path?: string; error?: string };
-  ollama: { connected: boolean; model?: string; host?: string; error?: string };
+  database: { connected: boolean; error?: string };
+  ollama: { connected: boolean; model?: string; error?: string };
+  docker: { running: boolean; containers: { name: string; status: string }[] };
 }

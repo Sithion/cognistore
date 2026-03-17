@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi"
+    "test": "npx playwright test"
   },
   "dependencies": {
     "@ai-knowledge/shared": "workspace:*"

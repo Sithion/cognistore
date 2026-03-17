@@ -25,3 +25,10 @@ export class ValidationError extends KnowledgeBaseError {
     this.name = 'ValidationError';
   }
 }
+
+export class DockerError extends KnowledgeBaseError {
+  constructor(message: string) {
+    super(message, 'DOCKER_ERROR');
+    this.name = 'DockerError';
+  }
+}

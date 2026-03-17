@@ -2,9 +2,11 @@ import { KnowledgeSDK } from '@ai-knowledge/sdk';
 
 let sdkInstance: KnowledgeSDK | null = null;
 
-export async function getSDK(): Promise<KnowledgeSDK> {
+export async function getSDK(options?: { autoStart?: boolean }): Promise<KnowledgeSDK> {
   if (!sdkInstance) {
-    sdkInstance = new KnowledgeSDK();
+    sdkInstance = new KnowledgeSDK({
+      autoStart: options?.autoStart ?? true,
+    });
     await sdkInstance.initialize();
   }
   return sdkInstance;

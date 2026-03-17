@@ -2,8 +2,8 @@ import {
   createDbClient,
   KnowledgeRepository,
   KnowledgeService,
+  DockerManager,
   type Database,
-  type SQLiteDatabase,
 } from '@ai-knowledge/core';
 import { OllamaEmbeddingClient, checkOllamaHealth } from '@ai-knowledge/embeddings';
 import {
@@ -19,18 +19,20 @@ import {
   type SDKConfig,
 } from '@ai-knowledge/shared';
 import { resolveConfig } from './config.js';
-import { ConnectionError, EmbeddingError, ValidationError } from './errors.js';
+import { ConnectionError, EmbeddingError, ValidationError, DockerError } from './errors.js';
 
 export class KnowledgeSDK {
   private config: SDKConfig;
   private db: Database | null = null;
-  private sqlite: SQLiteDatabase | null = null;
+  private queryClient: ReturnType<typeof createDbClient>['queryClient'] | null = null;
   private service: KnowledgeService | null = null;
+  private dockerManager: DockerManager;
   private ollamaClient: OllamaEmbeddingClient;
   private initialized = false;
 
   constructor(config?: Partial<SDKConfig>) {
     this.config = resolveConfig(config);
+    this.dockerManager = new DockerManager(this.config.dockerComposePath);
     this.ollamaClient = new OllamaEmbeddingClient({
       host: this.config.ollama.host,
       model: this.config.ollama.model,
@@ -42,18 +44,29 @@ export class KnowledgeSDK {
     if (this.initialized) return;
 
     try {
-      // Step 1: Connect to SQLite database
+      // Step 1: Ensure Docker containers are running (if autoStart enabled)
+      if (this.config.autoStart) {
+        try {
+          await this.dockerManager.ensureRunning();
+        } catch (error) {
+          throw new DockerError(
+            `Failed to start Docker containers: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+
+      // Step 2: Connect to database
       try {
-        const { db, sqlite } = createDbClient(this.config.database.path);
+        const { db, queryClient } = createDbClient(this.config.database.url);
         this.db = db;
-        this.sqlite = sqlite;
+        this.queryClient = queryClient;
       } catch (error) {
         throw new ConnectionError(
-          `Failed to open database: ${error instanceof Error ? error.message : String(error)}`
+          `Failed to connect to database: ${error instanceof Error ? error.message : String(error)}`
         );
       }
 
-      // Step 2: Ensure Ollama model is available
+      // Step 3: Ensure Ollama model is available
       try {
         await this.ollamaClient.ensureModel();
       } catch (error) {
@@ -62,12 +75,13 @@ export class KnowledgeSDK {
         );
       }
 
-      // Step 3: Create service
-      const repository = new KnowledgeRepository(this.db, this.sqlite);
+      // Step 4: Create service
+      const repository = new KnowledgeRepository(this.db);
       this.service = new KnowledgeService(repository, this.ollamaClient);
 
       this.initialized = true;
     } catch (error) {
+      // Cleanup on failure
       await this.cleanup();
       throw error;
     }
@@ -167,9 +181,9 @@ export class KnowledgeSDK {
 
     let dbConnected = false;
     let dbError: string | undefined;
-    if (this.sqlite) {
+    if (this.queryClient) {
       try {
-        this.sqlite.prepare('SELECT 1').get();
+        await this.queryClient`SELECT 1`;
         dbConnected = true;
       } catch (error) {
         dbError = error instanceof Error ? error.message : String(error);
@@ -178,18 +192,27 @@ export class KnowledgeSDK {
       dbError = 'Not initialized';
     }
 
+    let dockerStatus;
+    try {
+      dockerStatus = {
+        running: this.dockerManager.isDockerAvailable(),
+        containers: [
+          { name: 'kb-postgres', status: this.dockerManager.getContainerStatus('kb-postgres') ?? 'not found' },
+          { name: 'kb-ollama', status: this.dockerManager.getContainerStatus('kb-ollama') ?? 'not found' },
+        ],
+      };
+    } catch {
+      dockerStatus = { running: false, containers: [] };
+    }
+
     return {
-      database: {
-        connected: dbConnected,
-        path: this.config.database.path,
-        error: dbError,
-      },
+      database: { connected: dbConnected, error: dbError },
       ollama: {
         connected: ollamaHealth.connected,
         model: ollamaHealth.model,
-        host: this.config.ollama.host,
         error: ollamaHealth.error,
       },
+      docker: dockerStatus,
     };
   }
 
@@ -200,13 +223,13 @@ export class KnowledgeSDK {
   }
 
   private async cleanup(): Promise<void> {
-    if (this.sqlite) {
+    if (this.queryClient) {
       try {
-        this.sqlite.close();
+        await this.queryClient.end();
       } catch {
         // Ignore cleanup errors
       }
-      this.sqlite = null;
+      this.queryClient = null;
     }
     this.db = null;
     this.service = null;

@@ -41,23 +41,6 @@ services:
     networks:
       - kb-network
 
-  traefik:
-    image: traefik:v3.3
-    container_name: kb-traefik
-    restart: unless-stopped
-    profiles:
-      - dashboard
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-    ports:
-      - "80:80"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - kb-network
-
   dashboard:
     build:
       context: ../
@@ -80,11 +63,6 @@ services:
         condition: service_healthy
       ollama:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.dashboard.rule=Host(`kb.localhost`)
-      - traefik.http.routers.dashboard.entrypoints=web
-      - traefik.http.services.dashboard.loadbalancer.server.port=3847
     networks:
       - kb-network
 

@@ -1,11 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client.js';
-import { KnowledgeCard } from '../components/KnowledgeCard.js';
-import { TagBar } from '../components/TagBar.js';
-import { AddKnowledgeModal } from '../components/AddKnowledgeModal.js';
-import { FloatingAddButton } from '../components/FloatingAddButton.js';
 
 interface SearchResult {
   entry: Record<string, unknown>;
@@ -14,9 +9,6 @@ interface SearchResult {
 
 export function HomePage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  // Search state
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [recentEntries, setRecentEntries] = useState<Record<string, unknown>[]>([]);
@@ -25,53 +17,14 @@ export function HomePage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [scopeFilter, setScopeFilter] = useState('');
 
-  // Tag state
-  const [allTags, setAllTags] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagsLoading, setTagsLoading] = useState(true);
-
-  // Modal state
-  const [showModal, setShowModal] = useState(false);
-
-  const types = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'];
-
-  // Load recent entries
-  const loadRecent = useCallback(() => {
-    api.listRecent(20).then(setRecentEntries).catch(console.error);
+  // Load recent entries on mount
+  useEffect(() => {
+    api.listRecent(20).then((data) => {
+      setRecentEntries(data);
+    }).catch((error) => {
+      console.error('Failed to load recent entries:', error);
+    });
   }, []);
-
-  // Load tags
-  useEffect(() => {
-    api.listTags().then((tags) => {
-      setAllTags(tags);
-      setTagsLoading(false);
-    }).catch(() => setTagsLoading(false));
-  }, []);
-
-  // Load recent on mount
-  useEffect(() => {
-    loadRecent();
-  }, [loadRecent]);
-
-  // Read ?tag= from URL on mount
-  useEffect(() => {
-    const tagParam = searchParams.get('tag');
-    if (tagParam) {
-      setSelectedTags(tagParam.split(',').map(t => t.trim()).filter(Boolean));
-    }
-  }, []); // Only on mount
-
-  // Sync selectedTags to URL
-  useEffect(() => {
-    if (selectedTags.length > 0) {
-      setSearchParams({ tag: selectedTags.join(',') }, { replace: true });
-    } else {
-      // Remove tag param if no tags selected
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('tag');
-      setSearchParams(newParams, { replace: true });
-    }
-  }, [selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -80,7 +33,6 @@ export function HomePage() {
       const options: Record<string, unknown> = {};
       if (typeFilter) options.type = typeFilter;
       if (scopeFilter) options.scope = scopeFilter;
-      if (selectedTags.length > 0) options.tags = selectedTags;
       const data = await api.search(query, options) as SearchResult[];
       setResults(data);
       setSearched(true);
@@ -102,29 +54,60 @@ export function HomePage() {
     }
   };
 
-  const handleToggleTag = (tag: string) => {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+  const types = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'];
+
+  // Render a knowledge entry card
+  const renderEntryCard = (entry: Record<string, unknown>, similarity?: number) => {
+    const showSimilarity = similarity !== undefined;
+    const simPercent = showSimilarity ? Math.round(similarity * 100) : 0;
+    const color = simPercent >= 80 ? 'var(--success)' : simPercent >= 60 ? 'var(--warning)' : 'var(--error)';
+    return (
+      <div
+        key={entry.id as string}
+        style={{
+          backgroundColor: 'var(--bg-card)', borderRadius: 10,
+          border: '1px solid var(--border)', padding: 16, marginBottom: 12,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {showSimilarity && (
+              <span style={{ backgroundColor: color, color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 700 }}>
+                {simPercent}%
+              </span>
+            )}
+            <span style={{ backgroundColor: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 11 }}>
+              {t(`types.${entry.type as string}`)}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{entry.scope as string}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => handleDelete(entry.id as string)}
+              style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', fontSize: 13 }}>
+              {t('actions.delete')}
+            </button>
+          </div>
+        </div>
+        <p style={{ color: 'var(--text-primary)', fontSize: 14, lineHeight: 1.5, marginBottom: 8 }}>
+          {(entry.content as string).substring(0, 200)}
+          {(entry.content as string).length > 200 ? '...' : ''}
+        </p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          {((entry.tags as string[]) ?? []).map((tag) => (
+            <span key={tag} style={{
+              backgroundColor: 'var(--bg-input)', color: 'var(--accent)',
+              padding: '2px 8px', borderRadius: 10, fontSize: 11,
+            }}>
+              {tag}
+            </span>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          v{entry.version as number} • {entry.agentId ? `Agent: ${entry.agentId}` : ''} • {new Date(entry.createdAt as string).toLocaleDateString()}
+        </div>
+      </div>
     );
   };
-
-  const handleClearTags = () => {
-    setSelectedTags([]);
-  };
-
-  const handleAddSuccess = () => {
-    loadRecent();
-    // Refresh tags too
-    api.listTags().then(setAllTags).catch(console.error);
-  };
-
-  // Filter recent entries by selected tags (client-side)
-  const filteredRecent = selectedTags.length > 0
-    ? recentEntries.filter(entry => {
-        const entryTags = (entry.tags as string[]) ?? [];
-        return selectedTags.some(tag => entryTags.includes(tag));
-      })
-    : recentEntries;
 
   return (
     <div>
@@ -184,15 +167,6 @@ export function HomePage() {
         />
       </div>
 
-      {/* Tag Bar */}
-      <TagBar
-        tags={allTags}
-        selectedTags={selectedTags}
-        onToggleTag={handleToggleTag}
-        onClearTags={handleClearTags}
-        loading={tagsLoading}
-      />
-
       {/* Search Results */}
       {searched && results.length === 0 && (
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
@@ -200,46 +174,23 @@ export function HomePage() {
         </p>
       )}
 
-      {searched && results.map((result) => (
-        <KnowledgeCard
-          key={(result.entry as Record<string, unknown>).id as string}
-          entry={result.entry}
-          similarity={result.similarity}
-          onDelete={handleDelete}
-          onTagClick={handleToggleTag}
-        />
-      ))}
+      {searched && results.map((result) => renderEntryCard(result.entry, result.similarity))}
 
-      {/* Recent Knowledge */}
-      {!searched && filteredRecent.length > 0 && (
+      {/* Recent Knowledge (shown when no search has been performed) */}
+      {!searched && recentEntries.length > 0 && (
         <div>
           <h3 style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
             {t('search.recent')}
           </h3>
-          {filteredRecent.map((entry) => (
-            <KnowledgeCard
-              key={entry.id as string}
-              entry={entry}
-              onDelete={handleDelete}
-              onTagClick={handleToggleTag}
-            />
-          ))}
+          {recentEntries.map((entry) => renderEntryCard(entry))}
         </div>
       )}
 
-      {!searched && filteredRecent.length === 0 && (
+      {!searched && recentEntries.length === 0 && (
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
-          {selectedTags.length > 0 ? t('search.noResults') : t('search.empty')}
+          {t('search.empty')}
         </p>
       )}
-
-      {/* FAB + Modal */}
-      <FloatingAddButton onClick={() => setShowModal(true)} />
-      <AddKnowledgeModal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        onSuccess={handleAddSuccess}
-      />
     </div>
   );
 }

@@ -15,12 +15,13 @@ export function showWelcomeBanner(): void {
   console.log(banner);
 }
 
-export function showSuccessBanner(urls: { database: string; ollama: string }): void {
+export function showSuccessBanner(urls: { dashboard: string; postgres: string; ollama: string }): void {
   const content = [
     chalk.bold.green('✅ AI Knowledge Base — Ready!'),
     '',
-    `  Database:  ${chalk.blue(urls.database)}`,
-    `  Ollama:    ${chalk.blue(urls.ollama)}`,
+    `  Dashboard:   ${chalk.blue(urls.dashboard)}`,
+    `  PostgreSQL:  ${chalk.blue(urls.postgres)}`,
+    `  Ollama:      ${chalk.blue(urls.ollama)}`,
     '',
     chalk.dim('Run "kb health" to check service status'),
   ].join('\n');

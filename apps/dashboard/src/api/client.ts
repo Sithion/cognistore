@@ -12,10 +12,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     throw new Error(`API error: ${response.statusText}`);
   }
-  const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) {
-    throw new Error('Service unavailable — backend is not running');
-  }
   return response.json();
 }
 

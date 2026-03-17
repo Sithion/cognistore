@@ -5,6 +5,7 @@ export {
   ConnectionError,
   EmbeddingError,
   ValidationError,
+  DockerError,
 } from './errors.js';
 
 // Re-export types from shared for convenience

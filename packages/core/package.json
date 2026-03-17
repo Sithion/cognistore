@@ -14,22 +14,20 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi",
+    "test": "npx playwright test",
     "db:generate": "pnpm build && drizzle-kit generate",
     "db:push": "pnpm build && drizzle-kit push",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@ai-knowledge/shared": "workspace:*",
-    "better-sqlite3": "^12.8.0",
     "drizzle-orm": "^0.38.0",
-    "sqlite-vec": "^0.1.7",
+    "postgres": "^3.4.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.0",
-    "@types/better-sqlite3": "^7.6.13",
+    "typescript": "^5.7.0",
     "drizzle-kit": "^0.30.0",
-    "typescript": "^5.7.0"
+    "@playwright/test": "^1.50.0"
   }
 }

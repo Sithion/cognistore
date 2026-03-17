@@ -4,7 +4,7 @@ import { KnowledgeSDK } from '@ai-knowledge/sdk';
 import { createServer } from './server.js';
 
 async function main() {
-  const sdk = new KnowledgeSDK();
+  const sdk = new KnowledgeSDK({ autoStart: false });
 
   try {
     await sdk.initialize();

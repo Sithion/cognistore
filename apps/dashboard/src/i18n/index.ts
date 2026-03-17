@@ -14,7 +14,7 @@ const resources = {
       add: { title: 'Add New Knowledge', success: 'Knowledge entry created successfully' },
       edit: { title: 'Edit Knowledge', success: 'Knowledge entry updated successfully' },
       stats: { title: 'Knowledge Statistics', total: 'Total Entries', byType: 'By Type', byScope: 'By Scope', tagCloud: 'Tag Cloud' },
-      tags: { title: 'Tags', total: 'tags found', empty: 'No tags found. Add some knowledge first.', showAll: 'Show all', showLess: 'Show less', loading: 'Loading tags...' },
+      tags: { title: 'Tags', total: 'tags found', empty: 'No tags found. Add some knowledge first.' },
       filters: { type: 'Filter by type', scope: 'Filter by scope', tags: 'Filter by tags', all: 'All', clear: 'Clear filters' },
       infra: {
         title: 'Infrastructure', subtitle: 'Service status and management',
@@ -45,7 +45,7 @@ const resources = {
       add: { title: 'Agregar Nuevo Conocimiento', success: 'Entrada de conocimiento creada exitosamente' },
       edit: { title: 'Editar Conocimiento', success: 'Entrada de conocimiento actualizada exitosamente' },
       stats: { title: 'Estadísticas de Conocimiento', total: 'Entradas Totales', byType: 'Por Tipo', byScope: 'Por Ámbito', tagCloud: 'Nube de Etiquetas' },
-      tags: { title: 'Etiquetas', total: 'etiquetas encontradas', empty: 'No se encontraron etiquetas. Agrega conocimiento primero.', showAll: 'Ver todas', showLess: 'Ver menos', loading: 'Cargando etiquetas...' },
+      tags: { title: 'Etiquetas', total: 'etiquetas encontradas', empty: 'No se encontraron etiquetas. Agrega conocimiento primero.' },
       filters: { type: 'Filtrar por tipo', scope: 'Filtrar por ámbito', tags: 'Filtrar por etiquetas', all: 'Todos', clear: 'Limpiar filtros' },
       infra: {
         title: 'Infraestructura', subtitle: 'Estado y gestión de servicios',
@@ -76,7 +76,7 @@ const resources = {
       add: { title: 'Adicionar Novo Conhecimento', success: 'Entrada de conhecimento criada com sucesso' },
       edit: { title: 'Editar Conhecimento', success: 'Entrada de conhecimento atualizada com sucesso' },
       stats: { title: 'Estatísticas de Conhecimento', total: 'Total de Entradas', byType: 'Por Tipo', byScope: 'Por Escopo', tagCloud: 'Nuvem de Tags' },
-      tags: { title: 'Tags', total: 'tags encontradas', empty: 'Nenhuma tag encontrada. Adicione conhecimento primeiro.', showAll: 'Ver todas', showLess: 'Ver menos', loading: 'Carregando tags...' },
+      tags: { title: 'Tags', total: 'tags encontradas', empty: 'Nenhuma tag encontrada. Adicione conhecimento primeiro.' },
       filters: { type: 'Filtrar por tipo', scope: 'Filtrar por escopo', tags: 'Filtrar por tags', all: 'Todos', clear: 'Limpar filtros' },
       infra: {
         title: 'Infraestrutura', subtitle: 'Status e gerenciamento dos serviços',

@@ -10,7 +10,7 @@ export const searchCommand = new Command('search')
   .option('--type <type>', 'Filter by type: decision|pattern|fix|constraint|gotcha')
   .option('-s, --scope <scope>', 'Filter by scope (global is always included)')
   .option('-l, --limit <n>', 'Max results', '10')
-  .option('--threshold <n>', 'Min similarity threshold 0-1', '0.3')
+  .option('--threshold <n>', 'Min similarity threshold 0-1', '0.7')
   .option('-f, --format <format>', 'Output format: json|table|plain', 'plain')
   .action(async (query, opts) => {
     try {
