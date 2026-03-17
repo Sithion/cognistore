@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+**/dist-server
+**/.turbo
+.git
+.env
+.env.*
+!.env.example
+*.md
+.plans
+openspec

@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Knowledge Base Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --dark-bg: #1a1a2e;
+            --sidebar-bg: #16213e;
+            --content-bg: #0f1e3d;
+            --card-bg: #1a2a4a;
+            --accent-blue: #0f3460;
+            --accent-light-blue: #1a5f8f;
+            --highlight: #e94560;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --error: #f44336;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --border: #2a3a5a;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background-color: var(--sidebar-bg);
+            padding: 24px 16px;
+            overflow-y: auto;
+            border-right: 1px solid var(--border);
+            flex-shrink: 0;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+            position: absolute;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--highlight);
+            margin-bottom: 32px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo::before {
+            content: "⚡";
+            font-size: 20px;
+        }
+
+        .nav-section {
+            margin-bottom: 24px;
+        }
+
+        .nav-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .nav-item:hover {
+            background-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background-color: var(--highlight);
+            color: white;
+        }
+
+        .nav-icon {
+            width: 16px;
+            height: 16px;
+            display: inline-block;
+        }
+
+        /* Main content */
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: var(--sidebar-bg);
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            color: var(--text-primary);
+        }
+
+        .header-right {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .toggle-sidebar-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            background-color: var(--dark-bg);
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* Search bar */
+        .search-section {
+            margin-bottom: 24px;
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-light-blue);
+            box-shadow: 0 0 0 3px rgba(15, 52, 96, 0.3);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Filters */
+        .filter-section {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        select,
+        input[type="text"],
+        textarea,
+        input[type="date"],
+        input[type="range"],
+        input[type="number"] {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            padding: 8px 12px;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        select:focus,
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent-light-blue);
+            box-shadow: 0 0 0 3px rgba(15, 52, 96, 0.3);
+        }
+
+        select {
+            cursor: pointer;
+            padding-right: 28px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a0a0a0' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+
+        /* Tags input */
+        .tags-input-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px;
+            min-height: 38px;
+            align-items: center;
+        }
+
+        .tags-input-container:focus-within {
+            border-color: var(--accent-light-blue);
+            box-shadow: 0 0 0 3px rgba(15, 52, 96, 0.3);
+        }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background-color: var(--accent-blue);
+            color: var(--text-primary);
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .tag-chip button {
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .tag-chip button:hover {
+            opacity: 1;
+        }
+
+        .tags-input-container input {
+            flex: 1;
+            min-width: 80px;
+            border: none;
+            background: transparent;
+            padding: 4px 0;
+            margin: 0;
+        }
+
+        .tags-input-container input:focus {
+            outline: none;
+            box-shadow: none;
+        }
+
+        /* Knowledge cards */
+        .knowledge-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .knowledge-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .knowledge-card:hover {
+            border-color: var(--accent-light-blue);
+            box-shadow: 0 4px 12px rgba(15, 52, 96, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .card-badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-similarity {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .badge-similarity.high {
+            background-color: var(--success);
+        }
+
+        .badge-similarity.medium {
+            background-color: var(--warning);
+        }
+
+        .badge-similarity.low {
+            background-color: var(--error);
+        }
+
+        .badge-type {
+            background-color: var(--highlight);
+            color: white;
+        }
+
+        .badge-scope {
+            background-color: #2a5f7f;
+            color: white;
+        }
+
+        .card-content {
+            margin-bottom: 12px;
+        }
+
+        .card-content p {
+            line-height: 1.5;
+            color: var(--text-primary);
+            font-size: 14px;
+            word-wrap: break-word;
+        }
+
+        .card-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .card-tags {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .tag-badge {
+            background-color: var(--accent-blue);
+            color: var(--text-primary);
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-light-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #0f4580;
+        }
+
+        .btn-secondary {
+            background-color: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #0d2a48;
+        }
+
+        .btn-danger {
+            background-color: var(--error);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #d32f2f;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 24px;
+        }
+
+        .pagination button {
+            padding: 6px 10px;
+            min-width: 32px;
+        }
+
+        .pagination .page-number.active {
+            background-color: var(--highlight);
+            color: white;
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'Courier New', monospace;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group input[type="text"],
+        .form-group select {
+            width: 100%;
+        }
+
+        .confidence-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .confidence-display input[type="range"] {
+            flex: 1;
+        }
+
+        .confidence-value {
+            color: var(--text-primary);
+            font-weight: 600;
+            min-width: 40px;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal h2 {
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        /* Stats page */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .chart-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            height: 200px;
+        }
+
+        .bar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .bar-value {
+            background: linear-gradient(to top, var(--highlight), var(--accent-light-blue));
+            border-radius: 6px 6px 0 0;
+            width: 100%;
+            transition: all 0.2s ease;
+        }
+
+        .bar-value:hover {
+            filter: brightness(1.2);
+        }
+
+        .bar-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+            word-wrap: break-word;
+            max-width: 100%;
+        }
+
+        .bar-count {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 4px;
+        }
+
+        .tags-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .cloud-tag {
+            color: var(--accent-light-blue);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .cloud-tag:hover {
+            color: var(--highlight);
+            transform: scale(1.1);
+        }
+
+        /* Health page */
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+
+        .health-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .health-indicator {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        .health-indicator.healthy {
+            background-color: rgba(76, 175, 80, 0.2);
+            color: var(--success);
+        }
+
+        .health-indicator.unhealthy {
+            background-color: rgba(244, 67, 54, 0.2);
+            color: var(--error);
+        }
+
+        .health-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .health-status {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .health-details {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+            margin-bottom: 24px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                z-index: 99;
+                transform: translateX(0);
+            }
+
+            .sidebar.collapsed {
+                transform: translateX(-100%);
+            }
+
+            .toggle-sidebar-btn {
+                display: block;
+            }
+
+            .filter-section {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-group {
+                flex-direction: column;
+            }
+
+            select,
+            .tags-input-container {
+                width: 100%;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .modal {
+                width: 95%;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar" id="sidebar">
+        <div class="logo">Knowledge Base</div>
+
+        <div class="nav-section">
+            <div class="nav-title">Main</div>
+            <div class="nav-item active" onclick="switchPage('home')">
+                <span class="nav-icon">🏠</span>
+                <span>Home</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('add')">
+                <span class="nav-icon">➕</span>
+                <span>Add Knowledge</span>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-title">Explore</div>
+            <div class="nav-item" onclick="switchPage('tags')">
+                <span class="nav-icon">🏷️</span>
+                <span>Tags</span>
+            </div>
+            <div class="nav-item" onclick="switchPage('stats')">
+                <span class="nav-icon">📊</span>
+                <span>Stats</span>
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-title">System</div>
+            <div class="nav-item" onclick="switchPage('health')">
+                <span class="nav-icon">🔧</span>
+                <span>Health</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-container">
+        <div class="header">
+            <h1 id="page-title">Home</h1>
+            <div class="header-right">
+                <button class="toggle-sidebar-btn" onclick="toggleSidebar()">☰</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Home Page -->
+            <div id="home" class="page active">
+                <div class="search-section">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input
+                            type="text"
+                            class="search-input"
+                            id="searchInput"
+                            placeholder="Search knowledge by content, tags, or author..."
+                            onkeyup="filterKnowledge()"
+                        >
+                    </div>
+
+                    <div class="filter-section">
+                        <div class="filter-group">
+                            <label class="filter-label">Type:</label>
+                            <select id="typeFilter" onchange="filterKnowledge()">
+                                <option value="">All Types</option>
+                                <option value="decision">Decision</option>
+                                <option value="pattern">Pattern</option>
+                                <option value="fix">Fix</option>
+                                <option value="constraint">Constraint</option>
+                                <option value="gotcha">Gotcha</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label class="filter-label">Scope:</label>
+                            <select id="scopeFilter" onchange="filterKnowledge()">
+                                <option value="">All Scopes</option>
+                                <option value="global">Global</option>
+                                <option value="workspace:knowledge-base">Knowledge Base</option>
+                                <option value="workspace:ai-config">AI Config</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label class="filter-label">Tags:</label>
+                            <div class="tags-input-container" id="tagFilterContainer">
+                                <input
+                                    type="text"
+                                    id="tagInput"
+                                    placeholder="Add tags..."
+                                    onkeydown="handleTagInput(event)"
+                                >
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="knowledgeList" class="knowledge-list"></div>
+
+                <div class="pagination" id="pagination"></div>
+            </div>
+
+            <!-- Add Knowledge Page -->
+            <div id="add" class="page">
+                <form onsubmit="handleAddKnowledge(event)" id="addForm">
+                    <div class="form-group">
+                        <label>Content *</label>
+                        <textarea
+                            id="contentInput"
+                            placeholder="Describe the knowledge entry..."
+                            required
+                        ></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Type *</label>
+                            <select id="typeInput" required>
+                                <option value="">Select type...</option>
+                                <option value="decision">Decision</option>
+                                <option value="pattern">Pattern</option>
+                                <option value="fix">Fix</option>
+                                <option value="constraint">Constraint</option>
+                                <option value="gotcha">Gotcha</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Scope *</label>
+                            <input
+                                type="text"
+                                id="scopeInput"
+                                placeholder="e.g., global or workspace:project-name"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Source *</label>
+                            <input
+                                type="text"
+                                id="sourceInput"
+                                placeholder="e.g., executor, researcher, planner"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label>Agent ID</label>
+                            <input
+                                type="text"
+                                id="agentIdInput"
+                                placeholder="Optional: agent identifier"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Tags (comma-separated)</label>
+                        <input
+                            type="text"
+                            id="tagsInput"
+                            placeholder="e.g., typescript, architecture, performance"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label>Confidence (0.0 - 1.0)</label>
+                        <div class="confidence-display">
+                            <input
+                                type="range"
+                                id="confidenceInput"
+                                min="0"
+                                max="1"
+                                step="0.1"
+                                value="0.9"
+                                onchange="updateConfidenceDisplay()"
+                            >
+                            <span class="confidence-value" id="confidenceValue">0.9</span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Expires (optional)</label>
+                            <input type="date" id="expiresInput">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Related Knowledge (ID)</label>
+                            <input
+                                type="text"
+                                id="relatedInput"
+                                placeholder="Optional: reference another entry"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="resetForm()">Cancel</button>
+                        <button type="submit" class="btn-primary">Save Knowledge</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tags Page -->
+            <div id="tags" class="page">
+                <h2 style="margin-bottom: 24px;">Tags Explorer</h2>
+                <div class="chart-card">
+                    <div class="chart-title">Tag Cloud</div>
+                    <div class="tags-cloud" id="tagsCloud"></div>
+                </div>
+            </div>
+
+            <!-- Stats Page -->
+            <div id="stats" class="page">
+                <h2 style="margin-bottom: 24px;">Knowledge Base Statistics</h2>
+
+                <div class="stats-grid">
+                    <div class="chart-card">
+                        <div class="chart-title">Distribution by Type</div>
+                        <div class="bar-chart" id="typeChart"></div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-title">Distribution by Scope</div>
+                        <div class="bar-chart" id="scopeChart"></div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-title">Timeline (Last 6 Months)</div>
+                    <div class="bar-chart" id="timelineChart"></div>
+                </div>
+            </div>
+
+            <!-- Health Page -->
+            <div id="health" class="page">
+                <h2 style="margin-bottom: 24px;">System Health</h2>
+                <div class="health-grid">
+                    <div class="health-card">
+                        <div class="health-indicator healthy">🐳</div>
+                        <div class="health-title">Docker</div>
+                        <div class="health-status">Healthy</div>
+                        <div class="health-details">
+                            Status: Running<br>
+                            Uptime: 7d 3h<br>
+                            Memory: 256 MB / 512 MB
+                        </div>
+                    </div>
+
+                    <div class="health-card">
+                        <div class="health-indicator healthy">🗄️</div>
+                        <div class="health-title">PostgreSQL</div>
+                        <div class="health-status">Healthy</div>
+                        <div class="health-details">
+                            Status: Connected<br>
+                            DB Size: 42 MB<br>
+                            Connections: 5 / 20
+                        </div>
+                    </div>
+
+                    <div class="health-card">
+                        <div class="health-indicator healthy">🧠</div>
+                        <div class="health-title">Ollama</div>
+                        <div class="health-status">Healthy</div>
+                        <div class="health-details">
+                            Status: Running<br>
+                            Model: Loaded<br>
+                            Response Time: 145 ms
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal">
+            <h2>Edit Knowledge Entry</h2>
+            <form onsubmit="handleEditKnowledge(event)" id="editForm">
+                <div class="form-group">
+                    <label>Content *</label>
+                    <textarea id="editContent" required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Type *</label>
+                        <select id="editType" required>
+                            <option value="decision">Decision</option>
+                            <option value="pattern">Pattern</option>
+                            <option value="fix">Fix</option>
+                            <option value="constraint">Constraint</option>
+                            <option value="gotcha">Gotcha</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Scope *</label>
+                        <input type="text" id="editScope" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Tags (comma-separated)</label>
+                    <input type="text" id="editTags">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal">
+            <h2>Confirm Delete</h2>
+            <p style="margin-bottom: 24px; color: var(--text-secondary);">
+                Are you sure you want to delete this knowledge entry? This action cannot be undone.
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+                <button type="button" class="btn-danger" onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample data
+        let knowledgeBase = [
+            {
+                id: '1',
+                content: 'Agent autonomy principle: agents should execute tasks without unnecessary confirmation requests. Over-asking breaks flow and wastes time. Proceed unless the action is destructive, ambiguous, or missing critical information.',
+                type: 'decision',
+                scope: 'global',
+                source: 'orchestrator',
+                agent_id: 'orchestrator-v1',
+                tags: ['agent-design', 'autonomy', 'principles'],
+                confidence: 0.95,
+                created_at: '2026-03-14T10:30:00Z',
+                similarity: 0.92
+            },
+            {
+                id: '2',
+                content: 'Query-first protocol: before starting ANY analysis or implementation work, agents MUST query the knowledge database first. A 30-token query can prevent 2000+ tokens wasted on redundant analysis. This is mandatory with no exceptions.',
+                type: 'pattern',
+                scope: 'global',
+                source: 'executor',
+                agent_id: 'executor-v2',
+                tags: ['knowledge-db', 'efficiency', 'protocol'],
+                confidence: 0.98,
+                created_at: '2026-03-12T15:45:30Z',
+                similarity: 0.88
+            },
+            {
+                id: '3',
+                content: 'Scope determination: when an agent runs from directory A but works on project B, the scope must reflect the TARGET project, not cwd. Use this precedence: (1) plan overview.md, (2) file paths, (3) package.json, (4) repo directory name, (5) cwd as fallback, (6) global for cross-project knowledge.',
+                type: 'constraint',
+                scope: 'workspace:ai-config',
+                source: 'planner',
+                agent_id: 'planner-d4e8f1a3',
+                tags: ['knowledge-capture', 'scope', 'critical'],
+                confidence: 0.97,
+                created_at: '2026-03-03T21:15:32Z',
+                similarity: 0.91
+            },
+            {
+                id: '4',
+                content: 'Researcher pre-flight protocol: uses three analysis levels (shallow ~2K tokens, deep ~8K tokens, adaptive default). Always queries knowledge DB first using pattern "codebase-analysis:{project}:{module}" to cache and reuse results within 24 hours, preventing redundant analysis.',
+                type: 'pattern',
+                scope: 'global',
+                source: 'researcher',
+                agent_id: 'researcher-v3',
+                tags: ['researcher', 'analysis', 'caching'],
+                confidence: 0.92,
+                created_at: '2026-02-28T09:20:15Z',
+                similarity: 0.85
+            },
+            {
+                id: '5',
+                content: 'Model assignment cost principle: Opus costs ~5x Sonnet, ~25x Haiku. Use Haiku for I/O tasks, Sonnet for implementation, Opus only for planning. Agents on Sonnet/Opus MUST delegate tool operations to lower-model agents to minimize cost.',
+                type: 'gotcha',
+                scope: 'global',
+                source: 'orchestrator',
+                agent_id: 'orchestrator-cost',
+                tags: ['cost', 'model-selection', 'efficiency'],
+                confidence: 0.96,
+                created_at: '2026-02-25T14:50:22Z',
+                similarity: 0.87
+            },
+            {
+                id: '6',
+                content: 'Plan execution must respect the DAG defined in todo.md: identify all tasks with no unresolved depends tags, dispatch in parallel, then check for newly unblocked tasks. Update checkboxes in real-time ([ ]→[~]→[x] or [!]) before/after dispatch.',
+                type: 'pattern',
+                scope: 'workspace:ai-config',
+                source: 'executor',
+                agent_id: 'executor-plan-dag',
+                tags: ['plan-execution', 'parallelism', 'todo'],
+                confidence: 0.94,
+                created_at: '2026-02-20T11:30:45Z',
+                similarity: 0.83
+            }
+        ];
+
+        let filteredResults = [...knowledgeBase];
+        let currentPage = 1;
+        const itemsPerPage = 5;
+        let selectedTagFilters = [];
+        let editingId = null;
+        let deletingId = null;
+
+        // Page switching
+        function switchPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(page).classList.add('active');
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            event.target.closest('.nav-item').classList.add('active');
+
+            const titles = {
+                'home': 'Home',
+                'add': 'Add Knowledge',
+                'tags': 'Tags',
+                'stats': 'Stats',
+                'health': 'Health'
+            };
+            document.getElementById('page-title').textContent = titles[page];
+
+            if (page === 'home') {
+                currentPage = 1;
+                filterKnowledge();
+                closeSidebar();
+            } else if (page === 'stats') {
+                setTimeout(renderStats, 100);
+            } else if (page === 'tags') {
+                setTimeout(renderTags, 100);
+            }
+
+            if (page === 'add') {
+                resetForm();
+            }
+        }
+
+        // Sidebar toggle
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+        }
+
+        function closeSidebar() {
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.add('collapsed');
+            }
+        }
+
+        // Knowledge filtering
+        function filterKnowledge() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            const typeFilter = document.getElementById('typeFilter').value;
+            const scopeFilter = document.getElementById('scopeFilter').value;
+
+            filteredResults = knowledgeBase.filter(item => {
+                const matchesSearch = !searchText ||
+                    item.content.toLowerCase().includes(searchText) ||
+                    item.tags.some(tag => tag.toLowerCase().includes(searchText)) ||
+                    item.source.toLowerCase().includes(searchText);
+
+                const matchesType = !typeFilter || item.type === typeFilter;
+                const matchesScope = !scopeFilter || item.scope === scopeFilter;
+                const matchesTags = selectedTagFilters.length === 0 ||
+                    selectedTagFilters.some(tag => item.tags.includes(tag));
+
+                return matchesSearch && matchesType && matchesScope && matchesTags;
+            });
+
+            currentPage = 1;
+            renderKnowledge();
+        }
+
+        // Render knowledge list
+        function renderKnowledge() {
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const paginated = filteredResults.slice(start, end);
+
+            const container = document.getElementById('knowledgeList');
+            if (paginated.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📚</div>
+                        <div class="empty-state-text">No knowledge entries found</div>
+                        <button class="btn-primary" onclick="switchPage('add')">Create one</button>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = paginated.map(item => {
+                    const similarity = item.similarity;
+                    let similarityClass = 'low';
+                    if (similarity >= 0.9) similarityClass = 'high';
+                    else if (similarity >= 0.8) similarityClass = 'medium';
+
+                    const date = new Date(item.created_at);
+                    const dateStr = date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+
+                    return `
+                        <div class="knowledge-card">
+                            <div class="card-header">
+                                <div class="card-badges">
+                                    <span class="badge badge-similarity ${similarityClass}">${(similarity * 100).toFixed(0)}%</span>
+                                    <span class="badge badge-type">${item.type}</span>
+                                    <span class="badge badge-scope">${item.scope}</span>
+                                </div>
+                                <div class="card-actions">
+                                    <button class="btn-secondary btn-small" onclick="openEditModal('${item.id}')">Edit</button>
+                                    <button class="btn-danger btn-small" onclick="openDeleteModal('${item.id}')">Delete</button>
+                                </div>
+                            </div>
+                            <div class="card-content">
+                                <p>${item.content}</p>
+                            </div>
+                            <div class="card-tags">
+                                ${item.tags.map(tag => `<span class="tag-badge">${tag}</span>`).join('')}
+                            </div>
+                            <div class="card-meta">
+                                <span>📅 ${dateStr}</span>
+                                <span>👤 ${item.source}</span>
+                                ${item.agent_id ? `<span>🤖 ${item.agent_id}</span>` : ''}
+                                <span>💯 ${(item.confidence * 100).toFixed(0)}%</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            renderPagination();
+        }
+
+        // Pagination
+        function renderPagination() {
+            const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
+            const container = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '<button class="btn-secondary" onclick="previousPage()">← Previous</button>';
+
+            for (let i = 1; i <= totalPages; i++) {
+                html += `
+                    <button
+                        class="page-number ${i === currentPage ? 'active' : ''}"
+                        onclick="goToPage(${i})"
+                    >${i}</button>
+                `;
+            }
+
+            html += '<button class="btn-secondary" onclick="nextPage()">Next →</button>';
+            container.innerHTML = html;
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderKnowledge();
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderKnowledge();
+            }
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            renderKnowledge();
+        }
+
+        // Add knowledge
+        function handleAddKnowledge(event) {
+            event.preventDefault();
+
+            const newEntry = {
+                id: Date.now().toString(),
+                content: document.getElementById('contentInput').value,
+                type: document.getElementById('typeInput').value,
+                scope: document.getElementById('scopeInput').value,
+                source: document.getElementById('sourceInput').value,
+                agent_id: document.getElementById('agentIdInput').value || null,
+                tags: document.getElementById('tagsInput').value
+                    .split(',')
+                    .map(t => t.trim())
+                    .filter(t => t),
+                confidence: parseFloat(document.getElementById('confidenceInput').value),
+                created_at: new Date().toISOString(),
+                similarity: 0.85
+            };
+
+            knowledgeBase.unshift(newEntry);
+            filterKnowledge();
+            resetForm();
+
+            alert('✓ Knowledge entry added successfully!');
+        }
+
+        function resetForm() {
+            document.getElementById('addForm').reset();
+            document.getElementById('confidenceValue').textContent = '0.9';
+            switchPage('home');
+        }
+
+        function updateConfidenceDisplay() {
+            document.getElementById('confidenceValue').textContent =
+                document.getElementById('confidenceInput').value;
+        }
+
+        // Tag input handling
+        function handleTagInput(event) {
+            if (event.key === 'Enter' || event.key === ',') {
+                event.preventDefault();
+                const input = event.target;
+                const tag = input.value.trim();
+
+                if (tag && !selectedTagFilters.includes(tag)) {
+                    selectedTagFilters.push(tag);
+                    renderTagFilters();
+                    input.value = '';
+                    filterKnowledge();
+                }
+            }
+        }
+
+        function renderTagFilters() {
+            const container = document.getElementById('tagFilterContainer');
+            const input = container.querySelector('input');
+
+            container.innerHTML = selectedTagFilters.map(tag => `
+                <span class="tag-chip">
+                    ${tag}
+                    <button type="button" onclick="removeTagFilter('${tag}')">×</button>
+                </span>
+            `).join('');
+
+            const newInput = document.createElement('input');
+            newInput.type = 'text';
+            newInput.id = 'tagInput';
+            newInput.placeholder = 'Add tags...';
+            newInput.onkeydown = (e) => handleTagInput(e);
+            container.appendChild(newInput);
+        }
+
+        function removeTagFilter(tag) {
+            selectedTagFilters = selectedTagFilters.filter(t => t !== tag);
+            renderTagFilters();
+            filterKnowledge();
+        }
+
+        // Edit modal
+        function openEditModal(id) {
+            editingId = id;
+            const item = knowledgeBase.find(k => k.id === id);
+            if (item) {
+                document.getElementById('editContent').value = item.content;
+                document.getElementById('editType').value = item.type;
+                document.getElementById('editScope').value = item.scope;
+                document.getElementById('editTags').value = item.tags.join(', ');
+                document.getElementById('editModal').classList.add('active');
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+            editingId = null;
+        }
+
+        function handleEditKnowledge(event) {
+            event.preventDefault();
+            const item = knowledgeBase.find(k => k.id === editingId);
+            if (item) {
+                item.content = document.getElementById('editContent').value;
+                item.type = document.getElementById('editType').value;
+                item.scope = document.getElementById('editScope').value;
+                item.tags = document.getElementById('editTags').value
+                    .split(',')
+                    .map(t => t.trim())
+                    .filter(t => t);
+                item.created_at = new Date().toISOString();
+            }
+            closeEditModal();
+            filterKnowledge();
+            alert('✓ Knowledge entry updated!');
+        }
+
+        // Delete modal
+        function openDeleteModal(id) {
+            deletingId = id;
+            document.getElementById('deleteModal').classList.add('active');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.remove('active');
+            deletingId = null;
+        }
+
+        function confirmDelete() {
+            knowledgeBase = knowledgeBase.filter(k => k.id !== deletingId);
+            closeDeleteModal();
+            filterKnowledge();
+            alert('✓ Knowledge entry deleted!');
+        }
+
+        // Stats rendering
+        function renderStats() {
+            renderTypeChart();
+            renderScopeChart();
+            renderTimelineChart();
+        }
+
+        function renderTypeChart() {
+            const types = {};
+            knowledgeBase.forEach(item => {
+                types[item.type] = (types[item.type] || 0) + 1;
+            });
+
+            const container = document.getElementById('typeChart');
+            const maxCount = Math.max(...Object.values(types));
+
+            container.innerHTML = Object.entries(types).map(([type, count]) => {
+                const height = (count / maxCount) * 100;
+                return `
+                    <div class="bar">
+                        <div class="bar-value" style="height: ${height}px; min-height: 30px;"></div>
+                        <div class="bar-label">${type}</div>
+                        <div class="bar-count">${count}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderScopeChart() {
+            const scopes = {};
+            knowledgeBase.forEach(item => {
+                scopes[item.scope] = (scopes[item.scope] || 0) + 1;
+            });
+
+            const container = document.getElementById('scopeChart');
+            const maxCount = Math.max(...Object.values(scopes));
+
+            container.innerHTML = Object.entries(scopes).map(([scope, count]) => {
+                const height = (count / maxCount) * 100;
+                const shortScope = scope.length > 20 ? scope.substring(0, 17) + '...' : scope;
+                return `
+                    <div class="bar">
+                        <div class="bar-value" style="height: ${height}px; min-height: 30px;"></div>
+                        <div class="bar-label">${shortScope}</div>
+                        <div class="bar-count">${count}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderTimelineChart() {
+            const months = {};
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+
+            knowledgeBase.forEach(item => {
+                const date = new Date(item.created_at);
+                const key = `${monthNames[date.getMonth()]} ${date.getDate()}`;
+                months[key] = (months[key] || 0) + 1;
+            });
+
+            const container = document.getElementById('timelineChart');
+            const sortedMonths = Object.entries(months).sort((a, b) => {
+                const dateA = new Date(a[0]);
+                const dateB = new Date(b[0]);
+                return dateA - dateB;
+            });
+
+            const maxCount = Math.max(...sortedMonths.map(m => m[1]));
+
+            container.innerHTML = sortedMonths.map(([month, count]) => {
+                const height = (count / maxCount) * 100;
+                return `
+                    <div class="bar">
+                        <div class="bar-value" style="height: ${height}px; min-height: 30px;"></div>
+                        <div class="bar-label">${month}</div>
+                        <div class="bar-count">${count}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Tags rendering
+        function renderTags() {
+            const tagCounts = {};
+            knowledgeBase.forEach(item => {
+                item.tags.forEach(tag => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                });
+            });
+
+            const maxCount = Math.max(...Object.values(tagCounts));
+            const minCount = Math.min(...Object.values(tagCounts));
+
+            const container = document.getElementById('tagsCloud');
+            container.innerHTML = Object.entries(tagCounts)
+                .map(([tag, count]) => {
+                    const scale = 0.8 + ((count - minCount) / (maxCount - minCount)) * 0.6;
+                    return `
+                        <span class="cloud-tag" style="font-size: ${16 * scale}px; opacity: ${0.6 + (0.4 * scale)}"
+                              onclick="filterByTag('${tag}')" title="${count} entries">
+                            ${tag}
+                        </span>
+                    `;
+                })
+                .join('');
+        }
+
+        function filterByTag(tag) {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('typeFilter').value = '';
+            document.getElementById('scopeFilter').value = '';
+            selectedTagFilters = [tag];
+            renderTagFilters();
+            switchPage('home');
+            filterKnowledge();
+        }
+
+        // Initialize
+        window.onload = () => {
+            renderKnowledge();
+        };
+    </script>
+</body>
+</html>
