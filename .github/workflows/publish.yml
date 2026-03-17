@@ -4,12 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/cli/**'
+      - 'apps/**'
       - 'packages/**'
       - 'pnpm-lock.yaml'
 
 jobs:
-  publish:
+  # ── MCP Server → npm ──────────────────────────────────────────
+  publish-mcp:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -19,7 +20,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 9
 
       - uses: actions/setup-node@v4
         with:
@@ -31,14 +32,14 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
-      - name: Validate CLI package
-        run: cd apps/cli && npm publish --dry-run --access public 2>&1
+      - name: Validate MCP server package
+        run: cd apps/mcp-server && npm publish --dry-run --access public 2>&1
 
       - name: Check if version exists
         id: version-check
         run: |
-          PACKAGE_VERSION=$(node -p "require('./apps/cli/package.json').version")
-          if npm view @ai-knowledge/cli@$PACKAGE_VERSION version 2>/dev/null; then
+          PACKAGE_VERSION=$(node -p "require('./apps/mcp-server/package.json').version")
+          if npm view @ai-knowledge/mcp-server@$PACKAGE_VERSION version 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
@@ -46,6 +47,83 @@ jobs:
 
       - name: Publish to npm
         if: steps.version-check.outputs.exists == 'false'
-        run: cd apps/cli && npm publish --provenance --access public
+        run: cd apps/mcp-server && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ── Tauri Desktop App → GitHub Releases ────────────────────────
+  publish-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-13
+            target: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/dashboard/src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build monorepo
+        run: pnpm turbo build --filter=@ai-knowledge/dashboard
+
+      - name: Bundle sidecar
+        working-directory: apps/dashboard
+        run: node scripts/bundle-sidecar.mjs
+
+      - name: Get version
+        id: pkg-version
+        run: echo "version=$(node -p "require('./apps/dashboard/package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/dashboard
+          tagName: v${{ steps.pkg-version.outputs.version }}
+          releaseName: 'AI Knowledge Base v${{ steps.pkg-version.outputs.version }}'
+          releaseBody: |
+            ## AI Knowledge Base Dashboard
+
+            Desktop app for managing your AI knowledge base.
+            Download the installer for your platform below.
+
+            **macOS:** `.dmg` file (arm64 for Apple Silicon, x64 for Intel)
+            **Linux:** `.AppImage` or `.deb` file
+          releaseDraft: false
+          prerelease: false

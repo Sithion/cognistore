@@ -1,6 +1,6 @@
 # AI Knowledge Base
 
-[![CI](https://github.com/<YOUR_USERNAME>/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/knowledge-base/actions/workflows/ci.yml)
+[![CI](https://github.com/<OWNER>/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/knowledge-base/actions/workflows/ci.yml)
 
 Semantic knowledge management system for AI agents. Works as an MCP plugin (Claude Code, Copilot) or as an npm package in any TypeScript project.
 
@@ -23,7 +23,7 @@ This will:
 ### Option 2: Clone Repository
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/knowledge-base.git
+git clone https://github.com/<OWNER>/knowledge-base.git
 cd knowledge-base
 pnpm install && pnpm build
 npx kb install
@@ -125,7 +125,7 @@ After installation, the MCP server is automatically configured. It uses `npx` to
       "command": "npx",
       "args": ["-y", "@ai-knowledge/mcp-server"],
       "env": {
-        "DATABASE_URL": "postgresql://knowledge:<PASSWORD>@localhost:5433/knowledge_base",
+        "DATABASE_URL": "postgresql://knowledge:knowledge_secret@localhost:5433/knowledge_base",
         "OLLAMA_HOST": "http://localhost:11435",
         "OLLAMA_MODEL": "all-minilm",
         "EMBEDDING_DIMENSIONS": "384"

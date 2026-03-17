@@ -85,6 +85,7 @@ pub fn spawn_node(
 ) -> Result<Child, String> {
     let dist_path = resource_dir.join("dist");
     let node_modules_path = resource_dir.join("node_modules");
+    let templates_path = resource_dir.join("templates");
 
     let child = Command::new(node_bin)
         .arg(script_path)
@@ -94,6 +95,7 @@ pub fn spawn_node(
         .env("EMBEDDING_DIMENSIONS", "384")
         .env("DASHBOARD_PORT", port.to_string())
         .env("DASHBOARD_DIST_PATH", dist_path.to_string_lossy().to_string())
+        .env("TEMPLATES_PATH", templates_path.to_string_lossy().to_string())
         .env("NODE_ENV", "production")
         .env("NODE_PATH", node_modules_path.to_string_lossy().to_string())
         .stdout(Stdio::piped())

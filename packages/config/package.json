@@ -1,0 +1,21 @@
+{
+  "name": "@ai-knowledge/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/config-manager.js",
+  "types": "./dist/config-manager.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/config-manager.js",
+      "types": "./dist/config-manager.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

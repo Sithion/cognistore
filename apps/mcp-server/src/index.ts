@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { KnowledgeSDK } from '@ai-knowledge/sdk';
 import { createServer } from './server.js';

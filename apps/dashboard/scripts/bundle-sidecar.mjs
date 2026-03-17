@@ -99,6 +99,16 @@ for (const mod of requiredModules) {
   }
 }
 
+// 6. Copy templates (skills + configs)
+console.log('\n[5/5] Copying templates...');
+const templatesSrc = resolve(dashboardRoot, 'templates');
+if (existsSync(templatesSrc)) {
+  cpSync(templatesSrc, resolve(bundleDir, 'templates'), { recursive: true });
+  console.log('  Copied: templates/');
+} else {
+  console.warn('  WARNING: templates/ not found');
+}
+
 console.log(`\nSidecar bundle ready at: ${bundleDir}`);
 console.log('Contents:');
 execSync(`ls -la "${bundleDir}"`, { stdio: 'inherit' });

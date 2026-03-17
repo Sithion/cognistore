@@ -1,6 +1,6 @@
 {
   "name": "@ai-knowledge/mcp-server",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "private": false,
   "type": "module",
   "description": "MCP server for AI Knowledge Base — integrates with Claude Code and GitHub Copilot",
@@ -13,19 +13,24 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm build:deps && tsup",
+    "build:deps": "pnpm --filter @ai-knowledge/shared build && pnpm --filter @ai-knowledge/core build && pnpm --filter @ai-knowledge/embeddings build && pnpm --filter @ai-knowledge/sdk build",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist",
     "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi"
   },
   "dependencies": {
-    "@ai-knowledge/sdk": "workspace:*",
-    "@ai-knowledge/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.8.0",
+    "drizzle-orm": "^0.38.0",
+    "sqlite-vec": "^0.1.7",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@ai-knowledge/sdk": "workspace:*",
+    "@ai-knowledge/shared": "workspace:*",
     "@playwright/test": "^1.50.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0"
   }

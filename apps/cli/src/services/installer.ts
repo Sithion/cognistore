@@ -383,7 +383,7 @@ export class Installer {
     // Download from GitHub Releases
     const version = '0.5.0';
     const dmgName = `AI.Knowledge.Base_${version}_${arch}.dmg`;
-    const downloadUrl = `https://github.com/<YOUR_USERNAME>/knowledge-base/releases/download/v${version}/${dmgName}`;
+    const downloadUrl = `https://github.com/<OWNER>/knowledge-base/releases/download/v${version}/${dmgName}`;
 
     const tmpDir = resolve(homedir(), '.ai-knowledge', '.tmp');
     mkdirSync(tmpDir, { recursive: true });

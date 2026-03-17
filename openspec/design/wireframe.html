@@ -870,7 +870,7 @@
                                 <option value="">All Scopes</option>
                                 <option value="global">Global</option>
                                 <option value="workspace:knowledge-base">Knowledge Base</option>
-                                <option value="workspace:my-project">AI Config</option>
+                                <option value="workspace:ai-config">AI Config</option>
                             </select>
                         </div>
 
@@ -1156,7 +1156,7 @@
                 id: '3',
                 content: 'Scope determination: when an agent runs from directory A but works on project B, the scope must reflect the TARGET project, not cwd. Use this precedence: (1) plan overview.md, (2) file paths, (3) package.json, (4) repo directory name, (5) cwd as fallback, (6) global for cross-project knowledge.',
                 type: 'constraint',
-                scope: 'workspace:my-project',
+                scope: 'workspace:ai-config',
                 source: 'planner',
                 agent_id: 'planner-d4e8f1a3',
                 tags: ['knowledge-capture', 'scope', 'critical'],
@@ -1192,7 +1192,7 @@
                 id: '6',
                 content: 'Plan execution must respect the DAG defined in todo.md: identify all tasks with no unresolved depends tags, dispatch in parallel, then check for newly unblocked tasks. Update checkboxes in real-time ([ ]→[~]→[x] or [!]) before/after dispatch.',
                 type: 'pattern',
-                scope: 'workspace:my-project',
+                scope: 'workspace:ai-config',
                 source: 'executor',
                 agent_id: 'executor-plan-dag',
                 tags: ['plan-execution', 'parallelism', 'todo'],
