@@ -14,7 +14,7 @@
     "templates"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist",
     "test": "npx playwright test"
@@ -30,8 +30,9 @@
     "ora": "^8.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
+    "@playwright/test": "^1.50.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.0.0",
-    "@playwright/test": "^1.50.0"
+    "typescript": "^5.7.0"
   }
 }

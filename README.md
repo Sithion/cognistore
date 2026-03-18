@@ -1,5 +1,7 @@
 # AI Knowledge Base
 
+[![CI](https://github.com/your-org/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/knowledge-base/actions/workflows/ci.yml)
+
 Semantic knowledge management system for AI agents. Works as an MCP plugin (Claude Code, Copilot) or as an npm package in any TypeScript project.
 
 ## Quick Start
@@ -176,6 +178,18 @@ kb db:stop          # Stop Docker services
 2. **Searching knowledge**: The query text is vectorized with the same model and compared against stored tag embeddings using cosine similarity. Results are ranked by similarity score (threshold: 0.3).
 
 3. **Everything is local**: No data leaves your machine. The embedding model runs locally via Ollama, and the database is a local PostgreSQL instance.
+
+## Publishing
+
+The CLI package (`@ai-knowledge/cli`) is automatically published to npm on every merge to `main`.
+
+**Version management:** Edit `apps/cli/package.json` and increment the version number. The publish workflow will detect the change and publish it.
+
+**Requirements:**
+- All CI checks must pass (see [CI/CD Pipeline](documentation/ci-cd.md))
+- npm organization and access token configured (see `.github/BRANCH_PROTECTION.md`)
+
+For detailed CI/CD documentation, see [CI/CD and Publishing](documentation/ci-cd.md).
 
 ## Development
 
