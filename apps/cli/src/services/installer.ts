@@ -70,19 +70,20 @@ export class Installer {
       // Step 5: Start Docker services
       currentStep++;
       const profile = this.skipDashboard ? '' : '--profile dashboard';
+      const buildFlag = this.projectRoot ? '--build' : '';
       if (this.verbose) {
         ui.step(currentStep, TOTAL_STEPS, 'Starting Docker services...');
         this.exec(
-          `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d --build`,
+          `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d ${buildFlag}`.trim(),
           false
         );
         ui.success('Docker services started');
       } else {
         await ui.withSpinner(
-          `[${currentStep}/${TOTAL_STEPS}] Starting Docker services (building & starting containers)...`,
+          `[${currentStep}/${TOTAL_STEPS}] Starting Docker services (pulling & starting containers)...`,
           async () => {
             await this.execAsync(
-              `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d --build`
+              `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d ${buildFlag}`.trim()
             );
           }
         );
@@ -160,14 +161,19 @@ export class Installer {
             await this.waitForAsync(
               async () => {
                 try {
-                  await this.execAsync('curl -sf http://localhost:3847');
+                  await this.execAsync('curl -sf http://kb.localhost');
                   return true;
                 } catch {
-                  return false;
+                  try {
+                    await this.execAsync(`curl -sf http://localhost:${process.env.DASHBOARD_PORT || '3847'}`);
+                    return true;
+                  } catch {
+                    return false;
+                  }
                 }
               },
-              60000,
-              2000
+              90000,
+              3000
             );
           }
         );
@@ -321,7 +327,7 @@ export class Installer {
 
       // Success!
       ui.showSuccessBanner({
-        dashboard: `http://localhost:${process.env.DASHBOARD_PORT || '3847'}`,
+        dashboard: this.skipDashboard ? 'skipped' : 'http://kb.localhost',
         postgres: `localhost:${process.env.POSTGRES_PORT || '5433'}`,
         ollama: `localhost:${process.env.OLLAMA_PORT || '11435'}`,
       });

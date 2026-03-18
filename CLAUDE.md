@@ -20,9 +20,12 @@ Every change to the installation process (`apps/cli/src/services/installer.ts`) 
 | Installer action | Uninstaller action |
 |---|---|
 | Create `~/.ai-knowledge/` (compose, .env, init/) | Remove directory recursively |
-| Start containers (kb-postgres, kb-ollama, kb-dashboard) | `docker compose down` with correct compose path |
+| Start containers (kb-postgres, kb-ollama, kb-dashboard, kb-traefik) | `docker compose down` with correct compose path |
 | Create volumes (kb_pgdata, kb_ollama) | Remove with `-v` flag (unless `--keep-data`) |
-| Pull/build Docker images | `docker rmi` images |
+| Pull `pgvector/pgvector:pg17` image | `docker rmi` in DOCKER_IMAGES array |
+| Pull `ollama/ollama:latest` image | `docker rmi` in DOCKER_IMAGES array |
+| Pull `traefik:v3.3` image | `docker rmi` in DOCKER_IMAGES array |
+| Pull `ghcr.io/sithion/kb-dashboard:latest` image | `docker rmi` in DOCKER_IMAGES array |
 | Inject `~/.claude/CLAUDE.md` markers | Remove markers via `configManager.removeConfig` |
 | Inject `~/.github/copilot-instructions.md` markers | Remove markers via `configManager.removeConfig` |
 | Inject `~/.copilot/copilot-instructions.md` markers | Remove markers via `configManager.removeConfig` |

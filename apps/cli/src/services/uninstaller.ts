@@ -21,6 +21,8 @@ interface CleanupSummary {
 const DOCKER_IMAGES = [
   'pgvector/pgvector:pg17',
   'ollama/ollama:latest',
+  'traefik:v3.3',
+  'ghcr.io/sithion/kb-dashboard:latest',
 ];
 
 export class Uninstaller {
@@ -309,7 +311,7 @@ export class Uninstaller {
     if (!composePath) {
       // No compose file found — try to stop containers directly by name
       ui.warn('No docker-compose.yml found, stopping containers by name...');
-      for (const name of ['kb-dashboard', 'kb-ollama', 'kb-postgres']) {
+      for (const name of ['kb-traefik', 'kb-dashboard', 'kb-ollama', 'kb-postgres']) {
         try {
           execSync(`docker rm -f ${name}`, { stdio: 'pipe', timeout: 30000 });
         } catch {
