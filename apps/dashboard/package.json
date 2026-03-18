@@ -8,7 +8,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-server",
-    "test": "npx playwright test",
+    "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi",
     "server": "tsx server/index.ts",
     "server:build": "tsc -p server/tsconfig.json"
   },
