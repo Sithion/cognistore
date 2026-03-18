@@ -89,6 +89,21 @@ async function start() {
   }
 
   app.get('/api/setup/status', async () => {
+    // Check Node.js v20 availability
+    const nodeReady = (() => {
+      const nvmDir = resolve(homedir(), '.nvm', 'versions', 'node');
+      if (existsSync(nvmDir)) {
+        const versions = readdirSync(nvmDir).filter(v => v.startsWith('v20.'));
+        if (versions.length > 0) return true;
+      }
+      // Check system node
+      try {
+        const version = execSync('node --version', { stdio: 'pipe' }).toString().trim();
+        const major = parseInt(version.replace('v', '').split('.')[0], 10);
+        return major === 20;
+      } catch { return false; }
+    })();
+
     const ollamaInstalled = (() => {
       try { execSync('which ollama', { stdio: 'pipe' }); return true; } catch { return false; }
     })();
@@ -122,9 +137,10 @@ async function start() {
         } catch { return false; }
       })();
 
-    const allReady = ollamaInstalled && ollamaRunning && databaseReady && modelAvailable && configsReady && sdkReady;
+    const allReady = nodeReady && ollamaInstalled && ollamaRunning && databaseReady && modelAvailable && configsReady && sdkReady;
 
     return {
+      nodeReady,
       ollamaInstalled,
       ollamaRunning,
       databaseReady,
@@ -133,6 +149,61 @@ async function start() {
       sdkReady,
       allReady,
     };
+  });
+
+  // Node.js v20 LTS — required for native module compatibility (better-sqlite3)
+  const REQUIRED_NODE_MAJOR = 20;
+
+  app.post('/api/setup/node', async () => {
+    try {
+      const nvmDir = resolve(homedir(), '.nvm');
+      const nodeDir = resolve(nvmDir, 'versions', 'node');
+
+      // Check if Node 20 already exists in nvm
+      if (existsSync(nodeDir)) {
+        const versions = readdirSync(nodeDir).filter(v => v.startsWith(`v${REQUIRED_NODE_MAJOR}.`));
+        if (versions.length > 0) {
+          const latest = versions.sort().pop()!;
+          const nodeBin = resolve(nodeDir, latest, 'bin', 'node');
+          if (existsSync(nodeBin)) {
+            return { success: true, message: `Node.js ${latest} already installed`, path: nodeBin };
+          }
+        }
+      }
+
+      // Check if system node is already v20
+      try {
+        const version = execSync('node --version', { stdio: 'pipe' }).toString().trim();
+        const major = parseInt(version.replace('v', '').split('.')[0], 10);
+        if (major === REQUIRED_NODE_MAJOR) {
+          return { success: true, message: `System Node.js ${version} matches`, path: 'node' };
+        }
+      } catch { /* no system node */ }
+
+      // Install nvm if not present
+      if (!existsSync(resolve(nvmDir, 'nvm.sh'))) {
+        execSync('curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash', {
+          stdio: 'pipe', timeout: 60000,
+          env: { ...process.env, NVM_DIR: nvmDir },
+        });
+      }
+
+      // Install Node 20 via nvm
+      const nvmCmd = `export NVM_DIR="${nvmDir}" && . "$NVM_DIR/nvm.sh" && nvm install ${REQUIRED_NODE_MAJOR} --lts`;
+      execSync(nvmCmd, { stdio: 'pipe', timeout: 120000, shell: '/bin/bash' });
+
+      // Verify installation
+      const versions = readdirSync(nodeDir).filter(v => v.startsWith(`v${REQUIRED_NODE_MAJOR}.`));
+      if (versions.length > 0) {
+        const latest = versions.sort().pop()!;
+        const nodeBin = resolve(nodeDir, latest, 'bin', 'node');
+        return { success: true, message: `Installed Node.js ${latest} via nvm`, path: nodeBin };
+      }
+
+      return { success: false, message: 'Node.js installation completed but version not found' };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   app.post('/api/setup/ollama', async () => {

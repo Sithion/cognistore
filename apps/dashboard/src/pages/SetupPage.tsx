@@ -12,6 +12,7 @@ interface Step {
 
 export function SetupPage({ onComplete }: { onComplete: () => void }) {
   const [steps, setSteps] = useState<Step[]>([
+    { id: 'node', label: 'Installing Node.js v20', status: 'pending' },
     { id: 'ollama', label: 'Installing Ollama', status: 'pending' },
     { id: 'ollama-start', label: 'Starting Ollama', status: 'pending' },
     { id: 'database', label: 'Creating database', status: 'pending' },
@@ -37,6 +38,16 @@ export function SetupPage({ onComplete }: { onComplete: () => void }) {
       let status: SetupStatus;
       try { status = await api.getSetupStatus(); }
       catch { status = { ollamaInstalled: false, ollamaRunning: false, databaseReady: false, modelAvailable: false, configsReady: false, sdkReady: false, allReady: false }; }
+
+      // Step 0: Install Node.js v20
+      if (status.nodeReady) {
+        updateStep('node', { status: 'done' });
+      } else {
+        updateStep('node', { status: 'running' });
+        const res = await api.setupNode();
+        if (!res.success) { updateStep('node', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('node', { status: 'done' });
+      }
 
       // Step 1: Install Ollama
       if (status.ollamaInstalled) {
