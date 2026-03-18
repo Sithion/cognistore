@@ -2,7 +2,7 @@ import type { KnowledgeSDK } from '@ai-knowledge/sdk';
 
 export const healthCheckTool = {
   name: 'healthCheck',
-  description: 'Check the health of the knowledge base infrastructure (database, Ollama, Docker).',
+  description: 'Check the health of the knowledge base infrastructure (SQLite database and Ollama).',
   inputSchema: {
     type: 'object' as const,
     properties: {},

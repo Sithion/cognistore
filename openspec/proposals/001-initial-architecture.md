@@ -1,7 +1,7 @@
 # Proposal 001: Initial Architecture
 
 ## Status
-Accepted
+Superseded by v0.6.0 — Tauri desktop app with SQLite + native Ollama (see CLAUDE.md for current architecture)
 
 ## Summary
 Establish the foundational architecture for the @ai-knowledge semantic knowledge management system.

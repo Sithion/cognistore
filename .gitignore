@@ -13,9 +13,6 @@ sidecar-bundle/
 .env.local
 .env.*.local
 
-# Docker persistent data
-docker/data/
-
 # OS
 .DS_Store
 Thumbs.db
