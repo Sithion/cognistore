@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -109,7 +109,7 @@ async function start() {
     const configsReady = existsSync(ConfigManager.MCP_CONFIG) &&
       (() => {
         try {
-          const content = require('node:fs').readFileSync(ConfigManager.MCP_CONFIG, 'utf-8');
+          const content = readFileSync(ConfigManager.MCP_CONFIG, 'utf-8');
           return content.includes('ai-knowledge');
         } catch { return false; }
       })();
