@@ -1,29 +1,32 @@
-import { pgTable, uuid, text, integer, doublePrecision, timestamp, index } from 'drizzle-orm/pg-core';
+import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-import { vector } from './pgvector.js';
 
 export const knowledgeTypeEnum = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'] as const;
 
-export const knowledgeEntries = pgTable(
+export const knowledgeEntries = sqliteTable(
   'knowledge_entries',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     content: text('content').notNull(),
-    embedding: vector('embedding', { dimensions: 384 }),
-    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
-    type: text('type', { enum: knowledgeTypeEnum }).notNull(),
+    tags: text('tags', { mode: 'json' }).notNull().$type<string[]>().default([]),
+    type: text('type').notNull(),
     scope: text('scope').notNull(),
     source: text('source').notNull(),
     version: integer('version').notNull().default(1),
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
-    confidenceScore: doublePrecision('confidence_score').notNull().default(1.0),
-    relatedIds: uuid('related_ids').array(),
+    expiresAt: text('expires_at'),
+    confidenceScore: real('confidence_score').notNull().default(1.0),
+    relatedIds: text('related_ids', { mode: 'json' }).$type<string[] | null>(),
     agentId: text('agent_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+    updatedAt: text('updated_at')
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
   },
   (table) => [
-    index('idx_tags').using('gin', table.tags),
     index('idx_type').on(table.type),
     index('idx_scope').on(table.scope),
   ]

@@ -7,8 +7,7 @@ import {
   deleteCommand,
   tagsCommand,
   healthCommand,
-  dbStartCommand,
-  dbStopCommand,
+  dbStatusCommand,
   installCommand,
   uninstallCommand,
 } from './commands/index.js';
@@ -16,7 +15,7 @@ import {
 const program = new Command()
   .name('kb')
   .description('AI Knowledge Base CLI — Semantic knowledge management for AI agents')
-  .version('0.3.0');
+  .version('0.4.0');
 
 program.addCommand(installCommand);
 program.addCommand(uninstallCommand);
@@ -26,7 +25,6 @@ program.addCommand(updateCommand);
 program.addCommand(deleteCommand);
 program.addCommand(tagsCommand);
 program.addCommand(healthCommand);
-program.addCommand(dbStartCommand);
-program.addCommand(dbStopCommand);
+program.addCommand(dbStatusCommand);
 
 program.parse();

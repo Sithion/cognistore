@@ -1,15 +1,12 @@
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { createDbClient } from './client.js';
 
-export async function runMigrations(url?: string) {
-  const { db, queryClient } = createDbClient(url);
+export function runMigrations(dbPath?: string) {
+  const { db, sqlite } = createDbClient(dbPath);
 
   try {
-    // Ensure pgvector extension exists
-    await queryClient`CREATE EXTENSION IF NOT EXISTS vector`;
-
-    await migrate(db, { migrationsFolder: new URL('./migrations', import.meta.url).pathname });
+    migrate(db, { migrationsFolder: new URL('./migrations', import.meta.url).pathname });
   } finally {
-    await queryClient.end();
+    sqlite.close();
   }
 }

@@ -119,7 +119,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
   // healthCheck
   server.tool(
     'healthCheck',
-    'Check health of the knowledge base infrastructure (database, Ollama, Docker).',
+    'Check health of the knowledge base infrastructure (database, Ollama).',
     {},
     async () => {
       const health = await sdk.healthCheck();
