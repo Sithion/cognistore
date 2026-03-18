@@ -8,6 +8,7 @@ import {
   tagsCommand,
   healthCommand,
   dbStatusCommand,
+  dashboardCommand,
   installCommand,
   uninstallCommand,
 } from './commands/index.js';
@@ -26,5 +27,6 @@ program.addCommand(deleteCommand);
 program.addCommand(tagsCommand);
 program.addCommand(healthCommand);
 program.addCommand(dbStatusCommand);
+program.addCommand(dashboardCommand);
 
 program.parse();

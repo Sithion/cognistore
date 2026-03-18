@@ -30,13 +30,14 @@ Every change to the installation process (`apps/cli/src/services/installer.ts`) 
 | Add `ai-knowledge` to `~/.copilot/mcp-config.json` | Remove entry via `configManager.removeMcpEntry` |
 | Copy Claude skills to `~/.claude/skills/ai-knowledge-*/` | Remove skill directories |
 | Copy Copilot skills to `~/.copilot/skills/ai-knowledge-*.md` | Remove skill files |
+| Download + install Tauri .app to `/Applications/` + `xattr -cr` | Remove .app from `/Applications/` |
 
-## Architecture (v0.4.0 — Docker-free)
+## Architecture (v0.5.0 — Docker-free + Tauri Dashboard)
 
 - **Database**: SQLite + sqlite-vec (file at `~/.ai-knowledge/knowledge.db`)
-- **Embeddings**: Ollama native (required, user installs separately)
-- **Dashboard**: Local Node.js process (transitional, Tauri in v0.5.0)
-- **No Docker dependency** — eliminated in v0.4.0
+- **Embeddings**: Ollama native (auto-installed via brew/curl)
+- **Dashboard**: Tauri desktop app (webview + Fastify sidecar) or `kb dashboard` browser fallback
+- **No Docker dependency**
 
 ## Path Resolution (Key Architecture)
 

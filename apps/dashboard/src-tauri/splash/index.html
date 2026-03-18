@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Knowledge Base</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #8b5cf6;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #1e1e3a;
+      border-top-color: #8b5cf6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <div class="title">AI Knowledge Base</div>
+  <div class="subtitle">Starting services...</div>
+</body>
+</html>

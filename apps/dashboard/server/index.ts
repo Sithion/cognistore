@@ -53,8 +53,8 @@ async function start() {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
 
-  // Serve Vite-built frontend
-  const distPath = join(__dirname, '..', 'dist');
+  // Serve Vite-built frontend (DASHBOARD_DIST_PATH used by Tauri sidecar)
+  const distPath = process.env.DASHBOARD_DIST_PATH || join(__dirname, '..', 'dist');
   await app.register(fastifyStatic, {
     root: distPath,
     prefix: '/',
