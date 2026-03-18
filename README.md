@@ -1,6 +1,6 @@
 # AI Knowledge Base
 
-[![CI](https://github.com/your-org/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/knowledge-base/actions/workflows/ci.yml)
+[![CI](https://github.com/Sithion/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/Sithion/knowledge-base/actions/workflows/ci.yml)
 
 Semantic knowledge management system for AI agents. Works as an MCP plugin (Claude Code, Copilot) or as an npm package in any TypeScript project.
 
@@ -23,7 +23,7 @@ This will:
 ### Option 2: Clone Repository
 
 ```bash
-git clone https://github.com/your-org/knowledge-base.git
+git clone https://github.com/Sithion/knowledge-base.git
 cd knowledge-base
 pnpm install && pnpm build
 npx kb install

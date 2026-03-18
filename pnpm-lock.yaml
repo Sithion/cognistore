@@ -20,15 +20,6 @@ importers:
 
   apps/cli:
     dependencies:
-      '@ai-knowledge/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ai-knowledge/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@ai-knowledge/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@inquirer/prompts':
         specifier: latest
         version: 8.3.2(@types/node@22.19.15)
@@ -45,6 +36,15 @@ importers:
         specifier: ^8.0.0
         version: 8.2.0
     devDependencies:
+      '@ai-knowledge/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@ai-knowledge/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@ai-knowledge/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@playwright/test':
         specifier: ^1.50.0
         version: 1.58.2
