@@ -1,33 +1,34 @@
 import { execSync, exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import * as ui from '../ui/index.js';
 import { ConfigManager } from './config-manager.js';
 
 const execPromise = promisify(execCb);
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 14;
 
 export interface InstallerOptions {
-  projectRoot: string;
+  projectRoot?: string;  // Optional - for backwards compat with repo-based install
+  installDir?: string;   // Default: ~/.ai-knowledge/
   skipConfig?: boolean;
   skipDashboard?: boolean;
   verbose?: boolean;
 }
 
 export class Installer {
-  private projectRoot: string;
-  private composePath: string;
-  private configsPath: string;
+  private projectRoot?: string;
+  private installDir: string;
   private configManager: ConfigManager;
   private skipConfig: boolean;
   private skipDashboard: boolean;
   private verbose: boolean;
 
   constructor(options: InstallerOptions) {
+    this.installDir = options.installDir ?? resolve(homedir(), '.ai-knowledge');
     this.projectRoot = options.projectRoot;
-    this.composePath = resolve(this.projectRoot, 'docker', 'docker-compose.yml');
-    this.configsPath = resolve(this.projectRoot, 'configs');
     this.configManager = new ConfigManager();
     this.skipConfig = options.skipConfig ?? false;
     this.skipDashboard = options.skipDashboard ?? false;
@@ -44,7 +45,13 @@ export class Installer {
       const os = this.detectOS();
       ui.step(currentStep, TOTAL_STEPS, `Detected OS: ${os.name} (${os.arch})`);
 
-      // Step 2: Check Docker
+      // Step 2: Setup install directory
+      currentStep++;
+      ui.step(currentStep, TOTAL_STEPS, `Setting up install directory: ${this.installDir}`);
+      await this.setupInstallDir();
+      ui.success(`Install directory ready: ${this.installDir}`);
+
+      // Step 3: Check Docker
       currentStep++;
       ui.step(currentStep, TOTAL_STEPS, 'Checking Docker...');
       const dockerAvailable = this.checkDocker();
@@ -54,19 +61,19 @@ export class Installer {
       }
       ui.success('Docker is installed and running');
 
-      // Step 3: Check Docker Compose
+      // Step 4: Check Docker Compose
       currentStep++;
       ui.step(currentStep, TOTAL_STEPS, 'Checking Docker Compose...');
       const composeCmd = this.getComposeCommand();
       ui.success(`Using: ${composeCmd}`);
 
-      // Step 4: Start Docker services
+      // Step 5: Start Docker services
       currentStep++;
       const profile = this.skipDashboard ? '' : '--profile dashboard';
       if (this.verbose) {
         ui.step(currentStep, TOTAL_STEPS, 'Starting Docker services...');
         this.exec(
-          `${composeCmd} -f "${this.composePath}" ${profile} up -d --build`,
+          `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d --build`,
           false
         );
         ui.success('Docker services started');
@@ -75,13 +82,13 @@ export class Installer {
           `[${currentStep}/${TOTAL_STEPS}] Starting Docker services (building & starting containers)...`,
           async () => {
             await this.execAsync(
-              `${composeCmd} -f "${this.composePath}" ${profile} up -d --build`
+              `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d --build`
             );
           }
         );
       }
 
-      // Step 5: Wait for PostgreSQL
+      // Step 6: Wait for PostgreSQL
       currentStep++;
       await ui.withSpinner(
         `[${currentStep}/${TOTAL_STEPS}] Waiting for PostgreSQL...`,
@@ -101,7 +108,7 @@ export class Installer {
         }
       );
 
-      // Step 6: Wait for Ollama
+      // Step 7: Wait for Ollama
       currentStep++;
       await ui.withSpinner(
         `[${currentStep}/${TOTAL_STEPS}] Waiting for Ollama...`,
@@ -121,7 +128,7 @@ export class Installer {
         }
       );
 
-      // Step 7: Pull embedding model
+      // Step 8: Pull embedding model
       currentStep++;
       const model = process.env.OLLAMA_MODEL || 'all-minilm';
       const modelExists = this.checkModelExists(model);
@@ -144,7 +151,7 @@ export class Installer {
         );
       }
 
-      // Step 8: Wait for Dashboard (if not skipped)
+      // Step 9: Wait for Dashboard (if not skipped)
       currentStep++;
       if (!this.skipDashboard) {
         await ui.withSpinner(
@@ -168,50 +175,49 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Dashboard skipped');
       }
 
-      // Step 9: Inject agent configs
+      // Step 10: Inject agent configs
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Configuring AI agent instructions...');
 
-        const claudeResult = await this.configManager.injectConfig(
-          ConfigManager.CLAUDE_MD,
-          resolve(this.configsPath, 'claude-code-instructions.md'),
-          'Claude Code'
-        );
-        ui.success(
-          `Claude Code: ${claudeResult.action} ${claudeResult.path}`
-        );
+        try {
+          const claudeResult = await this.configManager.injectConfig(
+            ConfigManager.CLAUDE_MD,
+            this.projectRoot ? resolve(this.projectRoot, 'configs', 'claude-code-instructions.md') : '',
+            'Claude Code'
+          );
+          ui.success(
+            `Claude Code: ${claudeResult.action} ${claudeResult.path}`
+          );
+        } catch {
+          ui.warn('Could not configure Claude Code instructions (skipped)');
+        }
 
-        const copilotResult = await this.configManager.injectConfig(
-          ConfigManager.COPILOT_MD,
-          resolve(this.configsPath, 'copilot-instructions.md'),
-          'GitHub Copilot'
-        );
-        ui.success(
-          `GitHub Copilot: ${copilotResult.action} ${copilotResult.path}`
-        );
+        try {
+          const copilotResult = await this.configManager.injectConfig(
+            ConfigManager.COPILOT_MD,
+            this.projectRoot ? resolve(this.projectRoot, 'configs', 'copilot-instructions.md') : '',
+            'GitHub Copilot'
+          );
+          ui.success(
+            `GitHub Copilot: ${copilotResult.action} ${copilotResult.path}`
+          );
+        } catch {
+          ui.warn('Could not configure GitHub Copilot instructions (skipped)');
+        }
       } else {
         ui.step(currentStep, TOTAL_STEPS, 'Config injection skipped');
       }
 
-      // Step 10: Setup MCP config
+      // Step 11: Setup MCP config
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Setting up MCP configuration...');
 
-        const nodePath = process.execPath;
-        const mcpServerPath = resolve(
-          this.projectRoot,
-          'apps',
-          'mcp-server',
-          'dist',
-          'index.js'
-        );
-
         const mcpEntry = {
           type: 'stdio',
-          command: nodePath,
-          args: [mcpServerPath],
+          command: 'npx',
+          args: ['-y', '@ai-knowledge/mcp-server'],
           env: {
             DATABASE_URL: `postgresql://knowledge:knowledge_secret@localhost:${
               process.env.POSTGRES_PORT || '5433'
@@ -246,7 +252,7 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'MCP config skipped');
       }
 
-      // Step 11: Inject Copilot CLI instructions
+      // Step 12: Inject Copilot CLI instructions
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Configuring Copilot CLI instructions...');
@@ -254,7 +260,7 @@ export class Installer {
         try {
           const copilotCliResult = await this.configManager.injectConfig(
             ConfigManager.COPILOT_INSTRUCTIONS,
-            resolve(this.configsPath, 'copilot-instructions.md'),
+            this.projectRoot ? resolve(this.projectRoot, 'configs', 'copilot-instructions.md') : '',
             'Copilot CLI'
           );
           ui.success(
@@ -267,24 +273,15 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Copilot CLI config skipped');
       }
 
-      // Step 12: Setup Copilot MCP config
+      // Step 13: Setup Copilot MCP config
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Setting up Copilot MCP configuration...');
 
-        const nodePath = process.execPath;
-        const mcpServerPath = resolve(
-          this.projectRoot,
-          'apps',
-          'mcp-server',
-          'dist',
-          'index.js'
-        );
-
         const copilotMcpEntry = {
           type: 'stdio',
-          command: nodePath,
-          args: [mcpServerPath],
+          command: 'npx',
+          args: ['-y', '@ai-knowledge/mcp-server'],
           env: {
             DATABASE_URL: `postgresql://knowledge:knowledge_secret@localhost:${
               process.env.POSTGRES_PORT || '5433'
@@ -312,6 +309,16 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Copilot MCP config skipped');
       }
 
+      // Step 14: Install knowledge skills
+      currentStep++;
+      if (!this.skipConfig) {
+        ui.step(currentStep, TOTAL_STEPS, 'Installing knowledge skills...');
+        await this.installSkills();
+        ui.success('Knowledge skills installed for Claude Code and Copilot CLI');
+      } else {
+        ui.step(currentStep, TOTAL_STEPS, 'Skills installation skipped');
+      }
+
       // Success!
       ui.showSuccessBanner({
         dashboard: `http://localhost:${process.env.DASHBOARD_PORT || '3847'}`,
@@ -321,6 +328,88 @@ export class Installer {
     } catch (err) {
       ui.error(`Installation failed at step ${currentStep}/${TOTAL_STEPS}`);
       throw err;
+    }
+  }
+
+  private async setupInstallDir(): Promise<void> {
+    const { mkdirSync, existsSync, cpSync } = await import('node:fs');
+
+    mkdirSync(this.installDir, { recursive: true });
+
+    // Resolve templates from package directory
+    const templatesDir = this.projectRoot
+      ? resolve(this.projectRoot, 'docker')  // repo-based install
+      : resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'templates');  // npx install
+
+    const composeDest = resolve(this.installDir, 'docker-compose.yml');
+    const initDest = resolve(this.installDir, 'init');
+    const envDest = resolve(this.installDir, '.env');
+
+    // Copy docker-compose.yml if not exists
+    if (!existsSync(composeDest)) {
+      cpSync(resolve(templatesDir, 'docker-compose.yml'), composeDest);
+    }
+
+    // Copy init dir if not exists
+    if (!existsSync(initDest)) {
+      cpSync(resolve(templatesDir, 'init'), initDest, { recursive: true });
+    }
+
+    // Copy .env from .env.example if .env doesn't exist
+    if (!existsSync(envDest)) {
+      const envSource = resolve(templatesDir, '.env.example');
+      if (existsSync(envSource)) {
+        cpSync(envSource, envDest);
+      }
+    }
+  }
+
+  private async installSkills(): Promise<void> {
+    const { mkdirSync, existsSync, cpSync, lstatSync, unlinkSync } = await import('node:fs');
+    const home = homedir();
+
+    // Resolve skill templates from package or repo
+    const skillsDir = this.projectRoot
+      ? resolve(this.projectRoot, 'apps', 'cli', 'templates', 'skills')
+      : resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'templates', 'skills');
+
+    // Claude Code: ~/.claude/skills/<name>/SKILL.md
+    const claudeSkillsDir = resolve(home, '.claude', 'skills');
+    const claudeSkillNames = ['ai-knowledge-query', 'ai-knowledge-capture'];
+
+    for (const name of claudeSkillNames) {
+      const src = resolve(skillsDir, 'claude-code', name, 'SKILL.md');
+      const destDir = resolve(claudeSkillsDir, name);
+      const dest = resolve(destDir, 'SKILL.md');
+
+      if (!existsSync(src)) continue;
+
+      // Remove existing symlink if present (from ai-config or previous install)
+      if (existsSync(destDir) && lstatSync(destDir).isSymbolicLink()) {
+        unlinkSync(destDir);
+      }
+
+      mkdirSync(destDir, { recursive: true });
+      cpSync(src, dest);
+    }
+
+    // Copilot CLI: ~/.copilot/skills/<name>.md
+    const copilotSkillsDir = resolve(home, '.copilot', 'skills');
+    const copilotSkillNames = ['ai-knowledge-query', 'ai-knowledge-capture'];
+
+    for (const name of copilotSkillNames) {
+      const src = resolve(skillsDir, 'copilot', `${name}.md`);
+      const dest = resolve(copilotSkillsDir, `${name}.md`);
+
+      if (!existsSync(src)) continue;
+
+      // Remove existing symlink if present
+      if (existsSync(dest) && lstatSync(dest).isSymbolicLink()) {
+        unlinkSync(dest);
+      }
+
+      mkdirSync(copilotSkillsDir, { recursive: true });
+      cpSync(src, dest);
     }
   }
 

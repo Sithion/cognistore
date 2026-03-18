@@ -1,12 +1,18 @@
 {
   "name": "@ai-knowledge/cli",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
+  "description": "CLI tool for AI Knowledge Base — semantic knowledge management for AI agents",
+  "license": "MIT",
   "main": "./dist/index.js",
   "bin": {
     "kb": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "templates"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",

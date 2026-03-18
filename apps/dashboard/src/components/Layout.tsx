@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
+declare const __APP_VERSION__: string;
+
 const navItems = [
   { key: 'home', path: '/', icon: '🔍' },
-  { key: 'add', path: '/add', icon: '➕' },
-  { key: 'tags', path: '/tags', icon: '🏷' },
   { key: 'stats', path: '/stats', icon: '📊' },
   { key: 'infra', path: '/infra', icon: '⚙' },
 ];
@@ -93,6 +93,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
           ))}
         </div>
+
+        {/* Version Display */}
+        {!collapsed && (
+          <div style={{ textAlign: 'center', paddingTop: 8, fontSize: 10, color: 'var(--text-secondary)', opacity: 0.6 }}>
+            v{__APP_VERSION__}
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}

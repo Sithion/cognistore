@@ -76,3 +76,44 @@ User/Agent → SDK.getKnowledge(query, options?)
 | Dashboard port | 3847 | Avoids common dev ports (3000-3100, 5173, 8080) |
 | Docker profiles | Dashboard optional | Core (PG + Ollama) always starts; dashboard only with `--profile dashboard` |
 | Schema init | Raw SQL (not Drizzle) | drizzle-kit has CJS resolution bugs with .js imports in ESM projects |
+
+## Installation Architecture
+
+### npx Installation Flow
+
+```
+npx @ai-knowledge/cli install
+    → Creates ~/.ai-knowledge/
+    → Extracts templates (docker-compose.yml, init SQL, .env)
+    → docker compose up -d (PostgreSQL + Ollama)
+    → Waits for health checks
+    → Pulls embedding model (all-minilm)
+    → Injects MCP configs (~/.claude/, ~/.copilot/)
+    → Done
+```
+
+### MCP Server Distribution
+
+MCP configs now reference `npx @ai-knowledge/mcp-server` instead of local file paths. This means:
+- No clone or build step required
+- npm handles versioning and updates
+- `npx -y` ensures the latest version is used
+
+### Dashboard UI Components
+
+```
+HomePage
+├── Search Bar (query + filters)
+├── TagBar (clickable tag chips, toggle filtering)
+├── KnowledgeCard[] (entry display with clickable tags)
+├── FloatingAddButton (FAB → opens modal)
+└── AddKnowledgeModal (createPortal overlay)
+```
+
+| Key Decision | Choice | Rationale |
+|-------------|--------|-----------|
+| Install path | `~/.ai-knowledge/` | Standard user-local directory, avoids repo dependency |
+| MCP reference | `npx` command | No local paths, auto-updates, works without clone |
+| Tag filtering | Client-side for recent, API for search | Avoids extra API calls for the common case |
+| Add Knowledge | Modal (not page) | Accessible from anywhere, no navigation required |
+| Tags page | Removed | Consolidated into Home's TagBar |

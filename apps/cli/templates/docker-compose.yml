@@ -1,0 +1,53 @@
+# AI Knowledge Base — Docker Compose (standalone installation)
+# Generated for npx @ai-knowledge/cli install
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: kb-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-knowledge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-knowledge_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-knowledge_base}
+    volumes:
+      - kb_pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-knowledge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kb-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: kb-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11435}:11434"
+    volumes:
+      - kb_ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    networks:
+      - kb-network
+
+volumes:
+  kb_pgdata:
+  kb_ollama:
+
+networks:
+  kb-network:
+    driver: bridge

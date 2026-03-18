@@ -1,12 +1,17 @@
 {
   "name": "@ai-knowledge/mcp-server",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
+  "description": "MCP server for AI Knowledge Base — integrates with Claude Code and GitHub Copilot",
+  "license": "MIT",
   "main": "./dist/index.js",
   "bin": {
     "ai-knowledge-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
