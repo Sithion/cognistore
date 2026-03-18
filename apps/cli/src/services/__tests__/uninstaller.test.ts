@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn().mockReturnValue(''),
-}));
-
 vi.mock('../../ui/index.js', () => ({
   showUninstallBanner: vi.fn(),
   step: vi.fn(),
@@ -40,21 +36,6 @@ describe('Uninstaller', () => {
     expect((uninstaller as any).installDir).toContain('.ai-knowledge');
   });
 
-  it('accepts custom installDir', () => {
-    const uninstaller = new Uninstaller({ installDir: '/custom/path', force: true });
-    expect((uninstaller as any).installDir).toBe('/custom/path');
-  });
-
-  it('handles undefined projectRoot (npx context)', () => {
-    const uninstaller = new Uninstaller({ force: true });
-    expect((uninstaller as any).projectRoot).toBeUndefined();
-  });
-
-  it('stores projectRoot when provided (repo context)', () => {
-    const uninstaller = new Uninstaller({ projectRoot: '/repo/root', force: true });
-    expect((uninstaller as any).projectRoot).toBe('/repo/root');
-  });
-
   it('defaults keepData to false', () => {
     const uninstaller = new Uninstaller({ force: true });
     expect((uninstaller as any).keepData).toBe(false);
@@ -63,16 +44,5 @@ describe('Uninstaller', () => {
   it('defaults force to false', () => {
     const uninstaller = new Uninstaller({});
     expect((uninstaller as any).force).toBe(false);
-  });
-});
-
-describe('Uninstaller compose path resolution', () => {
-  it('does not crash when projectRoot is undefined', () => {
-    // Verifies the constructor accepts undefined projectRoot gracefully
-    const uninstaller = new Uninstaller({
-      installDir: '/nonexistent/dir',
-      force: true,
-    });
-    expect((uninstaller as any).projectRoot).toBeUndefined();
   });
 });

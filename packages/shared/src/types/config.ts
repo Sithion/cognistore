@@ -1,6 +1,5 @@
 export interface DatabaseConfig {
-  url: string;
-  maxConnections?: number;
+  path: string;
 }
 
 export interface OllamaConfig {
@@ -12,6 +11,4 @@ export interface OllamaConfig {
 export interface SDKConfig {
   database: DatabaseConfig;
   ollama: OllamaConfig;
-  autoStart: boolean;
-  dockerComposePath?: string;
 }

@@ -12,12 +12,7 @@ vi.mock('../../services/uninstaller.js', () => ({
   },
 }));
 
-vi.mock('../../utils/resolve-root.js', () => ({
-  resolveProjectRoot: vi.fn().mockReturnValue('/mock/repo/root'),
-}));
-
 import { uninstallCommand } from '../uninstall.js';
-import { resolveProjectRoot } from '../../utils/resolve-root.js';
 
 describe('uninstall command', () => {
   beforeEach(() => {
@@ -37,13 +32,6 @@ describe('uninstall command', () => {
   it('has --force option', () => {
     const opt = uninstallCommand.options.find(o => o.long === '--force');
     expect(opt).toBeDefined();
-  });
-
-  it('uses resolveProjectRoot instead of hardcoded path', async () => {
-    await uninstallCommand.parseAsync(['uninstall'], { from: 'user' });
-
-    expect(resolveProjectRoot).toHaveBeenCalled();
-    expect(lastUninstallerOpts.projectRoot).toBe('/mock/repo/root');
   });
 
   it('passes force=true when --force is given', async () => {

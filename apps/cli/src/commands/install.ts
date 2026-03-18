@@ -4,9 +4,8 @@ import { resolveProjectRoot } from '../utils/resolve-root.js';
 
 export const installCommand = new Command('install')
   .description('Install AI Knowledge Base with interactive wizard')
-  .option('--no-dashboard', 'Skip dashboard container')
   .option('--skip-config', 'Skip agent config injection')
-  .option('--verbose', 'Show full Docker and command output')
+  .option('--verbose', 'Show full command output')
   .action(async (options) => {
     try {
       const projectRoot = resolveProjectRoot();
@@ -14,7 +13,6 @@ export const installCommand = new Command('install')
       const installer = new Installer({
         projectRoot,
         skipConfig: options.skipConfig ?? false,
-        skipDashboard: !options.dashboard, // --no-dashboard sets dashboard=false
         verbose: options.verbose ?? false,
       });
       await installer.run();

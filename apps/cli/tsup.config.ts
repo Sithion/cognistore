@@ -16,4 +16,8 @@ export default defineConfig({
     '@ai-knowledge/shared',
     '@ai-knowledge/embeddings',
   ],
+  external: [
+    'better-sqlite3',
+    'sqlite-vec',
+  ],
 });

@@ -1,10 +1,13 @@
 import { defineConfig } from 'drizzle-kit';
+import { homedir } from 'node:os';
+
+const defaultPath = (process.env.SQLITE_PATH ?? '~/.ai-knowledge/knowledge.db').replace('~', homedir());
 
 export default defineConfig({
   schema: './dist/db/schema/knowledge.js',
   out: './src/db/migrations',
-  dialect: 'postgresql',
+  dialect: 'sqlite',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgresql://knowledge:knowledge_secret@localhost:5433/knowledge_base',
+    url: defaultPath,
   },
 });
