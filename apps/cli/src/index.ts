@@ -16,7 +16,7 @@ import {
 const program = new Command()
   .name('kb')
   .description('AI Knowledge Base CLI — Semantic knowledge management for AI agents')
-  .version('0.4.0');
+  .version('0.5.0');
 
 program.addCommand(installCommand);
 program.addCommand(uninstallCommand);
