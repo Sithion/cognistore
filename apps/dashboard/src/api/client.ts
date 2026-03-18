@@ -71,5 +71,12 @@ export const api = {
 
   getStats: () => request('/api/stats'),
 
+  getMetrics: () => request<{
+    database: { sizeBytes: number; sizeFormatted: string; path: string };
+    activity: { last24h: number; last7d: number; last30d: number; total: number };
+    activityByDay: { date: string; count: number }[];
+    typeDistribution: { name: string; value: number }[];
+  }>('/api/metrics'),
+
   getHealth: () => request('/api/health'),
 };

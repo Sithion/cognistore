@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -452,6 +452,71 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     return sdk.getStats();
+  });
+
+  app.get('/api/metrics', async (_request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+
+    const dbPath = resolve(INSTALL_DIR, 'knowledge.db');
+    let dbSizeBytes = 0;
+    try { dbSizeBytes = statSync(dbPath).size; } catch { /* ignore */ }
+
+    // Get entries grouped by date (last 30 days)
+    const stats = await sdk.getStats();
+
+    // Query recent entries for activity data
+    const recent = await sdk.listRecent(1000);
+    const now = new Date();
+    const last24h = recent.filter((e: any) => {
+      const created = new Date(e.createdAt);
+      return (now.getTime() - created.getTime()) < 24 * 60 * 60 * 1000;
+    }).length;
+    const last7d = recent.filter((e: any) => {
+      const created = new Date(e.createdAt);
+      return (now.getTime() - created.getTime()) < 7 * 24 * 60 * 60 * 1000;
+    }).length;
+    const last30d = recent.filter((e: any) => {
+      const created = new Date(e.createdAt);
+      return (now.getTime() - created.getTime()) < 30 * 24 * 60 * 60 * 1000;
+    }).length;
+
+    // Activity by day (last 14 days)
+    const activityByDay: { date: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const count = recent.filter((e: any) => {
+        const created = new Date(e.createdAt).toISOString().split('T')[0];
+        return created === dateStr;
+      }).length;
+      activityByDay.push({ date: dateStr, count });
+    }
+
+    // Type distribution for pie chart
+    const typeDistribution = stats.byType.map((t: any) => ({
+      name: t.type.charAt(0).toUpperCase() + t.type.slice(1),
+      value: t.count,
+    }));
+
+    return {
+      database: {
+        sizeBytes: dbSizeBytes,
+        sizeFormatted: dbSizeBytes < 1024 * 1024
+          ? `${(dbSizeBytes / 1024).toFixed(1)} KB`
+          : `${(dbSizeBytes / (1024 * 1024)).toFixed(1)} MB`,
+        path: dbPath,
+      },
+      activity: {
+        last24h,
+        last7d,
+        last30d,
+        total: stats.total,
+      },
+      activityByDay,
+      typeDistribution,
+    };
   });
 
   app.get('/api/tags', async (_request, reply) => {
