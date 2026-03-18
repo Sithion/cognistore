@@ -74,7 +74,7 @@ export class Uninstaller {
       }
     }
 
-    const TOTAL_STEPS = 11;
+    const TOTAL_STEPS = 12;
     let step = 0;
 
     // Step 1: Remove Claude Code agent config
@@ -174,7 +174,12 @@ export class Uninstaller {
     ui.step(step, TOTAL_STEPS, 'Removing knowledge skills...');
     this.removeSkills(summary);
 
-    // Step 8: Remove install directory (~/.ai-knowledge/) including SQLite database
+    // Step 8: Remove Tauri dashboard app
+    step++;
+    ui.step(step, TOTAL_STEPS, 'Removing dashboard app...');
+    this.removeTauriApp(summary);
+
+    // Step 9: Remove install directory (~/.ai-knowledge/) including SQLite database
     step++;
     ui.step(step, TOTAL_STEPS, 'Removing install directory...');
     this.removeInstallDir(summary);
@@ -239,6 +244,34 @@ export class Uninstaller {
     } catch {
       summary.push({ component: 'Copilot MCP config', status: 'not found' });
     }
+  }
+
+  private removeTauriApp(summary: CleanupSummary[]): void {
+    const appPaths = [
+      '/Applications/AI Knowledge Base.app',
+      resolve(homedir(), 'Applications', 'AI Knowledge Base.app'),
+    ];
+
+    for (const appPath of appPaths) {
+      if (existsSync(appPath)) {
+        rmSync(appPath, { recursive: true, force: true });
+        summary.push({ component: 'Dashboard app', status: 'removed', detail: appPath });
+        ui.success(`Removed ${appPath}`);
+        return;
+      }
+    }
+
+    // Linux
+    const linuxPath = resolve(homedir(), '.local', 'bin', 'ai-knowledge-dashboard');
+    if (existsSync(linuxPath)) {
+      rmSync(linuxPath, { force: true });
+      summary.push({ component: 'Dashboard app', status: 'removed', detail: linuxPath });
+      ui.success(`Removed ${linuxPath}`);
+      return;
+    }
+
+    summary.push({ component: 'Dashboard app', status: 'not found' });
+    ui.info('Dashboard app not found');
   }
 
   private removeSkills(summary: CleanupSummary[]): void {

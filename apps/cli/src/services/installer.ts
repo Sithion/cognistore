@@ -8,7 +8,7 @@ import { resolveTemplatesDir } from '../utils/resolve-root.js';
 
 const execPromise = promisify(execCb);
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 
 export interface InstallerOptions {
   projectRoot?: string;
@@ -228,6 +228,25 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Skills installation skipped');
       }
 
+      // Step 12: Offer to install Tauri dashboard app
+      currentStep++;
+      if (!this.skipConfig) {
+        const tauriAppInstalled = await this.isTauriAppInstalled();
+        if (tauriAppInstalled) {
+          ui.step(currentStep, TOTAL_STEPS, 'Dashboard app already installed');
+        } else {
+          ui.step(currentStep, TOTAL_STEPS, 'Dashboard app...');
+          try {
+            await this.installTauriApp(os);
+          } catch (err) {
+            ui.warn(`Could not install dashboard app: ${err instanceof Error ? err.message : err}`);
+            ui.info('You can use "kb dashboard --no-app" to run in browser mode');
+          }
+        }
+      } else {
+        ui.step(currentStep, TOTAL_STEPS, 'Dashboard app skipped');
+      }
+
       // Success!
       ui.showSuccessBanner({
         database: resolve(this.installDir, 'knowledge.db'),
@@ -322,6 +341,74 @@ export class Installer {
       mkdirSync(copilotSkillsDir, { recursive: true });
       cpSync(src, dest);
     }
+  }
+
+  private async isTauriAppInstalled(): Promise<boolean> {
+    const { existsSync } = await import('node:fs');
+    if (process.platform === 'darwin') {
+      return (
+        existsSync('/Applications/AI Knowledge Base.app') ||
+        existsSync(resolve(homedir(), 'Applications', 'AI Knowledge Base.app'))
+      );
+    }
+    if (process.platform === 'linux') {
+      return existsSync(resolve(homedir(), '.local', 'bin', 'ai-knowledge-dashboard'));
+    }
+    return false;
+  }
+
+  private async installTauriApp(os: { name: string; arch: string }): Promise<void> {
+    if (os.name !== 'macOS') {
+      ui.info('Dashboard app not yet available for this platform. Use "kb dashboard" for browser mode.');
+      return;
+    }
+
+    const { existsSync, mkdirSync, unlinkSync, cpSync } = await import('node:fs');
+    const arch = os.arch === 'arm64' ? 'aarch64' : 'x64';
+
+    // Try local build first (for development/repo installs)
+    if (this.projectRoot) {
+      const localApp = resolve(
+        this.projectRoot, 'apps', 'dashboard', 'src-tauri', 'target', 'release', 'bundle', 'macos', 'AI Knowledge Base.app'
+      );
+      if (existsSync(localApp)) {
+        ui.info('Installing dashboard app from local build...');
+        cpSync(localApp, '/Applications/AI Knowledge Base.app', { recursive: true });
+        this.exec('xattr -cr "/Applications/AI Knowledge Base.app"', true);
+        ui.success('Dashboard app installed to /Applications/');
+        return;
+      }
+    }
+
+    // Download from GitHub Releases
+    const version = '0.5.0';
+    const dmgName = `AI.Knowledge.Base_${version}_${arch}.dmg`;
+    const downloadUrl = `https://github.com/Sithion/knowledge-base/releases/download/v${version}/${dmgName}`;
+
+    const tmpDir = resolve(homedir(), '.ai-knowledge', '.tmp');
+    mkdirSync(tmpDir, { recursive: true });
+    const dmgPath = resolve(tmpDir, dmgName);
+
+    await ui.withSpinner('Downloading dashboard app...', async () => {
+      await this.execAsync(`curl -fsSL -o "${dmgPath}" "${downloadUrl}"`);
+    });
+
+    await ui.withSpinner('Installing dashboard app...', async () => {
+      const mountOutput = this.exec(`hdiutil attach "${dmgPath}" -nobrowse -noverify`);
+      const mountPoint = mountOutput.split('\n').pop()?.split('\t').pop()?.trim();
+
+      if (!mountPoint) throw new Error('Could not mount DMG');
+
+      try {
+        this.exec(`cp -R "${mountPoint}/AI Knowledge Base.app" /Applications/`);
+        this.exec('xattr -cr "/Applications/AI Knowledge Base.app"');
+      } finally {
+        this.exec(`hdiutil detach "${mountPoint}" -quiet`);
+        unlinkSync(dmgPath);
+      }
+    });
+
+    ui.success('Dashboard app installed to /Applications/');
   }
 
   private detectOS(): { name: string; arch: string } {
