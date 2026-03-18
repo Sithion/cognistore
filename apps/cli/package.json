@@ -1,6 +1,6 @@
 {
   "name": "@ai-knowledge/cli",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "private": false,
   "type": "module",
   "description": "CLI tool for AI Knowledge Base — semantic knowledge management for AI agents",
