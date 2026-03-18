@@ -5,6 +5,11 @@
   "type": "module",
   "description": "MCP server for AI Knowledge Base — integrates with Claude Code and GitHub Copilot",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sithion/knowledge-base",
+    "directory": "apps/mcp-server"
+  },
   "main": "./dist/index.js",
   "bin": {
     "ai-knowledge-mcp": "./dist/index.js"
