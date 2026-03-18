@@ -17,6 +17,8 @@
     "tauri:bundle": "node scripts/bundle-sidecar.mjs && tauri build"
   },
   "dependencies": {
+    "@ai-knowledge/config": "workspace:*",
+    "@ai-knowledge/core": "workspace:*",
     "@ai-knowledge/sdk": "workspace:*",
     "@ai-knowledge/shared": "workspace:*",
     "@fastify/cors": "^11.2.0",

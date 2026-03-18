@@ -19,7 +19,37 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
+export interface SetupStatus {
+  ollamaInstalled: boolean;
+  ollamaRunning: boolean;
+  databaseReady: boolean;
+  modelAvailable: boolean;
+  configsReady: boolean;
+  sdkReady: boolean;
+  allReady: boolean;
+}
+
+export interface SetupResult {
+  success: boolean;
+  message?: string;
+  results?: string[];
+  path?: string;
+}
+
 export const api = {
+  // Setup
+  getSetupStatus: () => request<SetupStatus>('/api/setup/status'),
+  setupOllama: () => request<SetupResult>('/api/setup/ollama', { method: 'POST' }),
+  setupOllamaStart: () => request<SetupResult>('/api/setup/ollama-start', { method: 'POST' }),
+  setupDatabase: () => request<SetupResult>('/api/setup/database', { method: 'POST' }),
+  setupModel: () => request<SetupResult>('/api/setup/model', { method: 'POST' }),
+  setupConfigure: () => request<SetupResult>('/api/setup/configure', { method: 'POST' }),
+  setupComplete: () => request<SetupResult>('/api/setup/complete', { method: 'POST' }),
+
+  // Uninstall
+  uninstallAll: () => request<SetupResult>('/api/uninstall', { method: 'POST' }),
+
+  // Knowledge CRUD
   search: (query: string, options?: Record<string, unknown>) =>
     request('/api/knowledge/search', { method: 'POST', body: JSON.stringify({ query, ...options }) }),
 
@@ -42,8 +72,4 @@ export const api = {
   getStats: () => request('/api/stats'),
 
   getHealth: () => request('/api/health'),
-
-  repair: () => request<{ success: boolean; message: string }>('/api/admin/repair', { method: 'POST' }),
-
-  uninstall: () => request<{ success: boolean; message: string }>('/api/admin/uninstall', { method: 'POST' }),
 };

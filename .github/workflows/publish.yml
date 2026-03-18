@@ -1,10 +1,10 @@
-name: Publish
+name: Publish MCP Server
 
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/cli/**'
+      - 'apps/mcp-server/**'
       - 'packages/**'
       - 'pnpm-lock.yaml'
 
@@ -31,14 +31,14 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
-      - name: Validate CLI package
-        run: cd apps/cli && npm publish --dry-run --access public 2>&1
+      - name: Validate MCP server package
+        run: cd apps/mcp-server && npm publish --dry-run --access public 2>&1
 
       - name: Check if version exists
         id: version-check
         run: |
-          PACKAGE_VERSION=$(node -p "require('./apps/cli/package.json').version")
-          if npm view @ai-knowledge/cli@$PACKAGE_VERSION version 2>/dev/null; then
+          PACKAGE_VERSION=$(node -p "require('./apps/mcp-server/package.json').version")
+          if npm view @ai-knowledge/mcp-server@$PACKAGE_VERSION version 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
@@ -46,6 +46,6 @@ jobs:
 
       - name: Publish to npm
         if: steps.version-check.outputs.exists == 'false'
-        run: cd apps/cli && npm publish --provenance --access public
+        run: cd apps/mcp-server && npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

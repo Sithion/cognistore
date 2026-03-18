@@ -1,89 +1,181 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
-import { api } from '../api/client.js';
+import { api, type SetupStatus } from '../api/client.js';
 
-interface SetupStatus {
-  dockerInstalled: boolean;
-  databaseReady: boolean;
-  ollamaReady: boolean;
-  modelAvailable: boolean;
-  allReady: boolean;
+type StepStatus = 'pending' | 'running' | 'done' | 'error';
+
+interface Step {
+  id: string;
+  label: string;
+  status: StepStatus;
+  error?: string;
 }
 
-const steps = ['docker', 'database', 'ollama', 'model', 'ready'];
-const POLL_INTERVAL = 5000;
+export function SetupPage({ onComplete }: { onComplete: () => void }) {
+  const [steps, setSteps] = useState<Step[]>([
+    { id: 'ollama', label: 'Installing Ollama', status: 'pending' },
+    { id: 'ollama-start', label: 'Starting Ollama', status: 'pending' },
+    { id: 'database', label: 'Creating database', status: 'pending' },
+    { id: 'model', label: 'Downloading AI model', status: 'pending' },
+    { id: 'configure', label: 'Configuring agents', status: 'pending' },
+    { id: 'complete', label: 'Finishing setup', status: 'pending' },
+  ]);
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
 
-export function SetupPage() {
-  const { t } = useTranslation();
-  const [status, setStatus] = useState<SetupStatus | null>(null);
-
-  const checkStatus = useCallback(async () => {
-    try {
-      const data = await api.getSetupStatus() as SetupStatus;
-      setStatus(data);
-    } catch {
-      setStatus({ dockerInstalled: false, databaseReady: false, ollamaReady: false, modelAvailable: false, allReady: false });
-    }
+  const updateStep = useCallback((id: string, updates: Partial<Step>) => {
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   }, []);
 
-  useEffect(() => {
-    checkStatus();
-    const interval = setInterval(checkStatus, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [checkStatus]);
+  const runSetup = useCallback(async () => {
+    if (running) return;
+    setRunning(true);
 
-  const getStepStatus = (step: string): 'done' | 'error' | 'pending' => {
-    if (!status) return 'pending';
-    switch (step) {
-      case 'docker': return status.dockerInstalled ? 'done' : 'error';
-      case 'database': return status.databaseReady ? 'done' : status.dockerInstalled ? 'error' : 'pending';
-      case 'ollama': return status.ollamaReady ? 'done' : status.dockerInstalled ? 'error' : 'pending';
-      case 'model': return status.modelAvailable ? 'done' : status.ollamaReady ? 'error' : 'pending';
-      case 'ready': return status.allReady ? 'done' : 'pending';
-      default: return 'pending';
+    // Reset error steps
+    setSteps(prev => prev.map(s => s.status === 'error' ? { ...s, status: 'pending', error: undefined } : s));
+
+    try {
+      let status: SetupStatus;
+      try { status = await api.getSetupStatus(); }
+      catch { status = { ollamaInstalled: false, ollamaRunning: false, databaseReady: false, modelAvailable: false, configsReady: false, sdkReady: false, allReady: false }; }
+
+      // Step 1: Install Ollama
+      if (status.ollamaInstalled) {
+        updateStep('ollama', { status: 'done' });
+      } else {
+        updateStep('ollama', { status: 'running' });
+        const res = await api.setupOllama();
+        if (!res.success) { updateStep('ollama', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('ollama', { status: 'done' });
+      }
+
+      // Step 2: Start Ollama
+      if (status.ollamaRunning) {
+        updateStep('ollama-start', { status: 'done' });
+      } else {
+        updateStep('ollama-start', { status: 'running' });
+        const res = await api.setupOllamaStart();
+        if (!res.success) { updateStep('ollama-start', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('ollama-start', { status: 'done' });
+      }
+
+      // Step 3: Create database
+      if (status.databaseReady) {
+        updateStep('database', { status: 'done' });
+      } else {
+        updateStep('database', { status: 'running' });
+        const res = await api.setupDatabase();
+        if (!res.success) { updateStep('database', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('database', { status: 'done' });
+      }
+
+      // Step 4: Pull model
+      if (status.modelAvailable) {
+        updateStep('model', { status: 'done' });
+      } else {
+        updateStep('model', { status: 'running' });
+        const res = await api.setupModel();
+        if (!res.success) { updateStep('model', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('model', { status: 'done' });
+      }
+
+      // Step 5: Configure agents
+      if (status.configsReady) {
+        updateStep('configure', { status: 'done' });
+      } else {
+        updateStep('configure', { status: 'running' });
+        const res = await api.setupConfigure();
+        if (!res.success) { updateStep('configure', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('configure', { status: 'done' });
+      }
+
+      // Step 6: Complete
+      updateStep('complete', { status: 'running' });
+      const res = await api.setupComplete();
+      if (!res.success) { updateStep('complete', { status: 'error', error: res.message }); setRunning(false); return; }
+      updateStep('complete', { status: 'done' });
+
+      setDone(true);
+    } catch (err) {
+      console.error('Setup failed:', err);
+    } finally {
+      setRunning(false);
+    }
+  }, [running, updateStep]);
+
+  useEffect(() => { runSetup(); }, []);
+
+  const stepIcon = (status: StepStatus) => {
+    switch (status) {
+      case 'pending': return '⬜';
+      case 'running': return '⏳';
+      case 'done': return '✅';
+      case 'error': return '❌';
     }
   };
 
-  const stepLabels: Record<string, string> = {
-    docker: 'Docker Desktop',
-    database: 'PostgreSQL + pgvector',
-    ollama: 'Ollama (Embedding Engine)',
-    model: 'Embedding Model (all-minilm)',
-    ready: t('setup.ready'),
-  };
-
-  const statusColors = { done: 'var(--success)', error: 'var(--error)', pending: 'var(--text-secondary)' };
-  const statusIcons = { done: '✓', error: '✗', pending: '○' };
-
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>{t('setup.title')}</h1>
-      <p style={{ color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 32 }}>{t('setup.welcome')}</p>
-
-      <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 24 }}>
-        {steps.map((step, i) => {
-          const s = getStepStatus(step);
-          return (
-            <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0',
-              borderBottom: i < steps.length - 1 ? '1px solid var(--border)' : 'none' }}>
-              <span style={{
-                width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                backgroundColor: s === 'done' ? 'var(--success)' : 'var(--bg-input)',
-                color: statusColors[s], fontSize: 14, fontWeight: 700,
-                border: s !== 'done' ? `1px solid ${statusColors[s]}` : 'none',
-              }}>
-                {statusIcons[s]}
-              </span>
-              <span style={{ flex: 1, fontSize: 14, color: s === 'pending' ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
-                {stepLabels[step]}
-              </span>
-              <span style={{ fontSize: 11, color: statusColors[s], fontWeight: 600 }}>
-                {s === 'done' ? 'OK' : s === 'error' ? 'FAILED' : 'WAITING'}
-              </span>
-            </div>
-          );
-        })}
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '100vh', background: 'var(--bg-main)', flexDirection: 'column', gap: 32,
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 8 }}>🧠</div>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent)' }}>AI Knowledge Base</h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 4 }}>Setting up your environment...</p>
       </div>
+
+      <div style={{
+        backgroundColor: 'var(--bg-card)', borderRadius: 12,
+        border: '1px solid var(--border)', padding: 24,
+        minWidth: 400, maxWidth: 500,
+      }}>
+        {steps.map(step => (
+          <div key={step.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 0',
+            borderBottom: step.id !== 'complete' ? '1px solid var(--border)' : 'none',
+            opacity: step.status === 'pending' ? 0.5 : 1,
+          }}>
+            <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>
+              {stepIcon(step.status)}
+            </span>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: 14, fontWeight: step.status === 'running' ? 600 : 400 }}>
+                {step.label}
+              </span>
+              {step.error && (
+                <p style={{ fontSize: 11, color: 'var(--error)', marginTop: 2 }}>{step.error}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {done && (
+        <button
+          onClick={onComplete}
+          style={{
+            padding: '12px 32px', borderRadius: 8, border: 'none',
+            backgroundColor: 'var(--accent)', color: '#fff',
+            fontSize: 16, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Open Dashboard
+        </button>
+      )}
+
+      {steps.some(s => s.status === 'error') && !running && (
+        <button
+          onClick={runSetup}
+          style={{
+            padding: '10px 24px', borderRadius: 8,
+            border: '1px solid var(--accent)', backgroundColor: 'transparent',
+            color: 'var(--accent)', fontSize: 14, cursor: 'pointer',
+          }}
+        >
+          Retry Setup
+        </button>
+      )}
     </div>
   );
 }

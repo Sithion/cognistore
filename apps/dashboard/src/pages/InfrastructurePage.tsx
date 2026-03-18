@@ -90,6 +90,39 @@ export function InfrastructurePage() {
           {actionMessage.text}
         </div>
       )}
+
+      {/* Danger Zone */}
+      <div style={{
+        backgroundColor: 'var(--bg-card)', borderRadius: 10,
+        border: '1px solid var(--error)', padding: 20, marginTop: 24,
+        opacity: 0.8,
+      }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: 'var(--error)', textTransform: 'uppercase', letterSpacing: 1 }}>
+          Danger Zone
+        </h3>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+          This will remove all data, configurations, Ollama, and the app itself. This action cannot be undone.
+        </p>
+        <button
+          onClick={async () => {
+            if (!confirm('This will remove ALL data, configurations, and the app. Continue?')) return;
+            if (!confirm('Are you absolutely sure? This cannot be undone.')) return;
+            setActionMessage({ type: 'success', text: 'Uninstalling... The app will close shortly.' });
+            try {
+              await api.uninstallAll();
+            } catch {
+              // Server will shut down during uninstall
+            }
+          }}
+          style={{
+            padding: '10px 20px', borderRadius: 8,
+            border: '1px solid var(--error)', backgroundColor: 'transparent',
+            color: 'var(--error)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Uninstall Everything
+        </button>
+      </div>
     </div>
   );
 }
