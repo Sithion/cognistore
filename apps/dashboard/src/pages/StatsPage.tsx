@@ -172,19 +172,27 @@ export function StatsPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const [retries, setRetries] = useState(0);
+
   const loadData = () => {
-    setError(null);
-    api.getStats().then(data => setStats(data as Stats)).catch(err => {
-      // Retry after 3s if service unavailable (SDK initializing)
-      setTimeout(loadData, 3000);
-    });
+    api.getStats()
+      .then(data => setStats(data as Stats))
+      .catch(() => {
+        if (retries < 5) {
+          setRetries(r => r + 1);
+          setTimeout(loadData, 2000);
+        } else {
+          // Give up retrying — show empty state
+          setStats({ total: 0, byType: [], byScope: [] });
+        }
+      });
     api.getMetrics().then(data => setMetrics(data)).catch(console.error);
     api.listTags().then(data => setTags(data)).catch(console.error);
   };
 
   useEffect(() => { loadData(); }, []);
 
-  if (!stats) return <p style={{ color: 'var(--text-secondary)', padding: 20 }}>Loading statistics...</p>;
+  if (!stats) return <p style={{ color: 'var(--text-secondary)', padding: 20 }}>Loading statistics{'.'.repeat((retries % 3) + 1)}</p>;
 
   return (
     <div>
