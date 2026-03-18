@@ -366,15 +366,16 @@ export class Installer {
     const { existsSync, mkdirSync, unlinkSync, cpSync } = await import('node:fs');
     const arch = os.arch === 'arm64' ? 'aarch64' : 'x64';
 
-    // Try local DMG first (for development/repo installs)
+    // Try local build first (for development/repo installs)
     if (this.projectRoot) {
-      const localDmg = resolve(
-        this.projectRoot, 'apps', 'dashboard', 'src-tauri', 'target', 'release', 'bundle', 'dmg',
-        `AI Knowledge Base_0.5.0_${arch}.dmg`
+      const localApp = resolve(
+        this.projectRoot, 'apps', 'dashboard', 'src-tauri', 'target', 'release', 'bundle', 'macos', 'AI Knowledge Base.app'
       );
-      if (existsSync(localDmg)) {
+      if (existsSync(localApp)) {
         ui.info('Installing dashboard app from local build...');
-        await this.installFromDmg(localDmg);
+        cpSync(localApp, '/Applications/AI Knowledge Base.app', { recursive: true });
+        this.exec('xattr -cr "/Applications/AI Knowledge Base.app"', true);
+        ui.success('Dashboard app installed to /Applications/');
         return;
       }
     }
@@ -392,11 +393,6 @@ export class Installer {
       await this.execAsync(`curl -fsSL -o "${dmgPath}" "${downloadUrl}"`);
     });
 
-    await this.installFromDmg(dmgPath);
-    unlinkSync(dmgPath);
-  }
-
-  private async installFromDmg(dmgPath: string): Promise<void> {
     await ui.withSpinner('Installing dashboard app...', async () => {
       const mountOutput = this.exec(`hdiutil attach "${dmgPath}" -nobrowse -noverify`);
       const mountPoint = mountOutput.split('\n').pop()?.split('\t').pop()?.trim();
@@ -408,6 +404,7 @@ export class Installer {
         this.exec('xattr -cr "/Applications/AI Knowledge Base.app"');
       } finally {
         this.exec(`hdiutil detach "${mountPoint}" -quiet`);
+        unlinkSync(dmgPath);
       }
     });
 
