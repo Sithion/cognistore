@@ -16,6 +16,7 @@ interface Metrics {
   database: { sizeBytes: number; sizeFormatted: string; path: string };
   activity: { last24h: number; last7d: number; last30d: number; total: number };
   activityByDay: { date: string; count: number }[];
+  heatmap: { date: string; count: number }[];
   typeDistribution: { name: string; value: number }[];
 }
 
@@ -172,27 +173,41 @@ export function StatsPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const [retries, setRetries] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const loadData = () => {
-    api.getStats()
-      .then(data => setStats(data as Stats))
-      .catch(() => {
-        if (retries < 5) {
-          setRetries(r => r + 1);
+  useEffect(() => {
+    let attempt = 0;
+    const maxAttempts = 3;
+
+    const loadData = () => {
+      attempt++;
+      Promise.allSettled([
+        api.getStats(),
+        api.getMetrics(),
+        api.listTags(),
+      ]).then(([statsRes, metricsRes, tagsRes]) => {
+        if (statsRes.status === 'fulfilled') setStats(statsRes.value as Stats);
+        if (metricsRes.status === 'fulfilled') setMetrics(metricsRes.value as Metrics);
+        if (tagsRes.status === 'fulfilled') setTags(tagsRes.value as string[]);
+
+        // If stats failed and we have retries left, try again
+        if (statsRes.status === 'rejected' && attempt < maxAttempts) {
           setTimeout(loadData, 2000);
-        } else {
-          // Give up retrying — show empty state
+          return;
+        }
+
+        // Done — show whatever we have (or empty state)
+        if (statsRes.status === 'rejected') {
           setStats({ total: 0, byType: [], byScope: [] });
         }
+        setLoading(false);
       });
-    api.getMetrics().then(data => setMetrics(data)).catch(console.error);
-    api.listTags().then(data => setTags(data)).catch(console.error);
-  };
+    };
 
-  useEffect(() => { loadData(); }, []);
+    loadData();
+  }, []);
 
-  if (!stats) return <p style={{ color: 'var(--text-secondary)', padding: 20 }}>Loading statistics{'.'.repeat((retries % 3) + 1)}</p>;
+  if (loading) return <p style={{ color: 'var(--text-secondary)', padding: 20 }}>Loading statistics...</p>;
 
   return (
     <div>
