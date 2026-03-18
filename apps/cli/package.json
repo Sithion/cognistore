@@ -5,6 +5,11 @@
   "type": "module",
   "description": "CLI tool for AI Knowledge Base — semantic knowledge management for AI agents",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sithion/knowledge-base",
+    "directory": "apps/cli"
+  },
   "main": "./dist/index.js",
   "bin": {
     "kb": "./dist/index.js"
