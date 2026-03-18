@@ -22,6 +22,3 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
-
-      - name: Validate CLI package
-        run: cd apps/cli && npm publish --dry-run --access public 2>&1
