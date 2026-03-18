@@ -16,7 +16,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist",
-    "test": "npx playwright test"
+    "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi"
   },
   "dependencies": {
     "@ai-knowledge/sdk": "workspace:*",
