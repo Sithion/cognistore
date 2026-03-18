@@ -1,26 +1,11 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
   AreaChart, Area, ResponsiveContainer,
 } from 'recharts';
-import { api } from '../api/client.js';
-
-/* ── Types ── */
-
-interface Stats {
-  total: number;
-  byType: { type: string; count: number }[];
-  byScope: { scope: string; count: number }[];
-}
-
-interface Metrics {
-  database: { sizeBytes: number; sizeFormatted: string; path: string };
-  activity: { last24h: number; last7d: number; last30d: number; total: number };
-  activityByDay: { date: string; count: number }[];
-  heatmap: { date: string; count: number }[];
-  typeDistribution: { name: string; value: number }[];
-}
+import { useAppDispatch, useAppSelector } from '../store/index.js';
+import { fetchStats, fetchMetrics, fetchTags } from '../store/statsSlice.js';
 
 /* ── Constants ── */
 
@@ -34,6 +19,9 @@ const TYPE_COLORS: Record<string, string> = {
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
 
+/** Skip refetch if data was loaded less than 30s ago */
+const CACHE_TTL_MS = 30_000;
+
 /* ── Spinner ── */
 
 function Spinner({ size = 24 }: { size?: number }) {
@@ -43,7 +31,7 @@ function Spinner({ size = 24 }: { size?: number }) {
         style={{
           width: size,
           height: size,
-          border: `3px solid var(--border)`,
+          border: '3px solid var(--border)',
           borderTopColor: 'var(--accent)',
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
@@ -55,7 +43,7 @@ function Spinner({ size = 24 }: { size?: number }) {
 
 /* ── Widget Card ── */
 
-type WidgetState = 'loading' | 'loaded' | 'empty' | 'error';
+type WidgetState = 'idle' | 'loading' | 'loaded' | 'empty' | 'error';
 
 function WidgetCard({
   title,
@@ -79,23 +67,40 @@ function WidgetCard({
         borderRadius: 10,
         border: '1px solid var(--border)',
         padding: 20,
+        position: 'relative',
+        overflow: 'hidden',
         ...style,
       }}
     >
-      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>{title}</h3>
-      {state === 'loading' && <Spinner />}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600 }}>{title}</h3>
+        {/* Show subtle refresh indicator when refreshing with cached data */}
+        {state === 'loading' && children && (
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              border: '2px solid var(--border)',
+              borderTopColor: 'var(--accent)',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+            }}
+          />
+        )}
+      </div>
+      {state === 'loading' && !children && <Spinner />}
       {state === 'error' && (
         <p style={{ color: '#ef4444', fontSize: 13, textAlign: 'center', padding: 16 }}>{errorText}</p>
       )}
       {state === 'empty' && (
         <p style={{ color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', padding: 16 }}>{emptyText}</p>
       )}
-      {state === 'loaded' && children}
+      {(state === 'loaded' || (state === 'loading' && children)) && children}
     </div>
   );
 }
 
-/* ── Metric Card (top row) ── */
+/* ── Metric Card ── */
 
 function MetricCard({
   label,
@@ -229,15 +234,7 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
       </div>
 
       <div style={{ display: 'flex', gap: 0 }}>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap,
-            marginRight: 4,
-            width: 24,
-          }}
-        >
+        <div style={{ display: 'flex', flexDirection: 'column', gap, marginRight: 4, width: 24 }}>
           {dayLabels.map((label, i) => (
             <div
               key={i}
@@ -276,15 +273,7 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          marginTop: 8,
-          marginLeft: 28,
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, marginLeft: 28 }}>
         <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginRight: 4 }}>Less</span>
         {[0, 0.25, 0.5, 0.75, 1].map((level, i) => (
           <div
@@ -294,9 +283,7 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
               height: cellSize,
               borderRadius: 2,
               backgroundColor:
-                level === 0
-                  ? 'var(--bg-input)'
-                  : getHeatmapColor(level * maxCount, maxCount),
+                level === 0 ? 'var(--bg-input)' : getHeatmapColor(level * maxCount, maxCount),
             }}
           />
         ))}
@@ -310,76 +297,40 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
 
 export function StatsPage() {
   const { t } = useTranslation();
+  const dispatch = useAppDispatch();
 
-  // Each widget loads independently
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [statsState, setStatsState] = useState<WidgetState>('loading');
+  const {
+    stats, statsState,
+    metrics, metricsState,
+    tags, tagsState,
+    lastFetchedAt,
+  } = useAppSelector((s) => s.stats);
 
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [metricsState, setMetricsState] = useState<WidgetState>('loading');
-
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagsState, setTagsState] = useState<WidgetState>('loading');
-
-  // Load stats
   useEffect(() => {
-    let attempt = 0;
-    const load = () => {
-      attempt++;
-      api
-        .getStats()
-        .then((data: Stats) => {
-          setStats(data);
-          setStatsState(data.total > 0 ? 'loaded' : 'empty');
-        })
-        .catch(() => {
-          if (attempt < 3) {
-            setTimeout(load, 2000);
-          } else {
-            setStats({ total: 0, byType: [], byScope: [] });
-            setStatsState('empty');
-          }
-        });
-    };
-    load();
-  }, []);
+    // If data was fetched recently, show cached — refresh in background
+    const isFresh = lastFetchedAt && (Date.now() - lastFetchedAt) < CACHE_TTL_MS;
+    if (!isFresh) {
+      dispatch(fetchStats());
+      dispatch(fetchMetrics());
+      dispatch(fetchTags());
+    }
+  }, [dispatch, lastFetchedAt]);
 
-  // Load metrics
-  useEffect(() => {
-    let attempt = 0;
-    const load = () => {
-      attempt++;
-      api
-        .getMetrics()
-        .then((data: Metrics) => {
-          setMetrics(data);
-          setMetricsState('loaded');
-        })
-        .catch(() => {
-          if (attempt < 3) {
-            setTimeout(load, 2000);
-          } else {
-            setMetricsState('error');
-          }
-        });
-    };
-    load();
-  }, []);
+  // Derive widget states (show cached data while refreshing)
+  const hasStats = stats !== null;
+  const hasMetrics = metrics !== null;
 
-  // Load tags
-  useEffect(() => {
-    api
-      .listTags()
-      .then((data: string[]) => {
-        setTags(data);
-        setTagsState(data.length > 0 ? 'loaded' : 'empty');
-      })
-      .catch(() => setTagsState('error'));
-  }, []);
+  const effectiveStatsState: WidgetState =
+    statsState === 'loading' && hasStats ? 'loaded' : statsState === 'idle' ? 'loading' : statsState;
+
+  const effectiveMetricsState: WidgetState =
+    metricsState === 'loading' && hasMetrics ? 'loaded' : metricsState === 'idle' ? 'loading' : metricsState;
+
+  const effectiveTagsState: WidgetState =
+    tagsState === 'loading' && tags.length > 0 ? 'loaded' : tagsState === 'idle' ? 'loading' : tagsState;
 
   return (
     <div>
-      {/* Spinner CSS animation */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>{t('stats.title')}</h1>
@@ -389,25 +340,25 @@ export function StatsPage() {
         <MetricCard
           label="Total Entries"
           value={stats?.total ?? 0}
-          loading={statsState === 'loading'}
+          loading={!hasStats && statsState === 'loading'}
         />
         <MetricCard
           label="Last 24h"
           value={metrics?.activity.last24h ?? 0}
           sub="new entries"
-          loading={metricsState === 'loading'}
+          loading={!hasMetrics && metricsState === 'loading'}
         />
         <MetricCard
           label="Last 7 days"
           value={metrics?.activity.last7d ?? 0}
           sub="new entries"
-          loading={metricsState === 'loading'}
+          loading={!hasMetrics && metricsState === 'loading'}
         />
         <MetricCard
           label="Database Size"
           value={metrics?.database.sizeFormatted ?? '-'}
           sub={metrics?.database.path}
-          loading={metricsState === 'loading'}
+          loading={!hasMetrics && metricsState === 'loading'}
         />
       </div>
 
@@ -417,14 +368,14 @@ export function StatsPage() {
         <WidgetCard
           title="Knowledge by Type"
           state={
-            metricsState === 'loading'
+            effectiveMetricsState === 'loading'
               ? 'loading'
               : metrics && metrics.typeDistribution.length > 0
                 ? 'loaded'
                 : 'empty'
           }
         >
-          {metrics && (
+          {metrics && metrics.typeDistribution.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <ResponsiveContainer width="50%" height={180}>
                 <PieChart>
@@ -482,14 +433,14 @@ export function StatsPage() {
         <WidgetCard
           title="Knowledge by Scope"
           state={
-            statsState === 'loading'
+            effectiveStatsState === 'loading'
               ? 'loading'
               : stats && stats.byScope.length > 0
                 ? 'loaded'
                 : 'empty'
           }
         >
-          {stats && (
+          {stats && stats.byScope.length > 0 && (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={stats.byScope} layout="vertical" margin={{ left: 60 }}>
                 <XAxis type="number" hide />
@@ -514,11 +465,11 @@ export function StatsPage() {
         </WidgetCard>
       </div>
 
-      {/* ── Activity Chart (last 15 days) ── */}
+      {/* ── Activity Chart ── */}
       <WidgetCard
         title="Activity (Last 15 Days)"
         state={
-          metricsState === 'loading'
+          effectiveMetricsState === 'loading'
             ? 'loading'
             : metrics && metrics.activityByDay.some((d) => d.count > 0)
               ? 'loaded'
@@ -527,7 +478,7 @@ export function StatsPage() {
         emptyText="No activity in the last 15 days"
         style={{ marginBottom: 24 }}
       >
-        {metrics && (
+        {metrics && metrics.activityByDay.some((d) => d.count > 0) && (
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={metrics.activityByDay}>
               <defs>
@@ -563,34 +514,42 @@ export function StatsPage() {
         )}
       </WidgetCard>
 
-      {/* ── Contribution Heatmap (last 90 days) ── */}
+      {/* ── Contribution Heatmap ── */}
       <WidgetCard
         title="Contributions (Last 90 Days)"
-        state={metricsState === 'loading' ? 'loading' : metrics ? 'loaded' : 'empty'}
+        state={
+          effectiveMetricsState === 'loading'
+            ? 'loading'
+            : metrics?.heatmap
+              ? 'loaded'
+              : 'empty'
+        }
         style={{ marginBottom: 24 }}
       >
-        {metrics && <ContributionHeatmap data={metrics.heatmap} />}
+        {metrics?.heatmap && <ContributionHeatmap data={metrics.heatmap} />}
       </WidgetCard>
 
       {/* ── Tag Cloud ── */}
-      <WidgetCard title={t('stats.tagCloud')} state={tagsState}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {tags.map((tag, i) => (
-            <span
-              key={tag}
-              style={{
-                backgroundColor: 'var(--bg-input)',
-                color: 'var(--accent)',
-                padding: '4px 12px',
-                borderRadius: 14,
-                fontSize: 11 + (i % 3) * 3,
-                fontWeight: i % 2 === 0 ? 600 : 400,
-              }}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
+      <WidgetCard title={t('stats.tagCloud')} state={effectiveTagsState}>
+        {tags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {tags.map((tag, i) => (
+              <span
+                key={tag}
+                style={{
+                  backgroundColor: 'var(--bg-input)',
+                  color: 'var(--accent)',
+                  padding: '4px 12px',
+                  borderRadius: 14,
+                  fontSize: 11 + (i % 3) * 3,
+                  fontWeight: i % 2 === 0 ? 600 : 400,
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
       </WidgetCard>
     </div>
   );
