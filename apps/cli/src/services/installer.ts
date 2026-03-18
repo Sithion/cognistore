@@ -8,13 +8,12 @@ import { resolveTemplatesDir } from '../utils/resolve-root.js';
 
 const execPromise = promisify(execCb);
 
-const TOTAL_STEPS = 14;
+const TOTAL_STEPS = 11;
 
 export interface InstallerOptions {
-  projectRoot?: string;  // Optional - for backwards compat with repo-based install
-  installDir?: string;   // Default: ~/.ai-knowledge/
+  projectRoot?: string;
+  installDir?: string;
   skipConfig?: boolean;
-  skipDashboard?: boolean;
   verbose?: boolean;
 }
 
@@ -23,7 +22,6 @@ export class Installer {
   private installDir: string;
   private configManager: ConfigManager;
   private skipConfig: boolean;
-  private skipDashboard: boolean;
   private verbose: boolean;
 
   constructor(options: InstallerOptions) {
@@ -31,7 +29,6 @@ export class Installer {
     this.projectRoot = options.projectRoot;
     this.configManager = new ConfigManager();
     this.skipConfig = options.skipConfig ?? false;
-    this.skipDashboard = options.skipDashboard ?? false;
     this.verbose = options.verbose ?? false;
   }
 
@@ -51,137 +48,60 @@ export class Installer {
       await this.setupInstallDir();
       ui.success(`Install directory ready: ${this.installDir}`);
 
-      // Step 3: Check Docker
+      // Step 3: Ensure Ollama is installed
       currentStep++;
-      ui.step(currentStep, TOTAL_STEPS, 'Checking Docker...');
-      const dockerAvailable = this.checkDocker();
-      if (!dockerAvailable) {
-        this.showDockerInstallGuide(os.name);
-        throw new Error('Docker is not available. Please install Docker and try again.');
-      }
-      ui.success('Docker is installed and running');
-
-      // Step 4: Check Docker Compose
-      currentStep++;
-      ui.step(currentStep, TOTAL_STEPS, 'Checking Docker Compose...');
-      const composeCmd = this.getComposeCommand();
-      ui.success(`Using: ${composeCmd}`);
-
-      // Step 5: Start Docker services
-      currentStep++;
-      const profile = this.skipDashboard ? '' : '--profile dashboard';
-      const buildFlag = this.projectRoot ? '--build' : '';
-      if (this.verbose) {
-        ui.step(currentStep, TOTAL_STEPS, 'Starting Docker services...');
-        this.exec(
-          `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d ${buildFlag}`.trim(),
-          false
-        );
-        ui.success('Docker services started');
-      } else {
-        await ui.withSpinner(
-          `[${currentStep}/${TOTAL_STEPS}] Starting Docker services (pulling & starting containers)...`,
-          async () => {
-            await this.execAsync(
-              `${composeCmd} -f "${resolve(this.installDir, 'docker-compose.yml')}" ${profile} up -d ${buildFlag}`.trim()
-            );
-          }
-        );
-      }
-
-      // Step 6: Wait for PostgreSQL
-      currentStep++;
-      await ui.withSpinner(
-        `[${currentStep}/${TOTAL_STEPS}] Waiting for PostgreSQL...`,
-        async () => {
-          await this.waitForAsync(
-            async () => {
-              try {
-                await this.execAsync('docker exec kb-postgres pg_isready -U knowledge');
-                return true;
-              } catch {
-                return false;
-              }
-            },
-            60000,
-            2000
-          );
+      ui.step(currentStep, TOTAL_STEPS, 'Checking for Ollama...');
+      if (!this.checkOllama()) {
+        ui.warn('Ollama not found. Installing...');
+        await this.installOllama(os.name);
+        if (!this.checkOllama()) {
+          this.showOllamaInstallGuide(os.name);
+          throw new Error('Ollama installation failed. Please install manually and try again.');
         }
-      );
+      }
+      ui.success('Ollama is installed');
 
-      // Step 7: Wait for Ollama
+      // Step 4: Ensure Ollama is running
       currentStep++;
-      await ui.withSpinner(
-        `[${currentStep}/${TOTAL_STEPS}] Waiting for Ollama...`,
-        async () => {
-          await this.waitForAsync(
-            async () => {
-              try {
-                await this.execAsync('curl -sf http://localhost:11435/api/tags');
-                return true;
-              } catch {
-                return false;
-              }
-            },
-            120000,
-            3000
-          );
+      ui.step(currentStep, TOTAL_STEPS, 'Ensuring Ollama is running...');
+      let ollamaRunning = await this.checkOllamaRunning();
+      if (!ollamaRunning) {
+        ui.info('Starting Ollama...');
+        await this.startOllama();
+        // Wait for Ollama to be ready
+        ollamaRunning = await this.waitForOllama();
+        if (!ollamaRunning) {
+          throw new Error('Could not start Ollama. Please start it manually: ollama serve');
         }
-      );
+      }
+      ui.success('Ollama is running');
 
-      // Step 8: Pull embedding model
+      // Step 5: Create SQLite database
+      currentStep++;
+      ui.step(currentStep, TOTAL_STEPS, 'Initializing SQLite database...');
+      await this.initializeDatabase();
+      ui.success(`Database ready: ${resolve(this.installDir, 'knowledge.db')}`);
+
+      // Step 6: Pull embedding model
       currentStep++;
       const model = process.env.OLLAMA_MODEL || 'all-minilm';
-      const modelExists = this.checkModelExists(model);
-      if (modelExists) {
-        ui.step(
-          currentStep,
-          TOTAL_STEPS,
-          `Embedding model '${model}' already available`
-        );
+      const modelAvailable = await this.checkModelAvailable(model);
+      if (modelAvailable) {
+        ui.step(currentStep, TOTAL_STEPS, `Embedding model '${model}' already available`);
       } else if (this.verbose) {
         ui.step(currentStep, TOTAL_STEPS, `Pulling embedding model '${model}'...`);
-        this.exec(`docker exec kb-ollama ollama pull ${model}`, false);
+        this.exec(`ollama pull ${model}`, false);
         ui.success(`Model '${model}' pulled`);
       } else {
         await ui.withSpinner(
           `[${currentStep}/${TOTAL_STEPS}] Pulling embedding model '${model}'...`,
           async () => {
-            await this.execAsync(`docker exec kb-ollama ollama pull ${model}`);
+            await this.execAsync(`ollama pull ${model}`);
           }
         );
       }
 
-      // Step 9: Wait for Dashboard (if not skipped)
-      currentStep++;
-      if (!this.skipDashboard) {
-        await ui.withSpinner(
-          `[${currentStep}/${TOTAL_STEPS}] Waiting for Dashboard...`,
-          async () => {
-            await this.waitForAsync(
-              async () => {
-                try {
-                  await this.execAsync('curl -sf http://kb.localhost');
-                  return true;
-                } catch {
-                  try {
-                    await this.execAsync(`curl -sf http://localhost:${process.env.DASHBOARD_PORT || '3847'}`);
-                    return true;
-                  } catch {
-                    return false;
-                  }
-                }
-              },
-              90000,
-              3000
-            );
-          }
-        );
-      } else {
-        ui.step(currentStep, TOTAL_STEPS, 'Dashboard skipped');
-      }
-
-      // Step 10: Inject agent configs
+      // Step 7: Inject agent configs
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Configuring AI agent instructions...');
@@ -192,9 +112,7 @@ export class Installer {
             this.projectRoot ? resolve(this.projectRoot, 'configs', 'claude-code-instructions.md') : '',
             'Claude Code'
           );
-          ui.success(
-            `Claude Code: ${claudeResult.action} ${claudeResult.path}`
-          );
+          ui.success(`Claude Code: ${claudeResult.action} ${claudeResult.path}`);
         } catch {
           ui.warn('Could not configure Claude Code instructions (skipped)');
         }
@@ -205,9 +123,7 @@ export class Installer {
             this.projectRoot ? resolve(this.projectRoot, 'configs', 'copilot-instructions.md') : '',
             'GitHub Copilot'
           );
-          ui.success(
-            `GitHub Copilot: ${copilotResult.action} ${copilotResult.path}`
-          );
+          ui.success(`GitHub Copilot: ${copilotResult.action} ${copilotResult.path}`);
         } catch {
           ui.warn('Could not configure GitHub Copilot instructions (skipped)');
         }
@@ -215,22 +131,19 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Config injection skipped');
       }
 
-      // Step 11: Setup MCP config
+      // Step 8: Setup MCP config
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Setting up MCP configuration...');
 
+        const sqlitePath = resolve(this.installDir, 'knowledge.db');
         const mcpEntry = {
           type: 'stdio',
           command: 'npx',
           args: ['-y', '@ai-knowledge/mcp-server'],
           env: {
-            DATABASE_URL: `postgresql://knowledge:knowledge_secret@localhost:${
-              process.env.POSTGRES_PORT || '5433'
-            }/knowledge_base`,
-            OLLAMA_HOST: `http://localhost:${
-              process.env.OLLAMA_PORT || '11435'
-            }`,
+            SQLITE_PATH: sqlitePath,
+            OLLAMA_HOST: 'http://localhost:11434',
             OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'all-minilm',
             EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS || '384',
           },
@@ -242,23 +155,20 @@ export class Installer {
         );
         ui.success(`MCP config: ${mcpResult.action} ${mcpResult.path}`);
 
-        // Also add to ~/.claude.json if it exists
         try {
           const claudeJsonResult = await this.configManager.setupMcpConfig(
             ConfigManager.CLAUDE_JSON,
             mcpEntry
           );
-          ui.success(
-            `Claude JSON: ${claudeJsonResult.action} ${claudeJsonResult.path}`
-          );
+          ui.success(`Claude JSON: ${claudeJsonResult.action} ${claudeJsonResult.path}`);
         } catch {
-          // ~/.claude.json may not exist or may have a different structure - that's OK
+          // ~/.claude.json may not exist — that's OK
         }
       } else {
         ui.step(currentStep, TOTAL_STEPS, 'MCP config skipped');
       }
 
-      // Step 12: Inject Copilot CLI instructions
+      // Step 9: Inject Copilot CLI instructions
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Configuring Copilot CLI instructions...');
@@ -269,9 +179,7 @@ export class Installer {
             this.projectRoot ? resolve(this.projectRoot, 'configs', 'copilot-instructions.md') : '',
             'Copilot CLI'
           );
-          ui.success(
-            `Copilot CLI: ${copilotCliResult.action} ${copilotCliResult.path}`
-          );
+          ui.success(`Copilot CLI: ${copilotCliResult.action} ${copilotCliResult.path}`);
         } catch {
           ui.warn('Could not configure Copilot CLI instructions (skipped)');
         }
@@ -279,22 +187,19 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Copilot CLI config skipped');
       }
 
-      // Step 13: Setup Copilot MCP config
+      // Step 10: Setup Copilot MCP config
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Setting up Copilot MCP configuration...');
 
+        const sqlitePath = resolve(this.installDir, 'knowledge.db');
         const copilotMcpEntry = {
           type: 'stdio',
           command: 'npx',
           args: ['-y', '@ai-knowledge/mcp-server'],
           env: {
-            DATABASE_URL: `postgresql://knowledge:knowledge_secret@localhost:${
-              process.env.POSTGRES_PORT || '5433'
-            }/knowledge_base`,
-            OLLAMA_HOST: `http://localhost:${
-              process.env.OLLAMA_PORT || '11435'
-            }`,
+            SQLITE_PATH: sqlitePath,
+            OLLAMA_HOST: 'http://localhost:11434',
             OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'all-minilm',
             EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS || '384',
           },
@@ -305,9 +210,7 @@ export class Installer {
             ConfigManager.COPILOT_MCP_CONFIG,
             copilotMcpEntry
           );
-          ui.success(
-            `Copilot MCP: ${copilotMcpResult.action} ${copilotMcpResult.path}`
-          );
+          ui.success(`Copilot MCP: ${copilotMcpResult.action} ${copilotMcpResult.path}`);
         } catch {
           ui.warn('Could not configure Copilot MCP (skipped)');
         }
@@ -315,7 +218,7 @@ export class Installer {
         ui.step(currentStep, TOTAL_STEPS, 'Copilot MCP config skipped');
       }
 
-      // Step 14: Install knowledge skills
+      // Step 11: Install knowledge skills
       currentStep++;
       if (!this.skipConfig) {
         ui.step(currentStep, TOTAL_STEPS, 'Installing knowledge skills...');
@@ -327,9 +230,8 @@ export class Installer {
 
       // Success!
       ui.showSuccessBanner({
-        dashboard: this.skipDashboard ? 'skipped' : 'http://kb.localhost',
-        postgres: `localhost:${process.env.POSTGRES_PORT || '5433'}`,
-        ollama: `localhost:${process.env.OLLAMA_PORT || '11435'}`,
+        database: resolve(this.installDir, 'knowledge.db'),
+        ollama: 'localhost:11434',
       });
     } catch (err) {
       ui.error(`Installation failed at step ${currentStep}/${TOTAL_STEPS}`);
@@ -338,43 +240,50 @@ export class Installer {
   }
 
   private async setupInstallDir(): Promise<void> {
-    const { mkdirSync, existsSync, cpSync } = await import('node:fs');
-
+    const { mkdirSync, existsSync } = await import('node:fs');
     mkdirSync(this.installDir, { recursive: true });
 
-    // Resolve templates: repo uses docker/ dir, npx uses bundled templates/
-    const templatesDir = this.projectRoot
-      ? resolve(this.projectRoot, 'docker')  // repo-based install
-      : resolveTemplatesDir();  // npx install — from package templates/
+    // No more docker-compose, .env, or init/ to copy — SQLite is created directly
+  }
 
-    const composeDest = resolve(this.installDir, 'docker-compose.yml');
-    const initDest = resolve(this.installDir, 'init');
-    const envDest = resolve(this.installDir, '.env');
+  private async initializeDatabase(): Promise<void> {
+    const { createDbClient } = await import('@ai-knowledge/core');
+    const dbPath = resolve(this.installDir, 'knowledge.db');
 
-    // Copy docker-compose.yml if not exists
-    if (!existsSync(composeDest)) {
-      cpSync(resolve(templatesDir, 'docker-compose.yml'), composeDest);
-    }
+    // createDbClient handles: creating the file, WAL mode, loading sqlite-vec,
+    // and creating the virtual table. We also need to create the schema table.
+    const { db, sqlite } = createDbClient(dbPath);
 
-    // Copy init dir if not exists
-    if (!existsSync(initDest)) {
-      cpSync(resolve(templatesDir, 'init'), initDest, { recursive: true });
-    }
+    // Create the knowledge_entries table if it doesn't exist
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS knowledge_entries (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '[]',
+        type TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        source TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        expires_at TEXT,
+        confidence_score REAL NOT NULL DEFAULT 1.0,
+        related_ids TEXT,
+        agent_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
 
-    // Copy .env from .env.example if .env doesn't exist
-    if (!existsSync(envDest)) {
-      const envSource = resolve(templatesDir, '.env.example');
-      if (existsSync(envSource)) {
-        cpSync(envSource, envDest);
-      }
-    }
+    // Create indexes
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_type ON knowledge_entries(type)`);
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_scope ON knowledge_entries(scope)`);
+
+    sqlite.close();
   }
 
   private async installSkills(): Promise<void> {
     const { mkdirSync, existsSync, cpSync, lstatSync, unlinkSync } = await import('node:fs');
     const home = homedir();
 
-    // Resolve skill templates from package or repo
     const skillsDir = resolve(resolveTemplatesDir(this.projectRoot), 'skills');
 
     // Claude Code: ~/.claude/skills/<name>/SKILL.md
@@ -388,7 +297,6 @@ export class Installer {
 
       if (!existsSync(src)) continue;
 
-      // Remove existing symlink if present (from ai-config or previous install)
       if (existsSync(destDir) && lstatSync(destDir).isSymbolicLink()) {
         unlinkSync(destDir);
       }
@@ -407,7 +315,6 @@ export class Installer {
 
       if (!existsSync(src)) continue;
 
-      // Remove existing symlink if present
       if (existsSync(dest) && lstatSync(dest).isSymbolicLink()) {
         unlinkSync(dest);
       }
@@ -428,51 +335,107 @@ export class Installer {
     return { name, arch };
   }
 
-  private checkDocker(): boolean {
+  private checkOllama(): boolean {
     try {
-      this.exec('docker info', true);
+      this.exec('ollama --version', true);
       return true;
     } catch {
       return false;
     }
   }
 
-  private getComposeCommand(): string {
+  private async checkOllamaRunning(): Promise<boolean> {
     try {
-      this.exec('docker compose version', true);
-      return 'docker compose';
-    } catch {
-      try {
-        this.exec('docker-compose version', true);
-        return 'docker-compose';
-      } catch {
-        throw new Error(
-          "Neither 'docker compose' nor 'docker-compose' found."
-        );
-      }
-    }
-  }
-
-  private checkModelExists(model: string): boolean {
-    try {
-      const output = this.exec('docker exec kb-ollama ollama list');
-      return output.includes(model);
+      const response = await fetch('http://localhost:11434/api/tags');
+      return response.ok;
     } catch {
       return false;
     }
   }
 
-  private showDockerInstallGuide(os: string): void {
-    ui.error('Docker is not available.');
+  private async checkModelAvailable(model: string): Promise<boolean> {
+    try {
+      const response = await fetch('http://localhost:11434/api/tags');
+      if (!response.ok) return false;
+      const data = (await response.json()) as { models: { name: string }[] };
+      return data.models.some(m => m.name === model || m.name.startsWith(`${model}:`));
+    } catch {
+      return false;
+    }
+  }
+
+  private hasBrew(): boolean {
+    try {
+      this.exec('brew --version', true);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async installOllama(os: string): Promise<void> {
+    if (os === 'macOS') {
+      if (this.hasBrew()) {
+        try {
+          await ui.withSpinner('Installing Ollama via Homebrew...', async () => {
+            await this.execAsync('brew install ollama');
+          });
+          return;
+        } catch {
+          ui.warn('Homebrew install failed, trying curl installer...');
+        }
+      }
+      // Fallback: curl installer (works on macOS without brew)
+      await ui.withSpinner('Installing Ollama via curl...', async () => {
+        await this.execAsync('curl -fsSL https://ollama.com/install.sh | sh');
+      });
+    } else if (os === 'Linux') {
+      await ui.withSpinner('Installing Ollama...', async () => {
+        await this.execAsync('curl -fsSL https://ollama.com/install.sh | sh');
+      });
+    } else {
+      // Windows or other — cannot auto-install
+      throw new Error(
+        'Automatic Ollama installation is not supported on this platform. ' +
+        'Please download Ollama from https://ollama.com/download and try again.'
+      );
+    }
+  }
+
+  private async startOllama(): Promise<void> {
+    // Start ollama serve in background
+    const { spawn } = await import('node:child_process');
+    const child = spawn('ollama', ['serve'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  }
+
+  private async waitForOllama(): Promise<boolean> {
+    const maxWaitMs = 30000;
+    const intervalMs = 1000;
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      if (await this.checkOllamaRunning()) return true;
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return false;
+  }
+
+  private showOllamaInstallGuide(os: string): void {
+    ui.error('Ollama installation failed.');
     console.log('');
     if (os === 'macOS') {
-      ui.info('Install Docker on macOS:');
-      console.log('  brew install docker docker-compose colima');
-      console.log('  colima start --cpu 4 --memory 8 --disk 60');
+      ui.info('Install Ollama manually on macOS:');
+      console.log('  brew install ollama');
+      console.log('  or download from https://ollama.com/download');
+    } else if (os === 'Linux') {
+      ui.info('Install Ollama manually on Linux:');
+      console.log('  curl -fsSL https://ollama.com/install.sh | sh');
     } else {
-      ui.info('Install Docker on Linux:');
-      console.log('  curl -fsSL https://get.docker.com | sh');
-      console.log('  sudo systemctl enable --now docker');
+      ui.info('Download Ollama from:');
+      console.log('  https://ollama.com/download');
     }
     console.log('');
     ui.info('Then run this installer again.');
@@ -482,32 +445,16 @@ export class Installer {
     const result = execSync(cmd, {
       encoding: 'utf-8',
       stdio: silent ? 'pipe' : 'inherit',
-      timeout: 300000, // 5 min timeout
+      timeout: 300000,
     });
-    // stdio: 'inherit' returns null, 'pipe' returns string
     return (result ?? '').trim();
   }
 
   private async execAsync(cmd: string): Promise<string> {
     const { stdout } = await execPromise(cmd, {
       encoding: 'utf-8',
-      timeout: 300000, // 5 min timeout
+      timeout: 300000,
     });
     return (stdout ?? '').trim();
-  }
-
-  private async waitForAsync(
-    check: () => Promise<boolean>,
-    maxWaitMs = 60000,
-    intervalMs = 2000
-  ): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < maxWaitMs) {
-      if (await check()) return;
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-    throw new Error(
-      `Service did not become ready within ${maxWaitMs / 1000}s`
-    );
   }
 }

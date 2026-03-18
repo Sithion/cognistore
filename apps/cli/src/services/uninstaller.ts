@@ -1,13 +1,11 @@
 import { execSync } from 'node:child_process';
-import { resolve, dirname, basename } from 'node:path';
+import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, rmSync, readdirSync, unlinkSync, rmdirSync } from 'node:fs';
 import * as ui from '../ui/index.js';
 import { ConfigManager } from './config-manager.js';
 
 export interface UninstallerOptions {
-  projectRoot?: string;
-  installDir?: string;
   force?: boolean;
   keepData?: boolean;
 }
@@ -18,23 +16,16 @@ interface CleanupSummary {
   detail?: string;
 }
 
-const DOCKER_IMAGES = [
-  'pgvector/pgvector:pg17',
-  'ollama/ollama:latest',
-  'traefik:v3.3',
-  'ghcr.io/sithion/kb-dashboard:latest',
-];
-
 export class Uninstaller {
-  private projectRoot: string | undefined;
   private installDir: string;
   private configManager: ConfigManager;
   private force: boolean;
   private keepData: boolean;
+  private removeOllama = true;
+  private removeModel = true;
 
   constructor(options: UninstallerOptions) {
-    this.projectRoot = options.projectRoot;
-    this.installDir = options.installDir ?? resolve(homedir(), '.ai-knowledge');
+    this.installDir = resolve(homedir(), '.ai-knowledge');
     this.configManager = new ConfigManager();
     this.force = options.force ?? false;
     this.keepData = options.keepData ?? false;
@@ -43,9 +34,8 @@ export class Uninstaller {
   async run(): Promise<void> {
     ui.showUninstallBanner();
     const summary: CleanupSummary[] = [];
-    let removeImages = true;
 
-    // Confirmation
+    // Confirmation prompts
     if (!this.force) {
       const confirmed = await ui.confirmAction(
         'This will remove AI Knowledge Base and its configurations. Continue?',
@@ -58,19 +48,24 @@ export class Uninstaller {
 
       if (!this.keepData) {
         const removeData = await ui.confirmAction(
-          'Also remove Docker volumes (database data will be lost)?',
-          false
+          'Remove the SQLite database (all knowledge data will be lost)?',
+          true
         );
         this.keepData = !removeData;
       }
 
-      removeImages = await ui.confirmAction(
-        'Also remove Docker images (pgvector, ollama)? They are large and will need to be re-downloaded on next install.',
+      this.removeModel = await ui.confirmAction(
+        'Remove the Ollama embedding model (all-minilm)?',
+        true
+      );
+
+      this.removeOllama = await ui.confirmAction(
+        'Uninstall Ollama from this machine?',
         true
       );
 
       const cleanOld = await ui.confirmAction(
-        "Also clean up old 'knowledge' MCP server entries (from ai-config)?",
+        "Clean up old 'knowledge' MCP server entries (from ai-config)?",
         true
       );
 
@@ -179,30 +174,30 @@ export class Uninstaller {
     ui.step(step, TOTAL_STEPS, 'Removing knowledge skills...');
     this.removeSkills(summary);
 
-    // Step 8: Stop Docker containers and remove volumes/network
-    step++;
-    ui.step(step, TOTAL_STEPS, 'Stopping Docker containers...');
-    try {
-      this.stopDockerContainers(summary);
-    } catch (err) {
-      summary.push({ component: 'Docker containers', status: 'error', detail: String(err) });
-      ui.warn(`Could not stop containers: ${err}`);
-    }
-
-    // Step 9: Remove Docker images
-    step++;
-    ui.step(step, TOTAL_STEPS, 'Removing Docker images...');
-    if (removeImages) {
-      this.removeDockerImages(summary);
-    } else {
-      summary.push({ component: 'Docker images', status: 'skipped', detail: 'User chose to keep' });
-      ui.info('Docker images kept');
-    }
-
-    // Step 10: Remove install directory (~/.ai-knowledge/)
+    // Step 8: Remove install directory (~/.ai-knowledge/) including SQLite database
     step++;
     ui.step(step, TOTAL_STEPS, 'Removing install directory...');
     this.removeInstallDir(summary);
+
+    // Step 9: Remove Ollama embedding model
+    step++;
+    ui.step(step, TOTAL_STEPS, 'Removing Ollama embedding model...');
+    if (this.removeModel) {
+      this.removeOllamaModel(summary);
+    } else {
+      summary.push({ component: 'Ollama model', status: 'skipped', detail: 'User chose to keep' });
+      ui.info('Ollama model kept');
+    }
+
+    // Step 10: Uninstall Ollama
+    step++;
+    ui.step(step, TOTAL_STEPS, 'Uninstalling Ollama...');
+    if (this.removeOllama) {
+      await this.uninstallOllama(summary);
+    } else {
+      summary.push({ component: 'Ollama', status: 'skipped', detail: 'User chose to keep' });
+      ui.info('Ollama kept');
+    }
 
     // Step 11: Clean backup files
     step++;
@@ -249,7 +244,6 @@ export class Uninstaller {
   private removeSkills(summary: CleanupSummary[]): void {
     const home = homedir();
 
-    // Claude Code skills: directories with SKILL.md inside
     const claudeSkillDirs = [
       resolve(home, '.claude', 'skills', 'ai-knowledge-query'),
       resolve(home, '.claude', 'skills', 'ai-knowledge-capture'),
@@ -268,7 +262,6 @@ export class Uninstaller {
       }
     }
 
-    // Copilot skills: individual .md files
     const copilotSkillFiles = [
       resolve(home, '.copilot', 'skills', 'ai-knowledge-query.md'),
       resolve(home, '.copilot', 'skills', 'ai-knowledge-capture.md'),
@@ -287,93 +280,32 @@ export class Uninstaller {
       }
     }
 
-    // Clean up empty skill directories
     const copilotSkillsDir = resolve(home, '.copilot', 'skills');
     this.removeIfEmptyDir(copilotSkillsDir);
 
     ui.success('Knowledge skills removed');
   }
 
-  private stopDockerContainers(summary: CleanupSummary[]): void {
-    const composeCmd = this.getComposeCommand();
-    const downCmd = this.keepData ? 'down --remove-orphans' : 'down -v --remove-orphans';
-
-    // Use the installed compose file (same one used to start containers)
-    const installedCompose = resolve(this.installDir, 'docker-compose.yml');
-    // Fall back to repo compose if installed one doesn't exist and we're in the repo
-    const repoCompose = this.projectRoot
-      ? resolve(this.projectRoot, 'docker', 'docker-compose.yml')
-      : undefined;
-    const composePath = existsSync(installedCompose)
-      ? installedCompose
-      : (repoCompose && existsSync(repoCompose) ? repoCompose : undefined);
-
-    if (!composePath) {
-      // No compose file found — try to stop containers directly by name
-      ui.warn('No docker-compose.yml found, stopping containers by name...');
-      for (const name of ['kb-traefik', 'kb-dashboard', 'kb-ollama', 'kb-postgres']) {
-        try {
-          execSync(`docker rm -f ${name}`, { stdio: 'pipe', timeout: 30000 });
-        } catch {
-          // Container may not exist
-        }
-      }
-      if (!this.keepData) {
-        for (const vol of ['kb_pgdata', 'kb_ollama']) {
-          try {
-            execSync(`docker volume rm ${vol}`, { stdio: 'pipe', timeout: 30000 });
-          } catch {
-            // Volume may not exist
+  private removeInstallDir(summary: CleanupSummary[]): void {
+    if (this.keepData) {
+      const dbPath = resolve(this.installDir, 'knowledge.db');
+      if (existsSync(this.installDir)) {
+        const files = readdirSync(this.installDir);
+        for (const file of files) {
+          const filePath = resolve(this.installDir, file);
+          if (filePath !== dbPath) {
+            rmSync(filePath, { recursive: true, force: true });
           }
         }
-        try {
-          execSync('docker network rm kb-network', { stdio: 'pipe', timeout: 30000 });
-        } catch {
-          // Network may not exist
-        }
+        summary.push({ component: `Install dir (${this.installDir})`, status: 'removed', detail: 'database preserved' });
+        ui.success(`Removed ${this.installDir} (database preserved)`);
+      } else {
+        summary.push({ component: `Install dir (${this.installDir})`, status: 'not found' });
+        ui.info('Install directory not found');
       }
-      summary.push({ component: 'Docker containers', status: 'removed', detail: 'stopped by name (no compose file)' });
-      ui.success('Docker containers stopped');
       return;
     }
 
-    this.exec(`${composeCmd} -f "${composePath}" --profile dashboard ${downCmd}`);
-
-    const label = this.keepData ? 'stopped (data preserved)' : 'stopped and volumes removed';
-    summary.push({ component: 'Docker containers', status: 'removed', detail: label });
-    ui.success(`Docker containers ${label}`);
-  }
-
-  private removeDockerImages(summary: CleanupSummary[]): void {
-    // Remove known images
-    for (const image of DOCKER_IMAGES) {
-      try {
-        execSync(`docker rmi ${image}`, { stdio: 'pipe', timeout: 60000 });
-        summary.push({ component: `Docker image (${image})`, status: 'removed' });
-      } catch {
-        summary.push({ component: `Docker image (${image})`, status: 'not found' });
-      }
-    }
-
-    // Remove dashboard image (locally built, name derived from compose project)
-    // The project name comes from the directory: .ai-knowledge -> ai-knowledge
-    const dashboardImageNames = [
-      'ai-knowledge-dashboard',
-      'docker-dashboard', // fallback if started from repo's docker/ dir
-    ];
-    for (const name of dashboardImageNames) {
-      try {
-        execSync(`docker rmi ${name}`, { stdio: 'pipe', timeout: 60000 });
-        summary.push({ component: `Docker image (${name})`, status: 'removed' });
-      } catch {
-        // Image doesn't exist with this name — that's fine
-      }
-    }
-
-    ui.success('Docker images removed');
-  }
-
-  private removeInstallDir(summary: CleanupSummary[]): void {
     try {
       if (existsSync(this.installDir)) {
         rmSync(this.installDir, { recursive: true, force: true });
@@ -389,8 +321,114 @@ export class Uninstaller {
     }
   }
 
+  private removeOllamaModel(summary: CleanupSummary[]): void {
+    const model = process.env.OLLAMA_MODEL || 'all-minilm';
+    try {
+      execSync(`ollama rm ${model}`, { stdio: 'pipe', timeout: 30000 });
+      summary.push({ component: `Ollama model (${model})`, status: 'removed' });
+      ui.success(`Removed model '${model}'`);
+    } catch {
+      summary.push({ component: `Ollama model (${model})`, status: 'not found' });
+      ui.info(`Model '${model}' not found or Ollama not running`);
+    }
+  }
+
+  private hasBrew(): boolean {
+    try {
+      execSync('brew --version', { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private isBrewInstalled(pkg: string): boolean {
+    try {
+      execSync(`brew list ${pkg}`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async uninstallOllama(summary: CleanupSummary[]): Promise<void> {
+    const platform = process.platform;
+
+    try {
+      // Stop ollama process on any platform
+      try { execSync('pkill -f "ollama serve"', { stdio: 'pipe' }); } catch { /* may not be running */ }
+
+      if (platform === 'darwin') {
+        // macOS: try brew first, then manual removal
+        if (this.hasBrew() && this.isBrewInstalled('ollama')) {
+          execSync('brew uninstall ollama', { stdio: 'pipe', timeout: 60000 });
+          // Also remove data dir
+          const ollamaData = resolve(homedir(), '.ollama');
+          if (existsSync(ollamaData)) rmSync(ollamaData, { recursive: true, force: true });
+          summary.push({ component: 'Ollama (brew)', status: 'removed' });
+          ui.success('Ollama uninstalled via Homebrew');
+          return;
+        }
+
+        // Manual macOS removal (installed via curl)
+        const macPaths = [
+          '/usr/local/bin/ollama',
+          '/opt/homebrew/bin/ollama',
+          resolve(homedir(), '.ollama'),
+        ];
+        let removed = false;
+        for (const p of macPaths) {
+          if (existsSync(p)) {
+            rmSync(p, { recursive: true, force: true });
+            removed = true;
+          }
+        }
+
+        if (removed) {
+          summary.push({ component: 'Ollama (manual)', status: 'removed' });
+          ui.success('Ollama removed');
+        } else {
+          summary.push({ component: 'Ollama', status: 'not found' });
+          ui.info('Ollama not found on system');
+        }
+      } else if (platform === 'linux') {
+        // Linux: stop systemd service, remove binary + data
+        try { execSync('sudo systemctl stop ollama', { stdio: 'pipe', timeout: 10000 }); } catch { /* ignore */ }
+        try { execSync('sudo systemctl disable ollama', { stdio: 'pipe', timeout: 10000 }); } catch { /* ignore */ }
+        try { rmSync('/etc/systemd/system/ollama.service', { force: true }); } catch { /* ignore */ }
+
+        const linuxPaths = ['/usr/local/bin/ollama', '/usr/bin/ollama', resolve(homedir(), '.ollama')];
+        let removed = false;
+        for (const p of linuxPaths) {
+          try {
+            if (existsSync(p)) {
+              rmSync(p, { recursive: true, force: true });
+              removed = true;
+            }
+          } catch {
+            // May need sudo — skip
+          }
+        }
+
+        if (removed) {
+          summary.push({ component: 'Ollama', status: 'removed' });
+          ui.success('Ollama removed');
+        } else {
+          summary.push({ component: 'Ollama', status: 'not found' });
+          ui.info('Ollama not found on system');
+        }
+      } else {
+        // Windows or other
+        summary.push({ component: 'Ollama', status: 'skipped', detail: 'Please uninstall manually via system settings' });
+        ui.warn('Please uninstall Ollama manually via your system settings or control panel');
+      }
+    } catch (err) {
+      summary.push({ component: 'Ollama', status: 'error', detail: String(err) });
+      ui.warn(`Could not uninstall Ollama: ${err}`);
+    }
+  }
+
   private cleanBackupFiles(summary: CleanupSummary[]): void {
-    // Directories and file prefixes where .bak.* files may have been created
     const backupTargets = [
       { dir: resolve(homedir(), '.claude'), prefix: 'CLAUDE.md.bak.' },
       { dir: resolve(homedir(), '.claude'), prefix: 'mcp-config.json.bak.' },
@@ -413,7 +451,7 @@ export class Uninstaller {
           }
         }
       } catch {
-        // Directory might not be readable — skip
+        // skip
       }
     }
 
@@ -447,23 +485,5 @@ export class Uninstaller {
     }
     console.log('');
     ui.success('Uninstall complete.');
-  }
-
-  private getComposeCommand(): string {
-    try {
-      execSync('docker compose version', { stdio: 'pipe' });
-      return 'docker compose';
-    } catch {
-      try {
-        execSync('docker-compose version', { stdio: 'pipe' });
-        return 'docker-compose';
-      } catch {
-        return 'docker compose';
-      }
-    }
-  }
-
-  private exec(cmd: string): void {
-    execSync(cmd, { encoding: 'utf-8', stdio: 'inherit', timeout: 120000 });
   }
 }

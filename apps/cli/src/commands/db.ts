@@ -1,32 +1,29 @@
 import { Command } from 'commander';
-import { DockerManager } from '@ai-knowledge/core';
+import { getSDK, closeSDK } from '../utils/sdk.js';
 import { printSuccess, printError } from '../utils/output.js';
 
-export const dbStartCommand = new Command('db:start')
-  .description('Start the Docker infrastructure (PostgreSQL + Ollama)')
+export const dbStatusCommand = new Command('db:status')
+  .description('Check database and Ollama status')
   .action(async () => {
     try {
-      const manager = new DockerManager();
-      const status = await manager.ensureRunning();
-      printSuccess('Infrastructure is running');
-      for (const container of status.containers) {
-        console.log(`  ${container.name}: ${container.status}`);
+      const sdk = await getSDK();
+      const health = await sdk.healthCheck();
+
+      if (health.database.connected) {
+        printSuccess(`Database: connected (${health.database.path})`);
+      } else {
+        printError(`Database: ${health.database.error}`);
+      }
+
+      if (health.ollama.connected) {
+        printSuccess(`Ollama: connected (${health.ollama.model} @ ${health.ollama.host})`);
+      } else {
+        printError(`Ollama: ${health.ollama.error}`);
       }
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
-    }
-  });
-
-export const dbStopCommand = new Command('db:stop')
-  .description('Stop the Docker infrastructure')
-  .action(async () => {
-    try {
-      const manager = new DockerManager();
-      await manager.stop();
-      printSuccess('Infrastructure stopped');
-    } catch (error) {
-      printError(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
+    } finally {
+      await closeSDK();
     }
   });

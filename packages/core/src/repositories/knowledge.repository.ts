@@ -1,28 +1,46 @@
-import { eq, sql, and, arrayOverlaps, gt, or, isNull } from 'drizzle-orm';
-import { type Database } from '../db/client.js';
+import { eq, sql, and, or, isNull } from 'drizzle-orm';
+import { type Database, type SQLiteDatabase } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema/knowledge.js';
+import {
+  insertEmbedding,
+  updateEmbedding,
+  deleteEmbedding,
+  searchKnn,
+} from '../db/schema/sqlite-vec.js';
 import type { CreateKnowledgeInput, UpdateKnowledgeInput, SearchOptions } from '@ai-knowledge/shared';
 import { DEFAULT_SEARCH_LIMIT, DEFAULT_SIMILARITY_THRESHOLD } from '@ai-knowledge/shared';
 
 export class KnowledgeRepository {
-  constructor(private db: Database) {}
+  constructor(
+    private db: Database,
+    private sqlite: SQLiteDatabase
+  ) {}
 
   async create(input: CreateKnowledgeInput & { embedding: number[] }) {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+
     const [entry] = await this.db
       .insert(knowledgeEntries)
       .values({
+        id,
         content: input.content,
-        embedding: input.embedding,
         tags: input.tags,
         type: input.type,
         scope: input.scope,
         source: input.source,
         confidenceScore: input.confidenceScore ?? 1.0,
-        expiresAt: input.expiresAt ?? null,
+        expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
         relatedIds: input.relatedIds ?? null,
         agentId: input.agentId ?? null,
+        createdAt: now,
+        updatedAt: now,
       })
       .returning();
+
+    // Insert embedding into the sqlite-vec virtual table
+    insertEmbedding(this.sqlite, id, input.embedding);
+
     return entry;
   }
 
@@ -35,15 +53,32 @@ export class KnowledgeRepository {
   }
 
   async update(id: string, updates: UpdateKnowledgeInput & { embedding?: number[] }) {
+    const { embedding, ...rest } = updates;
+
+    const values: Record<string, unknown> = {
+      ...rest,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Convert Date to ISO string for SQLite
+    if (rest.expiresAt !== undefined) {
+      values.expiresAt = rest.expiresAt ? rest.expiresAt.toISOString() : null;
+    }
+
     const [entry] = await this.db
       .update(knowledgeEntries)
       .set({
-        ...updates,
+        ...values,
         version: sql`${knowledgeEntries.version} + 1`,
-        updatedAt: new Date(),
       })
       .where(eq(knowledgeEntries.id, id))
       .returning();
+
+    // Update embedding in virtual table if provided
+    if (embedding) {
+      updateEmbedding(this.sqlite, id, embedding);
+    }
+
     return entry ?? null;
   }
 
@@ -52,20 +87,46 @@ export class KnowledgeRepository {
       .delete(knowledgeEntries)
       .where(eq(knowledgeEntries.id, id))
       .returning();
+
+    if (entry) {
+      deleteEmbedding(this.sqlite, id);
+    }
+
     return entry ?? null;
   }
 
   /**
    * Semantic search using cosine similarity on embeddings.
+   * Uses sqlite-vec KNN search on the virtual table, then filters by metadata.
    * IMPORTANT: When a specific scope is provided, global knowledge is ALWAYS included.
-   * This means searching scope "workspace:api" returns results from both "workspace:api" AND "global".
    */
   async searchBySimilarity(queryEmbedding: number[], options?: SearchOptions) {
     const limit = options?.limit ?? DEFAULT_SEARCH_LIMIT;
     const threshold = options?.threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
-    const vectorStr = `[${queryEmbedding.join(',')}]`;
 
+    // Fetch more candidates than needed to account for metadata filtering
+    const candidateLimit = limit * 5;
+    const knnResults = searchKnn(this.sqlite, queryEmbedding, candidateLimit);
+
+    if (knnResults.length === 0) {
+      return [];
+    }
+
+    // Get the candidate IDs
+    const candidateIds = knnResults.map((r) => r.id);
+    // Build a distance lookup map (cosine distance from sqlite-vec)
+    const distanceMap = new Map(knnResults.map((r) => [r.id, r.distance]));
+
+    // Fetch full entries for candidates
     const conditions = [];
+
+    // Filter to only candidates from KNN
+    conditions.push(
+      sql`${knowledgeEntries.id} IN (${sql.join(
+        candidateIds.map((id) => sql`${id}`),
+        sql`, `
+      )})`
+    );
 
     // Scope filter: always include global + specific scope
     if (options?.scope) {
@@ -77,9 +138,12 @@ export class KnowledgeRepository {
       );
     }
 
-    // Tag filter
+    // Tag filter: check if any requested tag is in the JSON tags array
     if (options?.tags && options.tags.length > 0) {
-      conditions.push(arrayOverlaps(knowledgeEntries.tags, options.tags));
+      const tagConditions = options.tags.map(
+        (tag) => sql`EXISTS (SELECT 1 FROM json_each(${knowledgeEntries.tags}) WHERE value = ${tag})`
+      );
+      conditions.push(or(...tagConditions));
     }
 
     // Type filter
@@ -91,28 +155,27 @@ export class KnowledgeRepository {
     conditions.push(
       or(
         isNull(knowledgeEntries.expiresAt),
-        gt(knowledgeEntries.expiresAt, new Date())
+        sql`${knowledgeEntries.expiresAt} > ${new Date().toISOString()}`
       )
     );
 
-    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = and(...conditions);
 
-    const results = await this.db
-      .select({
-        entry: knowledgeEntries,
-        similarity: sql<number>`1 - (${knowledgeEntries.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
-      })
+    const entries = await this.db
+      .select()
       .from(knowledgeEntries)
-      .where(whereClause)
-      .orderBy(sql`${knowledgeEntries.embedding} <=> ${vectorStr}::vector`)
-      .limit(limit);
+      .where(whereClause);
 
-    return results
+    // Convert cosine distance to similarity (similarity = 1 - distance)
+    // and filter by threshold, then sort and limit
+    return entries
+      .map((entry) => ({
+        entry,
+        similarity: 1 - (distanceMap.get(entry.id) ?? 1),
+      }))
       .filter((r) => r.similarity >= threshold)
-      .map((r) => ({
-        entry: r.entry,
-        similarity: r.similarity,
-      }));
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
   }
 
   async listRecent(limit = 20) {
@@ -124,10 +187,10 @@ export class KnowledgeRepository {
   }
 
   async listTags() {
-    const result = await this.db
-      .selectDistinct({ tag: sql<string>`unnest(${knowledgeEntries.tags})` })
-      .from(knowledgeEntries);
-    return result.map((r) => r.tag);
+    const result = await this.db.all<{ value: string }>(
+      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags)`
+    );
+    return result.map((r) => r.value);
   }
 
   async count() {

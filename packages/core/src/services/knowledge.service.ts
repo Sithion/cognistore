@@ -18,8 +18,6 @@ export class KnowledgeService {
   ) {}
 
   async add(input: CreateKnowledgeInput): Promise<KnowledgeEntry> {
-    // Embed tags (joined as space-separated text) for semantic search
-    // Tags are the primary semantic index per project spec
     const tagsText = input.tags.join(' ');
     const embedding = await this.embeddingProvider.embed(tagsText);
     const entry = await this.repository.create({ ...input, embedding });
@@ -27,7 +25,6 @@ export class KnowledgeService {
   }
 
   async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
-    // Query embedding is compared against tag embeddings via cosine similarity
     const queryEmbedding = await this.embeddingProvider.embed(query);
     const results = await this.repository.searchBySimilarity(queryEmbedding, options);
     return results.map((r) => ({
@@ -43,7 +40,6 @@ export class KnowledgeService {
 
   async update(id: string, updates: UpdateKnowledgeInput): Promise<KnowledgeEntry | null> {
     let embedding: number[] | undefined;
-    // Re-embed when tags change (tags are the semantic index)
     if (updates.tags && updates.tags.length > 0) {
       embedding = await this.embeddingProvider.embed(updates.tags.join(' '));
     }
@@ -57,7 +53,8 @@ export class KnowledgeService {
   }
 
   async listRecent(limit = 20) {
-    return this.repository.listRecent(limit);
+    const entries = await this.repository.listRecent(limit);
+    return entries.map((e) => this.toKnowledgeEntry(e));
   }
 
   async listTags(): Promise<string[]> {
@@ -77,18 +74,22 @@ export class KnowledgeService {
     return {
       id: row.id,
       content: row.content,
-      embedding: row.embedding ?? [],
-      tags: row.tags ?? [],
+      embedding: [],
+      tags: Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]'),
       type: row.type,
       scope: row.scope,
       source: row.source,
       version: row.version,
-      expiresAt: row.expiresAt,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
       confidenceScore: row.confidenceScore,
-      relatedIds: row.relatedIds,
+      relatedIds: row.relatedIds
+        ? Array.isArray(row.relatedIds)
+          ? row.relatedIds
+          : JSON.parse(row.relatedIds)
+        : null,
       agentId: row.agentId,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
     };
   }
 }
