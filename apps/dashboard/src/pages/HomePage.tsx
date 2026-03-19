@@ -7,7 +7,7 @@ import { TagBar } from '../components/TagBar.js';
 import { KnowledgeModal } from '../components/KnowledgeModal.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 5_000;
 
 export function HomePage() {
   const { t } = useTranslation();
@@ -185,6 +185,27 @@ export function HomePage() {
   return (
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {showModal ? (
+        <>
+          <button
+            onClick={handleCloseModal}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
+              background: 'none', border: 'none', color: 'var(--text-secondary)',
+              cursor: 'pointer', fontSize: 13, padding: 0,
+            }}
+          >
+            ← {t('search.recent')}
+          </button>
+          <KnowledgeModal
+            isOpen={showModal}
+            onClose={handleCloseModal}
+            onSuccess={handleSuccess}
+            entry={editingEntry}
+          />
+        </>
+      ) : (
+        <>
       {/* Search Bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input
@@ -287,14 +308,10 @@ export function HomePage() {
         </p>
       )}
 
-      {/* FAB + Modal */}
+      {/* FAB */}
       <FloatingAddButton onClick={() => { setEditingEntry(null); setShowModal(true); }} />
-      <KnowledgeModal
-        isOpen={showModal}
-        onClose={handleCloseModal}
-        onSuccess={handleSuccess}
-        entry={editingEntry}
-      />
+        </>
+      )}
     </div>
   );
 }

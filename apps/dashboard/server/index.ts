@@ -1031,6 +1031,20 @@ async function start() {
     return sdk.listPlans(limit, status);
   });
 
+  app.post<{ Body: { title: string; content: string; tags?: string[]; scope?: string; source?: string; tasks?: { description: string; priority?: string }[] } }>('/api/plans', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    try {
+      const { title, content, tags = [], scope = 'global', source = 'dashboard', tasks = [] } = request.body;
+      const plan = await sdk.createPlan({ title, content, tags, scope, source, tasks });
+      reply.code(201);
+      return plan;
+    } catch (error) {
+      reply.code(400);
+      return { error: (error as Error).message };
+    }
+  });
+
   app.get<{ Params: { id: string } }>('/api/plans/:id', async (request, reply) => {
     const err = ensureReady(reply);
     if (err) return err;

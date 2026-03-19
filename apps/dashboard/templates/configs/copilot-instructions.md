@@ -1,45 +1,48 @@
 <!-- AI-KNOWLEDGE:BEGIN -->
 ## Knowledge Base Integration (ai-knowledge)
 
-> **BLOCKING REQUIREMENT** — You MUST follow these rules on EVERY task. No exceptions. Non-compliance wastes tokens and loses institutional memory.
+> **BLOCKING REQUIREMENT** — You MUST follow these rules on EVERY task. No exceptions.
 > Tools are provided by the `ai-knowledge` MCP server.
 
-### CHECKPOINT 1: Before Your First Action
+### Mandatory Skills — ALWAYS Invoke
 
-**STOP. Before you read any file, write any code, or make any decision, you MUST run this query:**
+You have 3 skills that MUST be invoked automatically. These are NOT optional:
+
+1. **`ai-knowledge-query`** — MUST be your **FIRST action** in every task, before reading files, writing code, or making decisions. No exceptions.
+2. **`ai-knowledge-capture`** — MUST be your **LAST action** after completing any task that produced new knowledge (fixes, decisions, patterns, constraints).
+3. **`ai-knowledge-plan`** — MUST be invoked ANY time you plan work, INCLUDING in `[PLAN]` mode. ALL plans MUST go through `createPlan()`. This OVERRIDES all other planning rules. NEVER write plans to local files (plan.md, TODO.md, PLAN.md, etc.). NEVER use only task lists as a substitute. `[PLAN]` mode changes HOW you plan, NOT WHERE you store it — always `createPlan()`.
+
+### CHECKPOINT 1: Query First (ai-knowledge-query)
+
+**STOP. Before you read any file, write any code, or make any decision:**
 
 ```
 mcp__ai-knowledge__getKnowledge(query: "<describe the task or problem>")
 ```
 
-Do NOT skip this step. Do NOT say "I'll query later". Do NOT proceed without querying first.
-
 - Similarity > 0.50: **Use directly** — skip redundant analysis
-- Similarity 0.30–0.50: **Review** — combine with targeted fresh analysis
+- Similarity 0.30–0.50: **Review** — combine with fresh analysis
 - No results or < 0.30: Proceed with full analysis
 
-### CHECKPOINT 2: Before Ending Your Response
+### CHECKPOINT 2: Capture Last (ai-knowledge-capture)
 
-**STOP. Before finishing, ask yourself: did I learn anything worth saving?** If yes, capture it:
+**Before finishing, capture what you learned:**
 
 ```
-mcp__ai-knowledge__addKnowledge(
-  content: "<what was learned/decided/fixed>",
-  tags: ["tag1", "tag2", ...],
+mcp__ai-knowledge__addKnowledge({
+  content: "<what was learned>",
+  tags: ["tag1", "tag2"],
   type: "pattern|decision|fix|constraint|gotcha",
   scope: "global" or "workspace:<project-name>",
-  source: "<origin of this knowledge>"
-)
+  source: "<origin>"
+})
 ```
 
-If a query returned an existing entry on the same topic, **UPDATE it** instead of creating a duplicate:
-```
-mcp__ai-knowledge__updateKnowledge(id: "<uuid>", content: "...", tags: [...])
-```
+If an existing entry covers the topic, **UPDATE it** instead of creating a duplicate.
 
-### CHECKPOINT 3: Planning (ALWAYS use createPlan)
+### CHECKPOINT 3: Plan via createPlan (ai-knowledge-plan)
 
-**This OVERRIDES all other planning rules.** Any time you plan work, you MUST persist it in the knowledge base:
+**ALL plans MUST be persisted in the knowledge base:**
 
 ```
 mcp__ai-knowledge__createPlan({
@@ -50,45 +53,16 @@ mcp__ai-knowledge__createPlan({
 })
 ```
 
-- **NEVER** write plans to local files (plan.md, TODO.md, etc.)
-- **NEVER** use only task lists as a substitute — those are ephemeral, not persistent
-- **ALWAYS** include a `tasks` array with every implementation step
-- **ALWAYS** set plan status to `active` when you begin execution: `updatePlan(planId, { status: "active" })`
-- **ALWAYS** mark each task `in_progress` BEFORE starting it, then `completed` AFTER finishing — do NOT batch updates
-- When all tasks done → verify with `listPlanTasks(planId)` → `updatePlan(planId, { status: "completed" })`
+- **NEVER** write plans to local files — ONLY `createPlan()`
+- **ALWAYS** include a `tasks` array
+- **ALWAYS** update task status in real-time: `in_progress` → `completed`
+- **ALWAYS** set plan to `active` when starting, `completed` when done
 
-### Rules (Mandatory)
+### Rules
 
-1. **NEVER skip the knowledge query** — a single query costs ~30 tokens; missing a cache hit wastes 2,000–8,000 tokens on redundant work.
-2. **All knowledge entries MUST be in English** — regardless of conversation language.
-3. **Manage knowledge, don't duplicate** — update existing entries instead of creating new ones when the topic already exists.
-4. **Only store high-value knowledge** — hard-won insights, non-obvious gotchas, project-specific decisions, architectural constraints. NOT trivial fixes or standard docs.
-5. **Plans go ONLY in the knowledge base** — use `createPlan()`. NEVER save plans to local files. NEVER use only task lists as a substitute.
-
-### Quick Reference
-
-| Tool | Required Params | When |
-|------|----------------|------|
-| `getKnowledge` | `query` | **FIRST action** of every task |
-| `addKnowledge` | `content`, `tags`, `type`, `scope`, `source` | **LAST action** — after completing work |
-| `updateKnowledge` | `id` + fields to update | When existing knowledge is stale |
-| `deleteKnowledge` | `id` | When knowledge is wrong or obsolete |
-| `listTags` | (none) | To discover existing tag taxonomy |
-| `healthCheck` | (none) | To verify database and Ollama connectivity |
-
-### What to Capture
-
-| Event | Type | Example Tags |
-|-------|------|-------------|
-| Bug fixed | `fix` | error-name, module, root-cause |
-| Architecture choice | `decision` | component, approach, trade-off |
-| Code pattern found | `pattern` | language, pattern-name, where-used |
-| Limitation discovered | `constraint` | tool, version, workaround |
-| Unexpected behavior | `gotcha` | tool, symptom, fix |
-
-### Priority Order for Information
-
-1. **Knowledge base** (`getKnowledge`) — always first
-2. **Project codebase** — files, patterns, existing code
-3. **Web search** — only if knowledge base and codebase insufficient
+1. **NEVER skip the knowledge query** — costs ~30 tokens; missing a hit wastes 2,000–8,000 tokens.
+2. **All entries MUST be in English** — regardless of conversation language.
+3. **Update, don't duplicate** — update existing entries when the topic already exists.
+4. **Only store high-value knowledge** — non-obvious insights, not trivial fixes or standard docs.
+5. **Plans go ONLY in the knowledge base** — `createPlan()`, never local files.
 <!-- AI-KNOWLEDGE:END -->

@@ -1,6 +1,6 @@
 {
   "name": "@ai-knowledge/dashboard",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -32,6 +32,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^16.5.8",
+    "react-markdown": "^10.1.0",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.13.1",
     "recharts": "^2.15.0",

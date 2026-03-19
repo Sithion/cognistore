@@ -6,7 +6,7 @@ import {
   AreaChart, Area, ResponsiveContainer,
 } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
-import { fetchStats, fetchMetrics, fetchTags, setRefreshInterval, REFRESH_OPTIONS, type RefreshInterval } from '../store/statsSlice.js';
+import { fetchStats, fetchMetrics, fetchTags } from '../store/statsSlice.js';
 
 /* ── Constants ── */
 
@@ -21,7 +21,7 @@ const TYPE_COLORS: Record<string, string> = {
 const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
 const SCOPE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 5_000;
 
 /* ── Spinner ── */
 
@@ -438,7 +438,6 @@ function TopTagsChart({ data }: { data: { tag: string; count: number }[] }) {
 export function StatsPage() {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTotalRef = useRef<number | null>(null);
 
   const {
@@ -447,7 +446,6 @@ export function StatsPage() {
     tags, tagsState,
     lastFetchedAt,
     isRefreshing,
-    refreshInterval,
   } = useAppSelector((s) => s.stats);
 
   const [topTags, setTopTags] = useState<{ tag: string; count: number }[]>([]);
@@ -476,21 +474,7 @@ export function StatsPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-refresh interval (from Redux selector)
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (refreshInterval > 0) {
-      intervalRef.current = setInterval(refreshAll, refreshInterval * 1000);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [refreshInterval, refreshAll]);
-
-  // Poll for new entries — refresh all stats when total count changes
+  // Poll every 5s
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -515,65 +499,21 @@ export function StatsPage() {
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* ── Header with refresh controls ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('stats.title')}</h1>
-          {isRefreshing && (
-            <div
-              style={{
-                width: 14,
-                height: 14,
-                border: '2px solid var(--border)',
-                borderTopColor: 'var(--accent)',
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite',
-              }}
-            />
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Refresh interval selector */}
-          <div style={{ display: 'flex', gap: 2, backgroundColor: 'var(--bg-input)', borderRadius: 6, padding: 2 }}>
-            {REFRESH_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => dispatch(setRefreshInterval(opt.value as RefreshInterval))}
-                style={{
-                  padding: '3px 8px',
-                  fontSize: 11,
-                  fontWeight: refreshInterval === opt.value ? 600 : 400,
-                  backgroundColor: refreshInterval === opt.value ? 'var(--accent)' : 'transparent',
-                  color: refreshInterval === opt.value ? 'white' : 'var(--text-secondary)',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {/* Manual refresh button */}
-          <button
-            onClick={refreshAll}
-            disabled={isRefreshing}
-            title="Refresh now"
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('stats.title')}</h1>
+        {isRefreshing && (
+          <div
             style={{
-              padding: '4px 10px',
-              fontSize: 13,
-              backgroundColor: 'var(--bg-input)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              cursor: isRefreshing ? 'not-allowed' : 'pointer',
-              opacity: isRefreshing ? 0.5 : 1,
+              width: 14,
+              height: 14,
+              border: '2px solid var(--border)',
+              borderTopColor: 'var(--accent)',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
             }}
-          >
-            ↻
-          </button>
-        </div>
+          />
+        )}
       </div>
 
       {/* ── Metric Cards Row ── */}

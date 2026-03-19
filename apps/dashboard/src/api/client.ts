@@ -96,6 +96,9 @@ export const api = {
   getHealth: () => request('/api/health'),
 
   // Plans
+  createPlan: (data: { title: string; content: string; tags?: string[]; scope?: string; source?: string; tasks?: { description: string; priority?: string }[] }) =>
+    request('/api/plans', { method: 'POST', body: JSON.stringify(data) }),
+
   listPlans: (limit = 20, status?: string) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status) params.set('status', status);

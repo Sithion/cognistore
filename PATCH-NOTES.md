@@ -1,5 +1,20 @@
 # Patch Notes
 
+## v0.9.4
+
+### Features
+- **Create Plan from Dashboard**: users can now create draft plans directly from the Plans page with title, description, tags, scope, and tasks — then ask an agent to refine and execute the plan
+- **POST /api/plans endpoint**: new server endpoint for creating plans from the dashboard UI
+
+### Improvements
+- **Markdown rendering**: plan detail view and card previews (both Plans and Knowledge) now render content as formatted markdown (headings, lists, code blocks, tables, blockquotes)
+- **Unified UI pattern**: both Knowledge and Plans pages now use floating action button (FAB) + full-page form view instead of modal overlay
+- **Unified 5s polling**: all pages now auto-refresh every 5 seconds; removed manual refresh interval selector from Stats page
+
+### Fixes
+- **Copilot instructions template**: rewrote `copilot-instructions.md` template to explicitly reference all 3 mandatory skills (`ai-knowledge-query`, `ai-knowledge-capture`, `ai-knowledge-plan`) by name — fixes issue where Copilot treated skills as optional and wrote plans to local files instead of using `createPlan()`
+- **Copilot [PLAN] mode**: updated `ai-knowledge-plan` skill to explicitly state it applies in `[PLAN]` mode — plan mode changes HOW you plan, NOT WHERE you store it (always `createPlan()`)
+
 ## v0.9.3
 
 ### Improvements

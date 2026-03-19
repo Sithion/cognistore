@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import Markdown from 'react-markdown';
 
 export interface KnowledgeCardProps {
   entry: Record<string, unknown>;
@@ -134,18 +135,20 @@ export function KnowledgeCard({
           {entry.title as string}
         </h4>
       )}
-      <p
+      <div
+        className="plan-markdown"
         style={{
           color: 'var(--text-primary)',
           fontSize: 13,
           lineHeight: 1.5,
           marginBottom: 8,
           opacity: (entry.title as string) ? 0.7 : 1,
+          maxHeight: 80,
+          overflow: 'hidden',
         }}
       >
-        {(entry.content as string).substring(0, 200)}
-        {(entry.content as string).length > 200 ? '...' : ''}
-      </p>
+        <Markdown>{(entry.content as string).substring(0, 300)}</Markdown>
+      </div>
 
       <div
         style={{

@@ -32,6 +32,7 @@ argument-hint: <plan title and description>
 - **NEVER** use only TodoWrite/task lists as a substitute — those are for in-session tracking, NOT plan persistence
 - **NEVER** describe a plan only in chat without persisting it
 - **NEVER** skip createPlan() because "it's a small task"
+- **NEVER** bypass this skill in plan mode (EnterPlanMode) — the plan output MUST be a `createPlan()` call
 - **NEVER** use EnterPlanMode without also calling createPlan() to persist the plan
 
 ## How to Create (with Tasks)

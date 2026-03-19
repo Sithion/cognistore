@@ -30,6 +30,18 @@ description: >
 - **NEVER** use only task lists as a substitute — those are for in-session tracking, NOT plan persistence
 - **NEVER** describe a plan only in chat without persisting it
 - **NEVER** skip createPlan() because "it's a small task"
+- **NEVER** bypass this skill in [PLAN] mode — when you enter plan mode, you MUST still use `createPlan()` to persist the plan in the knowledge base
+
+## [PLAN] Mode — This Skill STILL Applies
+
+**When you are in `[PLAN]` mode (planning mode), this skill is NOT suspended.** You MUST:
+
+1. Use `createPlan()` to persist the plan — do NOT write it to a local plan file
+2. Query the knowledge base FIRST (`getKnowledge`) before designing the plan
+3. Include a `tasks` array with all implementation steps
+4. The plan output of [PLAN] mode MUST be a `createPlan()` call, NOT a markdown file
+
+**[PLAN] mode changes HOW you plan (more careful, step-by-step), NOT WHERE you store the plan.** The plan ALWAYS goes in the knowledge base via `createPlan()`.
 
 ## How to Create (with Tasks)
 

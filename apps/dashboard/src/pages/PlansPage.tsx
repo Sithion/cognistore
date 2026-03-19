@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import Markdown from 'react-markdown';
 import { api } from '../api/client.js';
+import { FloatingAddButton } from '../components/FloatingAddButton.js';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
@@ -167,6 +169,182 @@ function TaskItem({ task, expandedNotes, onToggleNotes }: {
 
 /* ── Main PlansPage ── */
 
+/* ── Create Plan Form ── */
+
+interface NewTask {
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+  const { t } = useTranslation();
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [scope, setScope] = useState('global');
+  const [newTasks, setNewTasks] = useState<NewTask[]>([{ description: '', priority: 'medium' }]);
+  const [saving, setSaving] = useState(false);
+
+  const addTask = () => setNewTasks([...newTasks, { description: '', priority: 'medium' }]);
+
+  const removeTask = (index: number) => {
+    if (newTasks.length <= 1) return;
+    setNewTasks(newTasks.filter((_, i) => i !== index));
+  };
+
+  const updateTask = (index: number, field: keyof NewTask, value: string) => {
+    setNewTasks(newTasks.map((t, i) => i === index ? { ...t, [field]: value } : t));
+  };
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !content.trim()) return;
+    setSaving(true);
+    try {
+      const tags = tagsInput.split(',').map((t) => t.trim()).filter(Boolean);
+      const tasks = newTasks.filter((t) => t.description.trim()).map((t) => ({
+        description: t.description.trim(),
+        priority: t.priority,
+      }));
+      await api.createPlan({ title: title.trim(), content: content.trim(), tags, scope, source: 'dashboard', tasks });
+      onCreated();
+    } catch {
+      /* silent */
+    }
+    setSaving(false);
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
+    color: 'var(--text-primary)', fontSize: 13, outline: 'none',
+    boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--accent)', padding: 24, marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h2>
+        <button onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+      </div>
+
+      {/* Title */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+          {t('plans.planTitle')}
+        </label>
+        <input
+          value={title} onChange={(e) => setTitle(e.target.value)}
+          placeholder={t('plans.planTitlePlaceholder')}
+          style={inputStyle}
+        />
+      </div>
+
+      {/* Content */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+          {t('plans.planContent')}
+        </label>
+        <textarea
+          value={content} onChange={(e) => setContent(e.target.value)}
+          placeholder={t('plans.planContentPlaceholder')}
+          rows={5}
+          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+        />
+      </div>
+
+      {/* Scope + Tags row */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+            {t('knowledge.scope')}
+          </label>
+          <input
+            value={scope} onChange={(e) => setScope(e.target.value)}
+            placeholder="global"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+            {t('knowledge.tags')}
+          </label>
+          <input
+            value={tagsInput} onChange={(e) => setTagsInput(e.target.value)}
+            placeholder={t('plans.tagsPlaceholder')}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      {/* Tasks */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
+            {t('plans.tasks')}
+          </label>
+          <button onClick={addTask} style={{
+            padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+            border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
+            color: 'var(--text-secondary)', cursor: 'pointer',
+          }}>
+            + {t('plans.addTask')}
+          </button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {newTasks.map((task, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={task.description}
+                onChange={(e) => updateTask(i, 'description', e.target.value)}
+                placeholder={`${t('plans.taskPlaceholder')} ${i + 1}`}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <select
+                value={task.priority}
+                onChange={(e) => updateTask(i, 'priority', e.target.value)}
+                style={{ ...inputStyle, width: 100, flex: 'none' }}
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              {newTasks.length > 1 && (
+                <button onClick={() => removeTask(i)} style={{
+                  background: 'none', border: 'none', color: 'var(--text-secondary)',
+                  cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1,
+                }}>×</button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button onClick={onCancel} style={{
+          padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+          border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
+          color: 'var(--text-secondary)', cursor: 'pointer',
+        }}>
+          {t('actions.cancel')}
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={saving || !title.trim() || !content.trim()}
+          style={{
+            padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            border: 'none', backgroundColor: 'var(--accent)',
+            color: '#fff', cursor: saving ? 'wait' : 'pointer',
+            opacity: (!title.trim() || !content.trim()) ? 0.5 : 1,
+          }}
+        >
+          {saving ? '...' : t('plans.createDraft')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function PlansPage() {
   const { t } = useTranslation();
   const [plans, setPlans] = useState<PlanEntry[]>([]);
@@ -179,6 +357,7 @@ export function PlansPage() {
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // Load all plans
@@ -212,7 +391,7 @@ export function PlansPage() {
 
   // Poll plans list and active plans every 10s
   useEffect(() => {
-    pollRef.current = setInterval(() => { loadPlans(); loadActivePlans(); }, 10000);
+    pollRef.current = setInterval(() => { loadPlans(); loadActivePlans(); }, 5000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadPlans, loadActivePlans]);
 
@@ -309,10 +488,8 @@ export function PlansPage() {
         )}
 
         {/* Content */}
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-          <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
-            {selectedPlan.content}
-          </p>
+        <div className="plan-markdown" style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
+          <Markdown>{selectedPlan.content}</Markdown>
           <div style={{ display: 'flex', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
             {selectedPlan.tags.map((tag) => (
               <span key={tag} style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, backgroundColor: 'var(--bg-input)', color: 'var(--accent)' }}>
@@ -356,6 +533,25 @@ export function PlansPage() {
   // ── List View ──
   return (
     <div>
+      {showCreateForm ? (
+        <>
+          <button
+            onClick={() => setShowCreateForm(false)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
+              background: 'none', border: 'none', color: 'var(--text-secondary)',
+              cursor: 'pointer', fontSize: 13, padding: 0,
+            }}
+          >
+            ← {t('plans.title')}
+          </button>
+          <CreatePlanForm
+            onCreated={() => { setShowCreateForm(false); loadPlans(); loadActivePlans(); }}
+            onCancel={() => setShowCreateForm(false)}
+          />
+        </>
+      ) : (
+        <>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>{t('plans.title')}</h1>
 
       {/* ── Active Plans Section ── */}
@@ -457,9 +653,9 @@ export function PlansPage() {
                     <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
                       {plan.title || 'Untitled Plan'}
                     </h3>
-                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {plan.content.slice(0, 120)}
-                    </p>
+                    <div className="plan-markdown" style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', maxHeight: 40, lineHeight: 1.4 }}>
+                      <Markdown>{plan.content.slice(0, 200)}</Markdown>
+                    </div>
                     <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       {plan.tags.slice(0, 5).map((tag) => (
                         <span key={tag} style={{ padding: '1px 6px', borderRadius: 3, fontSize: 10, backgroundColor: 'var(--bg-input)', color: 'var(--text-secondary)' }}>
@@ -481,6 +677,11 @@ export function PlansPage() {
         </div>
 
       </div>
+
+      {/* FAB */}
+      <FloatingAddButton onClick={() => setShowCreateForm(true)} />
+        </>
+      )}
     </div>
   );
 }
