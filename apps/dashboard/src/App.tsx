@@ -8,20 +8,48 @@ import { StatsPage } from './pages/StatsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { PlansPage } from './pages/PlansPage.js';
 import { SetupPage } from './pages/SetupPage.js';
+import { UpgradePage } from './pages/UpgradePage.js';
 import { api } from './api/client.js';
 import { UpdateChecker } from './components/UpdateChecker.js';
 
+type AppState = 'loading' | 'setup' | 'upgrade' | 'ready';
+
 export function App() {
-  const [setupNeeded, setSetupNeeded] = useState<boolean | null>(null);
+  const [state, setState] = useState<AppState>('loading');
+  const [upgradeFrom, setUpgradeFrom] = useState<string>('');
 
   useEffect(() => {
-    api.getSetupStatus()
-      .then(status => setSetupNeeded(!status.allReady))
-      .catch(() => setSetupNeeded(true));
+    (async () => {
+      try {
+        // 1. Check if setup is needed
+        const status = await api.getSetupStatus();
+        if (!status.allReady) {
+          setState('setup');
+          return;
+        }
+
+        // 2. Check if upgrade is needed
+        const upgrade = await api.checkUpgrade();
+        if (upgrade.needsUpgrade) {
+          setUpgradeFrom(upgrade.fromVersion || '?');
+          setState('upgrade');
+          return;
+        }
+
+        // 3. First install — save version (no upgrade screen needed)
+        if (upgrade.isFirstInstall) {
+          // Version will be saved by setup/complete hook
+        }
+
+        setState('ready');
+      } catch {
+        setState('setup');
+      }
+    })();
   }, []);
 
-  // Loading state while checking setup
-  if (setupNeeded === null) {
+  // Loading
+  if (state === 'loading') {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -35,9 +63,14 @@ export function App() {
     );
   }
 
-  // Show setup wizard if not configured
-  if (setupNeeded) {
-    return <SetupPage onComplete={() => setSetupNeeded(false)} />;
+  // Setup wizard (first install)
+  if (state === 'setup') {
+    return <SetupPage onComplete={() => setState('ready')} />;
+  }
+
+  // Upgrade screen (version changed)
+  if (state === 'upgrade') {
+    return <UpgradePage fromVersion={upgradeFrom} onComplete={() => setState('ready')} />;
   }
 
   // Normal dashboard
