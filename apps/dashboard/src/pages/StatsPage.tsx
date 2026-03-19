@@ -1,11 +1,11 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
   AreaChart, Area, ResponsiveContainer,
 } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
-import { fetchStats, fetchMetrics, fetchTags } from '../store/statsSlice.js';
+import { fetchStats, fetchMetrics, fetchTags, setRefreshInterval, REFRESH_OPTIONS, type RefreshInterval } from '../store/statsSlice.js';
 
 /* ── Constants ── */
 
@@ -18,9 +18,6 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
-
-/** Skip refetch if data was loaded less than 30s ago */
-const CACHE_TTL_MS = 30_000;
 
 /* ── Spinner ── */
 
@@ -285,23 +282,47 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
 export function StatsPage() {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const {
     stats, statsState,
     metrics, metricsState,
     tags, tagsState,
     lastFetchedAt,
+    isRefreshing,
+    refreshInterval,
   } = useAppSelector((s) => s.stats);
 
+  const refreshAll = useCallback(() => {
+    dispatch(fetchStats());
+    dispatch(fetchMetrics());
+    dispatch(fetchTags());
+  }, [dispatch]);
+
+  // Initial fetch
   useEffect(() => {
-    // If data was fetched recently, show cached — refresh in background
-    const isFresh = lastFetchedAt && (Date.now() - lastFetchedAt) < CACHE_TTL_MS;
-    if (!isFresh) {
-      dispatch(fetchStats());
-      dispatch(fetchMetrics());
-      dispatch(fetchTags());
+    const hasCached = stats !== null || metrics !== null;
+    if (!hasCached) {
+      refreshAll();
+    } else {
+      // Background refresh if data exists
+      refreshAll();
     }
-  }, [dispatch, lastFetchedAt]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-refresh interval
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (refreshInterval > 0) {
+      intervalRef.current = setInterval(refreshAll, refreshInterval * 1000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [refreshInterval, refreshAll]);
 
   // Derive widget states (show cached data while refreshing)
   const hasStats = stats !== null;
@@ -320,7 +341,66 @@ export function StatsPage() {
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>{t('stats.title')}</h1>
+      {/* ── Header with refresh controls ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('stats.title')}</h1>
+          {isRefreshing && (
+            <div
+              style={{
+                width: 14,
+                height: 14,
+                border: '2px solid var(--border)',
+                borderTopColor: 'var(--accent)',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }}
+            />
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Refresh interval selector */}
+          <div style={{ display: 'flex', gap: 2, backgroundColor: 'var(--bg-input)', borderRadius: 6, padding: 2 }}>
+            {REFRESH_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => dispatch(setRefreshInterval(opt.value as RefreshInterval))}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  fontWeight: refreshInterval === opt.value ? 600 : 400,
+                  backgroundColor: refreshInterval === opt.value ? 'var(--accent)' : 'transparent',
+                  color: refreshInterval === opt.value ? 'white' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Manual refresh button */}
+          <button
+            onClick={refreshAll}
+            disabled={isRefreshing}
+            title="Refresh now"
+            style={{
+              padding: '4px 10px',
+              fontSize: 13,
+              backgroundColor: 'var(--bg-input)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+              opacity: isRefreshing ? 0.5 : 1,
+            }}
+          >
+            ↻
+          </button>
+        </div>
+      </div>
 
       {/* ── Metric Cards Row ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>

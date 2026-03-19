@@ -97,11 +97,19 @@ const resources = {
   },
 };
 
+const LANG_KEY = 'ai-knowledge-lang';
+const savedLang = typeof window !== 'undefined' ? localStorage.getItem(LANG_KEY) : null;
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: 'en',
+  lng: savedLang || 'en',
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
+});
+
+// Persist language changes
+i18n.on('languageChanged', (lng) => {
+  localStorage.setItem(LANG_KEY, lng);
 });
 
 export default i18n;

@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
 import { api } from '../api/client.js';
 
 /* ── Types ── */
@@ -19,6 +19,17 @@ interface Metrics {
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'empty' | 'error';
 
+export type RefreshInterval = 0 | 1 | 10 | 30 | 60 | 300;
+
+export const REFRESH_OPTIONS: { label: string; value: RefreshInterval }[] = [
+  { label: 'Off', value: 0 },
+  { label: '1s', value: 1 },
+  { label: '10s', value: 10 },
+  { label: '30s', value: 30 },
+  { label: '1m', value: 60 },
+  { label: '5m', value: 300 },
+];
+
 interface StatsState {
   stats: Stats | null;
   statsState: LoadState;
@@ -26,8 +37,11 @@ interface StatsState {
   metricsState: LoadState;
   tags: string[];
   tagsState: LoadState;
-  /** timestamp of last successful fetch — used to skip refetch if recent */
   lastFetchedAt: number | null;
+  /** Whether any fetch is currently in-flight (for the header indicator) */
+  isRefreshing: boolean;
+  /** Auto-refresh interval in seconds (0 = off) */
+  refreshInterval: RefreshInterval;
 }
 
 const initialState: StatsState = {
@@ -38,6 +52,8 @@ const initialState: StatsState = {
   tags: [],
   tagsState: 'idle',
   lastFetchedAt: null,
+  isRefreshing: false,
+  refreshInterval: 30,
 };
 
 /* ── Thunks ── */
@@ -92,37 +108,46 @@ export const fetchTags = createAsyncThunk(
 const statsSlice = createSlice({
   name: 'stats',
   initialState,
-  reducers: {},
+  reducers: {
+    setRefreshInterval(state, action: PayloadAction<RefreshInterval>) {
+      state.refreshInterval = action.payload;
+    },
+  },
   extraReducers: (builder) => {
     // Stats
     builder
       .addCase(fetchStats.pending, (state) => {
-        // Only show loading if we have no cached data
         if (!state.stats) state.statsState = 'loading';
+        state.isRefreshing = true;
       })
       .addCase(fetchStats.fulfilled, (state, action) => {
         state.stats = action.payload ?? null;
         state.statsState = action.payload && action.payload.total > 0 ? 'loaded' : 'empty';
         state.lastFetchedAt = Date.now();
+        state.isRefreshing = false;
       })
       .addCase(fetchStats.rejected, (state) => {
         if (!state.stats) {
           state.stats = { total: 0, byType: [], byScope: [] };
           state.statsState = 'empty';
         }
+        state.isRefreshing = false;
       });
 
     // Metrics
     builder
       .addCase(fetchMetrics.pending, (state) => {
         if (!state.metrics) state.metricsState = 'loading';
+        state.isRefreshing = true;
       })
       .addCase(fetchMetrics.fulfilled, (state, action) => {
         state.metrics = action.payload ?? null;
         state.metricsState = 'loaded';
+        state.isRefreshing = false;
       })
       .addCase(fetchMetrics.rejected, (state) => {
         if (!state.metrics) state.metricsState = 'error';
+        state.isRefreshing = false;
       });
 
     // Tags
@@ -140,4 +165,5 @@ const statsSlice = createSlice({
   },
 });
 
+export const { setRefreshInterval } = statsSlice.actions;
 export const statsReducer = statsSlice.reducer;
