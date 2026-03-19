@@ -36,9 +36,9 @@ If a query returned an existing entry on the same topic, **UPDATE it** instead o
 mcp__ai_knowledge__updateKnowledge(id: "<uuid>", content: "...", tags: [...])
 ```
 
-### CHECKPOINT 3: Planning (3+ steps = createPlan)
+### CHECKPOINT 3: Planning (ALWAYS use createPlan)
 
-**If your task has 3 or more steps, you MUST create a plan in the knowledge base:**
+**This OVERRIDES all other planning rules.** Any time you plan work, you MUST persist it in the knowledge base:
 
 ```
 mcp__ai_knowledge__createPlan({

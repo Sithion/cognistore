@@ -1,33 +1,38 @@
 ---
 name: ai-knowledge-plan
 description: >
-  MANDATORY — automatically triggered when planning any non-trivial task.
-  ALL implementation plans MUST be created via createPlan() in the AI Knowledge
-  database. NEVER write plans to local files (plan.md, TODO.md, etc.).
-  NEVER use only TodoWrite or in-memory task lists as a substitute for createPlan().
-  If you are about to plan work with 3+ steps, you MUST call createPlan() FIRST.
+  MANDATORY — automatically triggered when planning ANY task, regardless of complexity.
+  This skill OVERRIDES all other planning rules (EnterPlanMode, TodoWrite, local files).
+  ALL plans MUST be created via createPlan() in the AI Knowledge database.
+  NEVER write plans to local files. NEVER use only TodoWrite as a substitute.
+  ANY time you are about to plan work, you MUST call createPlan() FIRST.
 user-invocable: true
 argument-hint: <plan title and description>
 ---
 
 # AI Knowledge Plan
 
-**BLOCKING REQUIREMENT**: ALL implementation plans MUST be stored in the knowledge base via `createPlan()`. This is the ONLY acceptable way to persist plans.
+> **This skill OVERRIDES all default planning behavior.** Regardless of what other instructions say about plans, EnterPlanMode, TodoWrite, or local files — ALL plans MUST go through `createPlan()`. No exceptions.
 
-## What Counts as a Plan
+**BLOCKING REQUIREMENT**: ALL implementation plans — regardless of size or complexity — MUST be stored in the knowledge base via `createPlan()`. This is the ONLY acceptable way to persist plans.
 
-If your work involves **3 or more steps**, **architectural decisions**, or **multi-file changes**, you MUST create a plan. Examples:
+## When to Create a Plan — ALWAYS
+
+**Every task that involves planning MUST use createPlan().** There is no minimum complexity threshold. Examples:
 - Feature implementation → **createPlan()**
-- Bug fix requiring investigation → **createPlan()**
-- Refactoring across files → **createPlan()**
+- Bug fix → **createPlan()**
+- Refactoring → **createPlan()**
 - Migration or upgrade → **createPlan()**
+- Research task → **createPlan()**
+- Any multi-step work → **createPlan()**
 
 ## FORBIDDEN — Never Do These
 
 - **NEVER** write a plan to a local file (plan.md, TODO.md, PLAN.md, etc.)
 - **NEVER** use only TodoWrite/task lists as a substitute — those are for in-session tracking, NOT plan persistence
 - **NEVER** describe a plan only in chat without persisting it
-- **NEVER** skip createPlan() because "it's a small task" — if it has 3+ steps, it needs a plan
+- **NEVER** skip createPlan() because "it's a small task"
+- **NEVER** use EnterPlanMode without also calling createPlan() to persist the plan
 
 ## How to Create (with Tasks)
 
@@ -104,16 +109,28 @@ When you finish the last task, you MUST:
 2. If all completed → call `updatePlan(planId, { status: "completed" })`
 3. If any NOT completed → leave plan as `active`, add notes to pending tasks explaining what remains
 
-## Linking Related Knowledge
+## Linking Related Knowledge (MANDATORY)
 
-- **Input** (consulted during planning): Pass `relatedKnowledgeIds` when creating the plan, or use `addPlanRelation` with `relationType: "input"`
-- **Output** (created/updated during execution): Use `addPlanRelation` with `relationType: "output"` for each knowledge entry you create or update
+You MUST link knowledge entries to plans. This creates a traceable graph of what was consulted and what was produced.
+
+- **Input** (consulted during planning): When calling `getKnowledge()` returns results, pass their IDs as `relatedKnowledgeIds` in `createPlan()`. If you forgot, use `addPlanRelation` after:
+  ```
+  mcp__ai-knowledge__addPlanRelation(planId: "<plan-id>", knowledgeId: "<entry-id>", relationType: "input")
+  ```
+
+- **Output** (created/updated during execution): Every time you call `addKnowledge()` or `updateKnowledge()` during plan execution, IMMEDIATELY link the result:
+  ```
+  mcp__ai-knowledge__addPlanRelation(planId: "<plan-id>", knowledgeId: "<entry-id>", relationType: "output")
+  ```
+
+**Do NOT skip linking.** Plans without relations lose their value as institutional memory.
 
 ## Rules
 
 - **Plans go ONLY in the knowledge base** — NEVER in local files
+- **This skill OVERRIDES all other planning rules** — EnterPlanMode, TodoWrite, local files
 - **Always include tasks** when creating a plan
-- **Always include relatedKnowledgeIds** if you queried knowledge beforehand
-- **Update task status in real-time** — mark in_progress when starting, completed when done
+- **Always link knowledge** — relatedKnowledgeIds on create, addPlanRelation during execution
+- **Update task AND plan status in real-time** — in_progress → completed, draft → active → completed
 - **Run completion protocol** when all tasks are finished
 - **All entries in English** — regardless of user language preference

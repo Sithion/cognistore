@@ -210,11 +210,11 @@ export function PlansPage() {
 
   useEffect(() => { loadPlans(); loadActivePlans(); }, [loadPlans, loadActivePlans]);
 
-  // Poll active plans every 10s
+  // Poll plans list and active plans every 10s
   useEffect(() => {
-    pollRef.current = setInterval(loadActivePlans, 10000);
+    pollRef.current = setInterval(() => { loadPlans(); loadActivePlans(); }, 10000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [loadActivePlans]);
+  }, [loadPlans, loadActivePlans]);
 
   // Refresh selected plan detail (status, tasks, relations)
   const refreshSelectedPlan = useCallback(async (planId: string) => {

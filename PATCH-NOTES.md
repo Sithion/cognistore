@@ -1,5 +1,14 @@
 # Patch Notes
 
+## v0.9.3
+
+### Improvements
+- **Plan enforcement**: createPlan() now mandatory for ALL tasks (removed "3+ steps" threshold)
+- **Override clause**: plan skill explicitly overrides all other planning rules (EnterPlanMode, TodoWrite, local files)
+- **Knowledge linking**: mandatory relatedKnowledgeIds on create + addPlanRelation during execution
+- **Plans list auto-refresh**: 10s polling on plans list view (not just detail view)
+- **CI version check**: new `version-check` job blocks PRs to main that forget version bumps
+
 ## v0.9.2
 
 ### Fixes
