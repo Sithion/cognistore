@@ -10,6 +10,9 @@ on:
       - '.github/workflows/**'
       - 'pnpm-lock.yaml'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── MCP Server → npm ──────────────────────────────────────────
   publish-mcp:
@@ -140,14 +143,11 @@ jobs:
         run: node scripts/bundle-sidecar.mjs --phase=web
 
       - name: Upload sidecar web assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sidecar-web
           retention-days: 1
-          path: |
-            apps/dashboard/sidecar-bundle/dist
-            apps/dashboard/sidecar-bundle/dist-server
-            apps/dashboard/sidecar-bundle/templates
+          path: apps/dashboard/sidecar-bundle
 
   # ── Tauri Desktop App → GitHub Releases ────────────────────────
   publish-tauri:
@@ -196,9 +196,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Download web assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: sidecar-web
+          path: apps/dashboard/sidecar-bundle
 
       - name: Bundle native modules
         working-directory: apps/dashboard

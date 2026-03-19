@@ -1,6 +1,6 @@
 {
   "name": "@ai-knowledge/config",
-  "version": "0.7.4",
+  "version": "0.7.7",
   "private": true,
   "type": "module",
   "main": "./dist/config-manager.js",
