@@ -184,6 +184,9 @@ export function SettingsPage() {
       {/* ── Maintenance Section ── */}
       <MaintenanceSection />
 
+      {/* ── Data Management Section ── */}
+      <DataManagementSection />
+
       {/* ── Uninstall Section ── */}
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--error)', marginBottom: 16 }}>
@@ -317,6 +320,7 @@ function MaintenanceSection() {
 
   return (
     <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
         Maintenance
       </h2>
@@ -369,6 +373,111 @@ function MaintenanceSection() {
           </button>
           {cleanResult && (
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{cleanResult}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DataManagementSection() {
+  const { t } = useTranslation();
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleFileImport = async (type: 'knowledge' | 'plans') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = type === 'knowledge' ? '.json,.csv' : '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      setImporting(true);
+      setImportResult(null);
+
+      try {
+        const text = await file.text();
+
+        if (type === 'knowledge') {
+          if (file.name.endsWith('.csv')) {
+            const result = await api.importKnowledge({ csv: text });
+            setImportResult({
+              type: 'success',
+              text: `${result.imported} imported, ${result.skipped} skipped${result.errors.length > 0 ? `, ${result.errors.length} errors` : ''}`,
+            });
+          } else {
+            const data = JSON.parse(text);
+            const result = await api.importKnowledge({ entries: data.entries || data });
+            setImportResult({
+              type: 'success',
+              text: `${result.imported} imported, ${result.skipped} skipped${result.errors.length > 0 ? `, ${result.errors.length} errors` : ''}`,
+            });
+          }
+        } else {
+          const data = JSON.parse(text);
+          const result = await api.importPlans({ plans: data.plans || data });
+          setImportResult({
+            type: 'success',
+            text: `${result.imported} imported, ${result.skipped} skipped${result.errors.length > 0 ? `, ${result.errors.length} errors` : ''}`,
+          });
+        }
+      } catch (err) {
+        setImportResult({ type: 'error', text: `Import failed: ${err instanceof Error ? err.message : String(err)}` });
+      }
+      setImporting(false);
+      setTimeout(() => setImportResult(null), 8000);
+    };
+    input.click();
+  };
+
+  const btnStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+    backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)',
+    border: '1px solid var(--border)', cursor: 'pointer',
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+      <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
+        {t('settings.dataManagement')}
+      </h2>
+
+      {/* Export */}
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>{t('settings.exportDesc')}</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => api.exportKnowledge('json')} style={btnStyle}>
+            ↓ Knowledge (JSON)
+          </button>
+          <button onClick={() => api.exportKnowledge('csv')} style={btnStyle}>
+            ↓ Knowledge (CSV)
+          </button>
+          <button onClick={() => api.exportPlans()} style={btnStyle}>
+            ↓ Plans (JSON)
+          </button>
+        </div>
+      </div>
+
+      {/* Import */}
+      <div>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>{t('settings.importDesc')}</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={() => handleFileImport('knowledge')} disabled={importing} style={{ ...btnStyle, opacity: importing ? 0.5 : 1 }}>
+            {importing ? (
+              <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+            ) : '↑'} Import Knowledge
+          </button>
+          <button onClick={() => handleFileImport('plans')} disabled={importing} style={{ ...btnStyle, opacity: importing ? 0.5 : 1 }}>
+            {importing ? (
+              <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+            ) : '↑'} Import Plans
+          </button>
+          {importResult && (
+            <span style={{ fontSize: 12, color: importResult.type === 'success' ? 'var(--success)' : 'var(--error)' }}>
+              {importResult.text}
+            </span>
           )}
         </div>
       </div>

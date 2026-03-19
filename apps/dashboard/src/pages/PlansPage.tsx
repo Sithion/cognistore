@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
 import { api } from '../api/client.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
+import { ScopeAutocomplete } from '../components/ScopeAutocomplete.js';
+import { PLAN_TEMPLATES, type PlanTemplate } from '../data/planTemplates.js';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
@@ -122,11 +124,45 @@ function MiniProgress({ completed, total }: { completed: number; total: number }
 
 /* ── Task Item ── */
 
-function TaskItem({ task, expandedNotes, onToggleNotes }: {
+function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask }: {
   task: PlanTask;
   expandedNotes: boolean;
   onToggleNotes: () => void;
+  onUpdateTask?: (taskId: string, updates: Record<string, unknown>) => Promise<void>;
 }) {
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [editDesc, setEditDesc] = useState(task.description);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [editNotes, setEditNotes] = useState(task.notes || '');
+  const [showPriorityMenu, setShowPriorityMenu] = useState(false);
+
+  const cycleStatus = () => {
+    if (!onUpdateTask) return;
+    const next = task.status === 'pending' ? 'in_progress' : task.status === 'in_progress' ? 'completed' : 'pending';
+    onUpdateTask(task.id, { status: next });
+  };
+
+  const saveDesc = () => {
+    setEditingDesc(false);
+    if (editDesc.trim() !== task.description && onUpdateTask) {
+      onUpdateTask(task.id, { description: editDesc.trim() });
+    }
+  };
+
+  const saveNotes = () => {
+    setEditingNotes(false);
+    if (editNotes !== (task.notes || '') && onUpdateTask) {
+      onUpdateTask(task.id, { notes: editNotes || null });
+    }
+  };
+
+  const setPriority = (p: string) => {
+    setShowPriorityMenu(false);
+    if (p !== task.priority && onUpdateTask) {
+      onUpdateTask(task.id, { priority: p });
+    }
+  };
+
   return (
     <div
       style={{
@@ -134,20 +170,75 @@ function TaskItem({ task, expandedNotes, onToggleNotes }: {
         borderLeft: `3px solid ${PRIORITY_COLORS[task.priority] || '#6b7280'}`,
         backgroundColor: 'var(--bg-main)', borderRadius: '0 6px 6px 0',
         opacity: task.status === 'completed' ? 0.6 : 1,
+        position: 'relative',
       }}
     >
-      <div style={{ paddingTop: 1 }}>
+      <div style={{ paddingTop: 1, cursor: onUpdateTask ? 'pointer' : 'default' }} onClick={cycleStatus}>
         <TaskStatusIcon status={task.status} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{
-          fontSize: 12,
-          textDecoration: task.status === 'completed' ? 'line-through' : 'none',
-          color: task.status === 'completed' ? 'var(--text-secondary)' : 'var(--text-primary)',
-        }}>
-          {task.description}
-        </span>
-        {task.notes && (
+        {editingDesc && onUpdateTask ? (
+          <input
+            autoFocus
+            value={editDesc}
+            onChange={(e) => setEditDesc(e.target.value)}
+            onBlur={saveDesc}
+            onKeyDown={(e) => { if (e.key === 'Enter') saveDesc(); if (e.key === 'Escape') { setEditDesc(task.description); setEditingDesc(false); } }}
+            style={{
+              width: '100%', fontSize: 12, padding: '2px 6px', borderRadius: 4,
+              border: '1px solid var(--accent)', backgroundColor: 'var(--bg-input)',
+              color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+        ) : (
+          <span
+            onClick={(e) => { if (onUpdateTask) { e.stopPropagation(); setEditingDesc(true); setEditDesc(task.description); } }}
+            style={{
+              fontSize: 12, cursor: onUpdateTask ? 'text' : 'default',
+              textDecoration: task.status === 'completed' ? 'line-through' : 'none',
+              color: task.status === 'completed' ? 'var(--text-secondary)' : 'var(--text-primary)',
+            }}>
+            {task.description}
+          </span>
+        )}
+
+        {/* Priority badge (clickable) */}
+        {onUpdateTask && (
+          <span style={{ position: 'relative', display: 'inline-block', marginLeft: 6 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowPriorityMenu(!showPriorityMenu); }}
+              style={{
+                padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 600,
+                border: 'none', cursor: 'pointer',
+                backgroundColor: `${PRIORITY_COLORS[task.priority] || '#6b7280'}22`,
+                color: PRIORITY_COLORS[task.priority] || '#6b7280',
+              }}
+            >
+              {task.priority}
+            </button>
+            {showPriorityMenu && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, zIndex: 20,
+                backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: 6, marginTop: 2, overflow: 'hidden',
+              }}>
+                {['high', 'medium', 'low'].map(p => (
+                  <button key={p} onClick={(e) => { e.stopPropagation(); setPriority(p); }}
+                    style={{
+                      display: 'block', width: '100%', padding: '4px 12px', textAlign: 'left',
+                      background: p === task.priority ? 'var(--accent-muted)' : 'none',
+                      border: 'none', color: PRIORITY_COLORS[p], cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                    }}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
+        )}
+
+        {/* Notes */}
+        {(task.notes || onUpdateTask) && (
           <>
             <button
               onClick={(e) => { e.stopPropagation(); onToggleNotes(); }}
@@ -156,9 +247,31 @@ function TaskItem({ task, expandedNotes, onToggleNotes }: {
               {expandedNotes ? '▼' : '▶'} notes
             </button>
             {expandedNotes && (
-              <p style={{ fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: 4 }}>
-                {task.notes}
-              </p>
+              editingNotes && onUpdateTask ? (
+                <textarea
+                  autoFocus
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  onBlur={saveNotes}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { setEditNotes(task.notes || ''); setEditingNotes(false); } }}
+                  rows={2}
+                  style={{
+                    width: '100%', fontSize: 11, padding: '4px 6px', borderRadius: 4, marginTop: 4,
+                    border: '1px solid var(--accent)', backgroundColor: 'var(--bg-input)',
+                    color: 'var(--text-secondary)', outline: 'none', resize: 'vertical',
+                    fontFamily: 'inherit', boxSizing: 'border-box',
+                  }}
+                />
+              ) : (
+                <p
+                  onClick={() => { if (onUpdateTask) { setEditingNotes(true); setEditNotes(task.notes || ''); } }}
+                  style={{
+                    fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: 4,
+                    cursor: onUpdateTask ? 'text' : 'default',
+                  }}>
+                  {task.notes || (onUpdateTask ? 'Click to add notes...' : '')}
+                </p>
+              )
             )}
           </>
         )}
@@ -184,6 +297,19 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   const [scope, setScope] = useState('global');
   const [newTasks, setNewTasks] = useState<NewTask[]>([{ description: '', priority: 'medium' }]);
   const [saving, setSaving] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('blank');
+
+  const applyTemplate = (tpl: PlanTemplate) => {
+    setSelectedTemplate(tpl.id);
+    if (tpl.id === 'blank') return;
+    setTitle(tpl.titlePattern);
+    setContent(tpl.contentStructure);
+    setTagsInput(tpl.defaultTags.join(', '));
+    setNewTasks(tpl.tasks.length > 0
+      ? tpl.tasks.map(t => ({ description: t.description, priority: t.priority }))
+      : [{ description: '', priority: 'medium' }]
+    );
+  };
 
   const addTask = () => setNewTasks([...newTasks, { description: '', priority: 'medium' }]);
 
@@ -227,6 +353,31 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         <button onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
       </div>
 
+      {/* Template Selector */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+          {t('plans.template')}
+        </label>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          {PLAN_TEMPLATES.map((tpl) => (
+            <button
+              key={tpl.id}
+              type="button"
+              onClick={() => applyTemplate(tpl)}
+              style={{
+                padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                border: selectedTemplate === tpl.id ? '1px solid var(--accent)' : '1px solid var(--border)',
+                backgroundColor: selectedTemplate === tpl.id ? 'var(--accent-muted)' : 'var(--bg-input)',
+                color: selectedTemplate === tpl.id ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+              }}
+            >
+              {tpl.icon} {tpl.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Title */}
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
@@ -258,10 +409,9 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
           <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
             {t('knowledge.scope')}
           </label>
-          <input
-            value={scope} onChange={(e) => setScope(e.target.value)}
-            placeholder="global"
-            style={inputStyle}
+          <ScopeAutocomplete
+            value={scope}
+            onChange={setScope}
           />
         </div>
         <div style={{ flex: 1 }}>
@@ -440,6 +590,13 @@ export function PlansPage() {
     });
   };
 
+  const handleUpdateTask = async (taskId: string, updates: Record<string, unknown>) => {
+    try {
+      await api.updatePlanTask(taskId, updates);
+      if (selectedPlan) refreshSelectedPlan(selectedPlan.id);
+    } catch { /* silent */ }
+  };
+
   const completedTasks = tasks.filter((t) => t.status === 'completed').length;
   const inputRelations = relations.filter((r) => r.relationType === 'input');
   const outputRelations = relations.filter((r) => r.relationType === 'output');
@@ -481,6 +638,7 @@ export function PlansPage() {
                   task={task}
                   expandedNotes={expandedNotes.has(task.id)}
                   onToggleNotes={() => toggleNotes(task.id)}
+                  onUpdateTask={handleUpdateTask}
                 />
               ))}
             </div>
@@ -552,7 +710,20 @@ export function PlansPage() {
         </>
       ) : (
         <>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>{t('plans.title')}</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('plans.title')}</h1>
+        <button
+          onClick={() => api.exportPlans()}
+          title={t('actions.export')}
+          style={{
+            padding: '6px 12px', borderRadius: 8,
+            border: '1px solid var(--border)', backgroundColor: 'transparent',
+            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13,
+          }}
+        >
+          ↓ Export
+        </button>
+      </div>
 
       {/* ── Active Plans Section ── */}
       {activePlans.length > 0 && (

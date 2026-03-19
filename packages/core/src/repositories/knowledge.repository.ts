@@ -254,6 +254,23 @@ export class KnowledgeRepository {
     return results.map((r) => ({ scope: r.scope, count: Number(r.count) }));
   }
 
+  async listAll() {
+    return this.db
+      .select()
+      .from(knowledgeEntries)
+      .orderBy(sql`${knowledgeEntries.createdAt} DESC`);
+  }
+
+  async listScopes(): Promise<string[]> {
+    const rows = this.sqlite.prepare(
+      `SELECT DISTINCT scope FROM knowledge_entries
+       UNION
+       SELECT DISTINCT scope FROM plans
+       ORDER BY scope`
+    ).all() as { scope: string }[];
+    return rows.map((r) => r.scope);
+  }
+
   // ─── Plans (separate table) ──────────────────────────────────
 
   createPlan(input: { title: string; content: string; tags: string[]; scope: string; source: string; status?: string; embedding: number[] }): any {
@@ -302,6 +319,10 @@ export class KnowledgeRepository {
     const result = this.sqlite.prepare('DELETE FROM plans WHERE id = ?').run(id);
     try { this.sqlite.prepare('DELETE FROM plans_embeddings WHERE id = ?').run(id); } catch { /* silent */ }
     return result.changes > 0;
+  }
+
+  listAllPlans(): any[] {
+    return this.sqlite.prepare('SELECT * FROM plans ORDER BY created_at DESC').all() as any[];
   }
 
   listPlans(limit = 20, status?: string): any[] {

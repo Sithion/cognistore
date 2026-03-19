@@ -107,6 +107,34 @@ export function HomePage() {
     }
   }, [selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      await api.bulkDeleteKnowledge(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      setBulkMode(false);
+      handleSuccess();
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
@@ -206,7 +234,7 @@ export function HomePage() {
         </>
       ) : (
         <>
-      {/* Search Bar */}
+      {/* Search Bar + Actions */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input
           type="text"
@@ -219,6 +247,30 @@ export function HomePage() {
             color: 'var(--text-primary)', fontSize: 14, outline: 'none',
           }}
         />
+        <button
+          onClick={() => { setBulkMode(!bulkMode); setSelectedIds(new Set()); }}
+          title={t('actions.bulkSelect')}
+          style={{
+            padding: '8px 14px', borderRadius: 8,
+            border: bulkMode ? '1px solid var(--accent)' : '1px solid var(--border)',
+            backgroundColor: bulkMode ? 'var(--accent-muted)' : 'transparent',
+            color: bulkMode ? 'var(--accent)' : 'var(--text-secondary)',
+            cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+          }}
+        >
+          {bulkMode ? t('actions.cancel') : '☐'}
+        </button>
+        <button
+          onClick={() => api.exportKnowledge('json')}
+          title={t('actions.export')}
+          style={{
+            padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', backgroundColor: 'transparent',
+            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13,
+          }}
+        >
+          ↓
+        </button>
       </div>
 
       {/* Filters */}
@@ -294,9 +346,11 @@ export function HomePage() {
               entry={entry}
               onDelete={handleDelete}
               onTagClick={handleToggleTag}
-              onEdit={handleEdit}
+              onEdit={bulkMode ? undefined : handleEdit}
               confirmingDelete={confirmDeleteId === entry.id}
               onCancelDelete={() => setConfirmDeleteId(null)}
+              selected={selectedIds.has(entry.id as string)}
+              onToggleSelect={bulkMode ? toggleSelect : undefined}
             />
           ))}
         </div>
@@ -306,6 +360,43 @@ export function HomePage() {
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
           {hasActiveFilters ? t('search.noResults') : t('search.empty')}
         </p>
+      )}
+
+      {/* Bulk action bar */}
+      {bulkMode && selectedIds.size > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          backgroundColor: 'var(--bg-card)', border: '1px solid var(--accent)',
+          borderRadius: 12, padding: '12px 20px', display: 'flex', gap: 12, alignItems: 'center',
+          zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>
+            {selectedIds.size} {t('actions.selected')}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set(filteredRecent.map(e => e.id as string)))}
+            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}
+          >
+            {t('actions.selectAll')}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}
+          >
+            {t('actions.deselectAll')}
+          </button>
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkDeleting}
+            style={{
+              padding: '6px 16px', borderRadius: 6, border: 'none',
+              backgroundColor: 'var(--error)', color: '#fff', cursor: 'pointer',
+              fontSize: 13, fontWeight: 600, opacity: bulkDeleting ? 0.5 : 1,
+            }}
+          >
+            {bulkDeleting ? '...' : t('actions.delete')}
+          </button>
+        </div>
       )}
 
       {/* FAB */}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
+import { ScopeAutocomplete } from './ScopeAutocomplete.js';
 
 interface AddKnowledgeModalProps {
   isOpen: boolean;
@@ -214,12 +215,11 @@ export function AddKnowledgeModal({ isOpen, onClose, onSuccess }: AddKnowledgeMo
             </div>
             <div>
               <label style={labelStyle}>{t('knowledge.scope')} *</label>
-              <input
+              <ScopeAutocomplete
                 required
                 value={form.scope}
-                onChange={(e) => setForm({ ...form, scope: e.target.value })}
-                placeholder="global"
-                style={inputStyle}
+                onChange={(v) => setForm({ ...form, scope: v })}
+                style={{ padding: '10px 14px', fontSize: 14 }}
               />
             </div>
           </div>

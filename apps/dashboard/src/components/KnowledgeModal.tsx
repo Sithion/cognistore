@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
+import { ScopeAutocomplete } from './ScopeAutocomplete.js';
 
 interface KnowledgeModalProps {
   isOpen: boolean;
@@ -141,12 +142,10 @@ export function KnowledgeModal({ isOpen, onClose, onSuccess, entry }: KnowledgeM
           </div>
           <div style={{ flex: 1 }}>
             <label style={labelStyle}>{t('knowledge.scope')} *</label>
-            <input
+            <ScopeAutocomplete
               required
               value={form.scope}
-              onChange={(e) => setForm({ ...form, scope: e.target.value })}
-              placeholder="global"
-              style={inputStyle}
+              onChange={(v) => setForm({ ...form, scope: v })}
             />
           </div>
         </div>

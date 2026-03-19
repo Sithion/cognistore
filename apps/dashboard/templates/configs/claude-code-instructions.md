@@ -51,6 +51,7 @@ mcp__ai_knowledge__createPlan({
 
 - **NEVER** write plans to local files (plan.md, TODO.md, etc.)
 - **NEVER** use only TodoWrite/task lists as a substitute — those are ephemeral, not persistent
+- **NEVER** call createPlan() from subagents (Agent tool) — only the main agent creates plans to avoid duplicates
 - **ALWAYS** include a `tasks` array with every implementation step
 - **ALWAYS** set plan status to `active` when you begin execution: `updatePlan(planId, { status: "active" })`
 - **ALWAYS** mark each task `in_progress` BEFORE starting it, then `completed` AFTER finishing — do NOT batch updates

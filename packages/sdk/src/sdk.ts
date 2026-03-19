@@ -177,6 +177,56 @@ export class KnowledgeSDK {
     }
   }
 
+  async listAllKnowledge(): Promise<KnowledgeEntry[]> {
+    this.ensureInitialized();
+    try {
+      return await this.service!.listAll();
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to list all knowledge');
+    }
+  }
+
+  async listScopes(): Promise<string[]> {
+    this.ensureInitialized();
+    try {
+      return await this.service!.listScopes();
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to list scopes');
+    }
+  }
+
+  async bulkDeleteKnowledge(ids: string[]): Promise<{ deleted: number; errors: string[] }> {
+    this.ensureInitialized();
+    try {
+      return await this.service!.bulkDelete(ids);
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to bulk delete knowledge');
+    }
+  }
+
+  async importKnowledge(entries: CreateKnowledgeInput[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+    this.ensureInitialized();
+    try {
+      return await this.service!.importKnowledge(entries);
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to import knowledge');
+    }
+  }
+
+  async importPlans(plans: any[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+    this.ensureInitialized();
+    try {
+      return await this.service!.importPlans(plans);
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to import plans');
+    }
+  }
+
+  listAllPlans(): Plan[] {
+    this.ensureInitialized();
+    return this.service!.listAllPlans();
+  }
+
   // ─── Plans (separate entity) ─────────────────────────────────
 
   async createPlan(input: CreatePlanInput & { relatedKnowledgeIds?: string[]; tasks?: { description: string; priority?: string }[] }): Promise<Plan> {

@@ -64,6 +64,76 @@ export class KnowledgeService {
     return entry !== null;
   }
 
+  async listAll() {
+    const entries = await this.repository.listAll();
+    return entries.map((e) => this.toKnowledgeEntry(e));
+  }
+
+  async listScopes(): Promise<string[]> {
+    return this.repository.listScopes();
+  }
+
+  async bulkDelete(ids: string[]): Promise<{ deleted: number; errors: string[] }> {
+    let deleted = 0;
+    const errors: string[] = [];
+    for (const id of ids) {
+      try {
+        const result = await this.repository.delete(id);
+        if (result) {
+          deleted++;
+          this.logOp('write');
+        }
+      } catch (err) {
+        errors.push(`Failed to delete ${id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { deleted, errors };
+  }
+
+  async importKnowledge(entries: CreateKnowledgeInput[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+    let imported = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    // Build hash set of existing entries for duplicate detection
+    const existing = await this.repository.listAll();
+    const existingHashes = new Set<string>();
+    for (const e of existing) {
+      const hash = this.hashContent((e.title ?? '') + e.content);
+      existingHashes.add(hash);
+    }
+
+    for (const entry of entries) {
+      try {
+        const hash = this.hashContent((entry.title ?? '') + entry.content);
+        if (existingHashes.has(hash)) {
+          skipped++;
+          continue;
+        }
+        const tagsText = entry.tags.join(' ');
+        const embedding = await this.embeddingProvider.embed(tagsText);
+        await this.repository.create({ ...entry, embedding });
+        existingHashes.add(hash);
+        imported++;
+        this.logOp('write');
+      } catch (err) {
+        errors.push(`Failed to import "${entry.title}": ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { imported, skipped, errors };
+  }
+
+  private hashContent(text: string): string {
+    // Simple hash for duplicate detection (no crypto.subtle needed — sync)
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    return hash.toString(36);
+  }
+
   async listRecent(limit = 20, filters?: { type?: string; scope?: string }) {
     const entries = await this.repository.listRecent(limit, filters);
     return entries.map((e) => this.toKnowledgeEntry(e));
@@ -124,9 +194,58 @@ export class KnowledgeService {
     return this.repository.deletePlan(id);
   }
 
+  listAllPlans(): Plan[] {
+    const rows = this.repository.listAllPlans();
+    return rows.map((r) => this.toPlan(r));
+  }
+
   listPlans(limit = 20, status?: string): Plan[] {
     const rows = this.repository.listPlans(limit, status);
     return rows.map((r) => this.toPlan(r));
+  }
+
+  async importPlans(plans: (CreatePlanInput & { tasks?: { description: string; status?: string; priority?: string; notes?: string | null }[] })[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+    let imported = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    const existing = this.repository.listAllPlans();
+    const existingHashes = new Set<string>();
+    for (const p of existing) {
+      existingHashes.add(this.hashContent(p.title + p.content));
+    }
+
+    for (const plan of plans) {
+      try {
+        const hash = this.hashContent(plan.title + plan.content);
+        if (existingHashes.has(hash)) {
+          skipped++;
+          continue;
+        }
+        const { tasks, ...planInput } = plan;
+        const embedding = await this.embeddingProvider.embed(planInput.tags.join(' '));
+        const row = this.repository.createPlan({ ...planInput, embedding });
+        const createdPlan = this.toPlan(row);
+
+        if (tasks && tasks.length > 0) {
+          for (let i = 0; i < tasks.length; i++) {
+            this.repository.createPlanTask({
+              planId: createdPlan.id,
+              description: tasks[i].description,
+              status: tasks[i].status,
+              priority: tasks[i].priority,
+              notes: tasks[i].notes,
+              position: i,
+            });
+          }
+        }
+        existingHashes.add(hash);
+        imported++;
+      } catch (err) {
+        errors.push(`Failed to import plan "${plan.title}": ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { imported, skipped, errors };
   }
 
   // ─── Plan Relations ─────────────────────────────────────────

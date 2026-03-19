@@ -17,6 +17,27 @@ import type {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/** Parse a CSV line respecting quoted fields */
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { result.push(current); current = ''; }
+      else { current += ch; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
 const PORT = Number(process.env.DASHBOARD_PORT) || 3210;
 const TEMPLATES_PATH = process.env.TEMPLATES_PATH || join(__dirname, '..', 'templates');
 const INSTALL_DIR = resolve(homedir(), '.ai-knowledge');
@@ -1023,6 +1044,167 @@ async function start() {
     if (err) return err;
     const deleted = await sdk.deleteKnowledge(request.params.id);
     return { deleted };
+  });
+
+  // ─── Scopes endpoint ─────────────────────────────────────────
+
+  app.get('/api/scopes', async (_request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return sdk.listScopes();
+  });
+
+  // ─── Bulk delete endpoint ──────────────────────────────────
+
+  app.delete<{ Body: { ids: string[] } }>('/api/knowledge/bulk', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const { ids } = request.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      reply.code(400);
+      return { error: 'ids array is required' };
+    }
+    return sdk.bulkDeleteKnowledge(ids);
+  });
+
+  // ─── Export endpoints ──────────────────────────────────────
+
+  app.get('/api/export/knowledge', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const format = (request.query as any).format || 'json';
+    const entries = await sdk.listAllKnowledge();
+
+    if (format === 'csv') {
+      const header = 'title,content,tags,type,scope,source,confidenceScore,agentId,createdAt';
+      const csvEscape = (s: string | null) => {
+        if (s === null || s === undefined) return '';
+        const str = String(s);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      };
+      const rows = entries.map(e =>
+        [
+          csvEscape(e.title), csvEscape(e.content),
+          csvEscape(e.tags.join(';')), csvEscape(e.type),
+          csvEscape(e.scope), csvEscape(e.source),
+          e.confidenceScore, csvEscape(e.agentId),
+          e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+        ].join(',')
+      );
+      const csv = [header, ...rows].join('\n');
+      reply.header('Content-Type', 'text/csv');
+      reply.header('Content-Disposition', 'attachment; filename="knowledge-export.csv"');
+      return csv;
+    }
+
+    const exportData = {
+      version: '0.9.5',
+      exportedAt: new Date().toISOString(),
+      type: 'knowledge',
+      entries: entries.map(e => ({
+        title: e.title, content: e.content, tags: e.tags, type: e.type,
+        scope: e.scope, source: e.source, confidenceScore: e.confidenceScore,
+        agentId: e.agentId,
+        createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+        updatedAt: e.updatedAt instanceof Date ? e.updatedAt.toISOString() : e.updatedAt,
+      })),
+    };
+    reply.header('Content-Disposition', 'attachment; filename="knowledge-export.json"');
+    return exportData;
+  });
+
+  app.get('/api/export/plans', async (_request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const plans = sdk.listAllPlans();
+    const plansWithTasks = plans.map(p => {
+      const tasks = sdk.listPlanTasks(p.id);
+      return {
+        title: p.title, content: p.content, tags: p.tags, scope: p.scope,
+        source: p.source, status: p.status,
+        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+        tasks: tasks.map(t => ({
+          description: t.description, status: t.status, priority: t.priority,
+          notes: t.notes, position: t.position,
+        })),
+      };
+    });
+    const exportData = {
+      version: '0.9.5',
+      exportedAt: new Date().toISOString(),
+      type: 'plans',
+      plans: plansWithTasks,
+    };
+    reply.header('Content-Disposition', 'attachment; filename="plans-export.json"');
+    return exportData;
+  });
+
+  // ─── Import endpoints ──────────────────────────────────────
+
+  app.post('/api/import/knowledge', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    try {
+      const body = request.body as any;
+
+      // Handle JSON import
+      if (body.entries && Array.isArray(body.entries)) {
+        const result = await sdk.importKnowledge(body.entries);
+        return result;
+      }
+
+      // Handle CSV import (raw text in body.csv)
+      if (body.csv && typeof body.csv === 'string') {
+        const lines = body.csv.split('\n').filter((l: string) => l.trim());
+        if (lines.length < 2) {
+          reply.code(400);
+          return { error: 'CSV must have a header row and at least one data row' };
+        }
+
+        const entries: any[] = [];
+        // Skip header, parse data rows
+        for (let i = 1; i < lines.length; i++) {
+          const cols = parseCsvLine(lines[i]);
+          if (cols.length < 6) continue;
+          entries.push({
+            title: cols[0] || '', content: cols[1] || '',
+            tags: (cols[2] || '').split(';').filter(Boolean),
+            type: cols[3] || 'pattern', scope: cols[4] || 'global',
+            source: cols[5] || 'csv-import',
+            confidenceScore: cols[6] ? Number(cols[6]) : 1.0,
+            agentId: cols[7] || null,
+          });
+        }
+        const result = await sdk.importKnowledge(entries);
+        return result;
+      }
+
+      reply.code(400);
+      return { error: 'Request must contain entries array (JSON) or csv string' };
+    } catch (error) {
+      reply.code(500);
+      return { error: (error as Error).message };
+    }
+  });
+
+  app.post('/api/import/plans', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    try {
+      const body = request.body as any;
+      if (!body.plans || !Array.isArray(body.plans)) {
+        reply.code(400);
+        return { error: 'Request must contain plans array' };
+      }
+      const result = await sdk.importPlans(body.plans);
+      return result;
+    } catch (error) {
+      reply.code(500);
+      return { error: (error as Error).message };
+    }
   });
 
   // ─── Plans endpoints ─────────────────────────────────────────

@@ -96,6 +96,45 @@ export const api = {
 
   getHealth: () => request('/api/health'),
 
+  // Scopes
+  listScopes: () => request<string[]>('/api/scopes'),
+
+  // Bulk operations
+  bulkDeleteKnowledge: (ids: string[]) =>
+    request<{ deleted: number; errors: string[] }>('/api/knowledge/bulk', { method: 'DELETE', body: JSON.stringify({ ids }) }),
+
+  // Export
+  exportKnowledge: async (format: 'json' | 'csv' = 'json') => {
+    const response = await fetch(`${API_BASE}/api/export/knowledge?format=${format}`);
+    if (!response.ok) throw new Error(`Export failed: ${response.statusText}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = format === 'csv' ? 'knowledge-export.csv' : 'knowledge-export.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportPlans: async () => {
+    const response = await fetch(`${API_BASE}/api/export/plans?format=json`);
+    if (!response.ok) throw new Error(`Export failed: ${response.statusText}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plans-export.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  // Import
+  importKnowledge: (data: { entries?: any[]; csv?: string }) =>
+    request<{ imported: number; skipped: number; errors: string[] }>('/api/import/knowledge', { method: 'POST', body: JSON.stringify(data) }),
+
+  importPlans: (data: { plans: any[] }) =>
+    request<{ imported: number; skipped: number; errors: string[] }>('/api/import/plans', { method: 'POST', body: JSON.stringify(data) }),
+
   // Plans
   createPlan: (data: { title: string; content: string; tags?: string[]; scope?: string; source?: string; tasks?: { description: string; priority?: string }[] }) =>
     request('/api/plans', { method: 'POST', body: JSON.stringify(data) }),

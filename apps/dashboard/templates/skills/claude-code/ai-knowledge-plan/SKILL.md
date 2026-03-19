@@ -34,6 +34,7 @@ argument-hint: <plan title and description>
 - **NEVER** skip createPlan() because "it's a small task"
 - **NEVER** bypass this skill in plan mode (EnterPlanMode) — the plan output MUST be a `createPlan()` call
 - **NEVER** use EnterPlanMode without also calling createPlan() to persist the plan
+- **NEVER** call createPlan() from a subagent (Agent tool) — ONLY the main conversation agent should create plans. Subagents return plan content as text; the main agent persists it via createPlan(). This prevents duplicate plans.
 
 ## How to Create (with Tasks)
 

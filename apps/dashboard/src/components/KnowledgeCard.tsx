@@ -9,6 +9,8 @@ export interface KnowledgeCardProps {
   onEdit?: (entry: Record<string, unknown>) => void;
   confirmingDelete?: boolean;
   onCancelDelete?: () => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 export function KnowledgeCard({
@@ -19,6 +21,8 @@ export function KnowledgeCard({
   onEdit,
   confirmingDelete,
   onCancelDelete,
+  selected,
+  onToggleSelect,
 }: KnowledgeCardProps) {
   const { t } = useTranslation();
 
@@ -34,15 +38,29 @@ export function KnowledgeCard({
       style={{
         backgroundColor: 'var(--bg-card)',
         borderRadius: 10,
-        border: '1px solid var(--border)',
+        border: selected ? '1px solid var(--accent)' : '1px solid var(--border)',
         padding: 16,
         marginBottom: 12,
         cursor: onEdit ? 'pointer' : 'default',
         transition: 'border-color 0.15s',
+        display: 'flex',
+        gap: onToggleSelect ? 12 : 0,
       }}
       onMouseEnter={(e) => onEdit && (e.currentTarget.style.borderColor = 'var(--accent)')}
-      onMouseLeave={(e) => onEdit && (e.currentTarget.style.borderColor = 'var(--border)')}
+      onMouseLeave={(e) => onEdit && !selected && (e.currentTarget.style.borderColor = 'var(--border)')}
     >
+      {onToggleSelect && (
+        <div style={{ paddingTop: 2, flexShrink: 0 }}>
+          <input
+            type="checkbox"
+            checked={selected || false}
+            onChange={(e) => { e.stopPropagation(); onToggleSelect(entry.id as string); }}
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
       <div
         style={{
           display: 'flex',
@@ -182,6 +200,7 @@ export function KnowledgeCard({
         v{entry.version as number} •{' '}
         {entry.agentId ? `Agent: ${entry.agentId}` : ''} •{' '}
         {new Date(entry.createdAt as string).toLocaleDateString()}
+      </div>
       </div>
     </div>
   );

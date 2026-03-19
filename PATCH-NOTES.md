@@ -1,5 +1,22 @@
 # Patch Notes
 
+## v0.9.5
+
+### Features
+- **Export/Import**: export knowledge entries (JSON/CSV) and plans (JSON) for backup or migration; import with duplicate detection (hash-based) and automatic embedding regeneration
+- **Scope Autocomplete**: replaced free-text scope input with dropdown autocomplete showing existing scopes across knowledge and plans; custom values still allowed
+- **Bulk Delete**: checkbox selection mode on knowledge entries with bulk action bar (select all, deselect all, delete selected)
+- **Plan Templates**: 4 predefined plan structures (Bug Fix, Feature, Refactoring, Investigation) with pre-filled title patterns, markdown content, default tags, and task lists
+- **Inline Task Editing**: click-to-edit task descriptions, priority dropdown, editable notes, and status cycling (click status icon) directly in plan detail view
+
+### Improvements
+- **Data Management section in Settings**: centralized export/import UI with buttons for JSON/CSV knowledge export, plans JSON export, and file picker for imports with progress indicator
+- **Export buttons on pages**: quick-access export buttons on Knowledge and Plans pages
+- **New API endpoints**: `GET /api/scopes`, `DELETE /api/knowledge/bulk`, `GET /api/export/knowledge`, `GET /api/export/plans`, `POST /api/import/knowledge`, `POST /api/import/plans`
+
+### Fixes
+- **Duplicate plan prevention**: subagents (Agent tool) are now explicitly blocked from calling `createPlan()` — only the main conversation agent creates plans, preventing duplicate entries in the knowledge base
+
 ## v0.9.4
 
 ### Features
