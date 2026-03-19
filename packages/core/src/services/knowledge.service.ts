@@ -52,9 +52,13 @@ export class KnowledgeService {
     return entry !== null;
   }
 
-  async listRecent(limit = 20) {
-    const entries = await this.repository.listRecent(limit);
+  async listRecent(limit = 20, filters?: { type?: string; scope?: string }) {
+    const entries = await this.repository.listRecent(limit, filters);
     return entries.map((e) => this.toKnowledgeEntry(e));
+  }
+
+  async topTags(limit = 10) {
+    return this.repository.topTags(limit);
   }
 
   async listTags(): Promise<string[]> {
@@ -62,12 +66,13 @@ export class KnowledgeService {
   }
 
   async getStats() {
-    const [count, byType, byScope] = await Promise.all([
+    const [count, byType, byScope, lastUpdatedAt] = await Promise.all([
       this.repository.count(),
       this.repository.countByType(),
       this.repository.countByScope(),
+      this.repository.lastUpdatedAt(),
     ]);
-    return { total: count, byType, byScope };
+    return { total: count, byType, byScope, lastUpdatedAt };
   }
 
   private toKnowledgeEntry(row: any): KnowledgeEntry {

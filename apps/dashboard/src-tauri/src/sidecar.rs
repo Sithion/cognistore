@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct SidecarState {
     child: Mutex<Option<Child>>,
@@ -142,17 +143,30 @@ fn check_node_major(node_bin: &PathBuf, major: u32) -> bool {
     false
 }
 
+/// Generate a random sidecar identity token (simple hex string).
+fn generate_token() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    let pid = std::process::id();
+    format!("{:08x}{:08x}", pid, nanos)
+}
+
 /// Spawn the Fastify server as a child process.
+/// Returns the child process and the sidecar identity token.
 pub fn spawn_node(
     node_bin: &PathBuf,
     script_path: &PathBuf,
     resource_dir: &PathBuf,
     sqlite_path: &PathBuf,
     port: u16,
-) -> Result<Child, String> {
+) -> Result<(Child, String), String> {
     let dist_path = resource_dir.join("dist");
     let node_modules_path = resource_dir.join("node_modules");
     let templates_path = resource_dir.join("templates");
+    let token = generate_token();
 
     let child = Command::new(node_bin)
         .arg(script_path)
@@ -165,36 +179,49 @@ pub fn spawn_node(
         .env("TEMPLATES_PATH", templates_path.to_string_lossy().to_string())
         .env("NODE_ENV", "production")
         .env("NODE_PATH", node_modules_path.to_string_lossy().to_string())
+        .env("SIDECAR_TOKEN", &token)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start server: {}", e))?;
 
-    Ok(child)
+    Ok((child, token))
 }
 
-/// Wait for the Fastify server to respond on /api/health.
-pub async fn wait_for_ready(port: u16, timeout: Duration) -> bool {
-    let url = format!("http://localhost:{}/api/health", port);
+/// Wait for the Fastify server to respond on /api/health with the correct sidecar token.
+/// Uses a raw HTTP request over TCP to avoid adding a reqwest dependency.
+pub async fn wait_for_ready(port: u16, token: &str, timeout: Duration) -> bool {
     let start = std::time::Instant::now();
 
     while start.elapsed() < timeout {
-        match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)).await {
-            Ok(_) => {
-                // Port is open, now check if HTTP is ready
-                // Simple TCP connect is enough — Fastify binds before serving
-                return true;
-            }
-            Err(_) => {
-                tokio::time::sleep(Duration::from_millis(300)).await;
+        if let Ok(mut stream) =
+            tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)).await
+        {
+            let req = format!(
+                "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                port
+            );
+            if stream.write_all(req.as_bytes()).await.is_ok() {
+                let mut buf = vec![0u8; 4096];
+                if let Ok(n) = stream.read(&mut buf).await {
+                    let response = String::from_utf8_lossy(&buf[..n]);
+                    // Verify the response contains our sidecar token
+                    if response.contains("200 OK")
+                        && response.contains(&format!("\"token\":\"{}\"", token))
+                    {
+                        return true;
+                    }
+                }
             }
         }
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
     false
 }
 
 /// Find an available port, starting from the preferred one.
+/// Binds on 0.0.0.0 to match the Fastify server's listen address.
 pub fn find_available_port(preferred: u16) -> u16 {
     for port in preferred..preferred + 100 {
         if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {

@@ -8,11 +8,11 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -23,3 +23,20 @@ jobs:
 
       - name: Validate MCP server package
         run: cd apps/mcp-server && npm publish --dry-run --access public 2>&1
+
+      - name: Smoke test dashboard server
+        run: |
+          DASHBOARD_DIST_PATH=$PWD/apps/dashboard/dist \
+          DASHBOARD_PORT=3299 \
+          SQLITE_PATH=/tmp/test-knowledge.db \
+          SIDECAR_TOKEN=ci-test \
+          node apps/dashboard/sidecar-bundle/dist-server/index.js &
+          SERVER_PID=$!
+          sleep 5
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3299/)
+          kill $SERVER_PID 2>/dev/null || true
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "FAIL: Dashboard server returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "OK: Dashboard server returned HTTP 200"

@@ -55,8 +55,15 @@ export const api = {
   search: (query: string, options?: Record<string, unknown>) =>
     request('/api/knowledge/search', { method: 'POST', body: JSON.stringify({ query, ...options }) }),
 
-  listRecent: (limit = 20) =>
-    request<any[]>(`/api/knowledge/recent?limit=${limit}`),
+  listRecent: (limit = 20, filters?: { type?: string; scope?: string }) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (filters?.type) params.set('type', filters.type);
+    if (filters?.scope) params.set('scope', filters.scope);
+    return request<any[]>(`/api/knowledge/recent?${params}`);
+  },
+
+  getTopTags: (limit = 10) =>
+    request<{ tag: string; count: number }[]>(`/api/metrics/top-tags?limit=${limit}`),
 
   getById: (id: string) => request(`/api/knowledge/${id}`),
 

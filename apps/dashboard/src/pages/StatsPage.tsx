@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { api } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -381,6 +382,40 @@ function ScopeDistribution({ data }: { data: { scope: string; count: number }[] 
   );
 }
 
+function TopTagsChart({ data }: { data: { tag: string; count: number }[] }) {
+  const { ref, width } = useContainerWidth();
+  const maxVal = Math.max(...data.map(d => d.count));
+
+  return (
+    <div ref={ref}>
+      {width >= CHART_MIN_WIDTH ? (
+        <ResponsiveContainer width="100%" height={Math.max(180, data.length * 28)}>
+          <BarChart data={data} layout="vertical" margin={{ left: 60 }}>
+            <XAxis type="number" hide />
+            <YAxis type="category" dataKey="tag" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={80} />
+            <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+            <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={16} />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {data.map((entry) => (
+            <div key={entry.tag}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{entry.tag}</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{entry.count}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--bg-input)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 3, width: `${(entry.count / maxVal) * 100}%`, backgroundColor: '#8b5cf6' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Main Page ── */
 
 export function StatsPage() {
@@ -398,11 +433,18 @@ export function StatsPage() {
     refreshInterval,
   } = useAppSelector((s) => s.stats);
 
+  const [topTags, setTopTags] = useState<{ tag: string; count: number }[]>([]);
+
+  const loadTopTags = useCallback(() => {
+    api.getTopTags(10).then(setTopTags).catch(() => {});
+  }, []);
+
   const refreshAll = useCallback(() => {
     dispatch(fetchStats());
     dispatch(fetchMetrics());
     dispatch(fetchTags());
-  }, [dispatch]);
+    loadTopTags();
+  }, [dispatch, loadTopTags]);
 
   // Initial fetch
   useEffect(() => {
@@ -583,14 +625,23 @@ export function StatsPage() {
         )}
       </WidgetCard>
 
-      {/* ── Contribution Heatmap ── */}
-      <WidgetCard
-        title="Contributions (Last 90 Days)"
-        state={hasHeatmap ? 'loaded' : 'empty'}
-        style={{ marginBottom: 24 }}
-      >
-        {metrics?.heatmap && <ContributionHeatmap data={metrics.heatmap} />}
-      </WidgetCard>
+      {/* ── Contribution Heatmap + Top Tags ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+        <WidgetCard
+          title="Contributions (Last 90 Days)"
+          state={hasHeatmap ? 'loaded' : 'empty'}
+        >
+          {metrics?.heatmap && <ContributionHeatmap data={metrics.heatmap} />}
+        </WidgetCard>
+
+        <WidgetCard
+          title="Top Tags"
+          state={topTags.length > 0 ? 'loaded' : 'empty'}
+          emptyText="No tags yet"
+        >
+          {topTags.length > 0 && <TopTagsChart data={topTags} />}
+        </WidgetCard>
+      </div>
 
       {/* ── Tag Cloud ── */}
       <WidgetCard title={t('stats.tagCloud')} state={hasTags ? 'loaded' : 'empty'}>

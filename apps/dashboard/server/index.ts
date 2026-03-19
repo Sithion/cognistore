@@ -59,7 +59,7 @@ async function start() {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
 
-  const distPath = process.env.DASHBOARD_DIST_PATH || join(__dirname, '..', 'dist');
+  const distPath = resolve(process.env.DASHBOARD_DIST_PATH || join(__dirname, '..', 'dist'));
   await app.register(fastifyStatic, {
     root: distPath,
     prefix: '/',
@@ -461,22 +461,28 @@ async function start() {
   // ─── Uninstall endpoint ────────────────────────────────────────
 
   app.post('/api/uninstall', async (_request, reply) => {
+    const step = async (label: string, fn: () => unknown, results: string[], errors: string[]) => {
+      try { await fn(); results.push(label); }
+      catch (e) { errors.push(`${label}: ${e}`); }
+    };
+
     try {
       const results: string[] = [];
+      const errors: string[] = [];
+      const home = homedir();
 
-      // 1. Remove configs
-      try { await configManager.removeConfig(ConfigManager.CLAUDE_MD); results.push('CLAUDE.md cleaned'); } catch { /* skip */ }
-      try { await configManager.removeConfig(ConfigManager.COPILOT_MD); results.push('Copilot config cleaned'); } catch { /* skip */ }
-      try { await configManager.removeConfig(ConfigManager.COPILOT_INSTRUCTIONS); results.push('Copilot CLI cleaned'); } catch { /* skip */ }
+      // 1. Remove config markers
+      await step('CLAUDE.md cleaned', () => configManager.removeConfig(ConfigManager.CLAUDE_MD), results, errors);
+      await step('Copilot config cleaned', () => configManager.removeConfig(ConfigManager.COPILOT_MD), results, errors);
+      await step('Copilot CLI cleaned', () => configManager.removeConfig(ConfigManager.COPILOT_INSTRUCTIONS), results, errors);
 
       // 2. Remove MCP entries
-      try { await configManager.removeMcpEntry(ConfigManager.MCP_CONFIG, 'ai-knowledge'); results.push('MCP config cleaned'); } catch { /* skip */ }
-      try { await configManager.removeMcpEntry(ConfigManager.CLAUDE_JSON, 'ai-knowledge'); results.push('Claude JSON cleaned'); } catch { /* skip */ }
-      try { await configManager.removeMcpEntry(ConfigManager.COPILOT_MCP_CONFIG, 'ai-knowledge'); results.push('Copilot MCP cleaned'); } catch { /* skip */ }
-      try { await configManager.removeOpenCodeMcp(); results.push('OpenCode MCP cleaned'); } catch { /* skip */ }
+      await step('MCP config cleaned', () => configManager.removeMcpEntry(ConfigManager.MCP_CONFIG, 'ai-knowledge'), results, errors);
+      await step('Claude JSON cleaned', () => configManager.removeMcpEntry(ConfigManager.CLAUDE_JSON, 'ai-knowledge'), results, errors);
+      await step('Copilot MCP cleaned', () => configManager.removeMcpEntry(ConfigManager.COPILOT_MCP_CONFIG, 'ai-knowledge'), results, errors);
+      await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp(), results, errors);
 
       // 3. Remove skills
-      const home = homedir();
       for (const name of ['ai-knowledge-query', 'ai-knowledge-capture']) {
         const claudeDir = resolve(home, '.claude', 'skills', name);
         if (existsSync(claudeDir)) { rmSync(claudeDir, { recursive: true, force: true }); results.push(`Skill ${name} removed (Claude)`); }
@@ -485,19 +491,24 @@ async function start() {
       }
 
       // 4. Remove Ollama model
-      try { execSync(`ollama rm ${process.env.OLLAMA_MODEL || 'all-minilm'}`, { stdio: 'pipe', timeout: 30000 }); results.push('Ollama model removed'); } catch { /* skip */ }
+      await step('Ollama model removed', () => { execSync(`ollama rm ${process.env.OLLAMA_MODEL || 'all-minilm'}`, { stdio: 'pipe', timeout: 30000 }); }, results, errors);
 
       // 5. Uninstall Ollama
       try { execSync('pkill -f "ollama serve"', { stdio: 'pipe' }); } catch { /* may not be running */ }
+
+      const ollamaBinDir = resolve(home, '.ollama-bin');
+      const ollamaDataDir = resolve(home, '.ollama');
+
       if (process.platform === 'darwin') {
         try { execSync('brew list ollama', { stdio: 'pipe' }); execSync('brew uninstall ollama', { stdio: 'pipe', timeout: 60000 }); results.push('Ollama uninstalled (brew)'); } catch { /* not brew */ }
-        for (const p of ['/usr/local/bin/ollama', '/opt/homebrew/bin/ollama', resolve(home, '.ollama')]) {
+        for (const p of ['/usr/local/bin/ollama', '/opt/homebrew/bin/ollama', ollamaDataDir, ollamaBinDir]) {
           if (existsSync(p)) { rmSync(p, { recursive: true, force: true }); }
         }
+        results.push('Ollama paths cleaned');
       } else if (process.platform === 'linux') {
-        try { execSync('sudo systemctl stop ollama', { stdio: 'pipe', timeout: 10000 }); } catch { /* ignore */ }
-        try { execSync('sudo systemctl disable ollama', { stdio: 'pipe', timeout: 10000 }); } catch { /* ignore */ }
-        for (const p of ['/usr/local/bin/ollama', '/usr/bin/ollama', resolve(home, '.ollama')]) {
+        try { execSync('systemctl stop ollama', { stdio: 'pipe', timeout: 10000 }); } catch { /* ignore */ }
+        try { execSync('systemctl disable ollama', { stdio: 'pipe', timeout: 10000 }); } catch { /* ignore */ }
+        for (const p of ['/usr/local/bin/ollama', '/usr/bin/ollama', ollamaDataDir, ollamaBinDir]) {
           if (existsSync(p)) { rmSync(p, { recursive: true, force: true }); }
         }
         results.push('Ollama removed');
@@ -526,18 +537,19 @@ async function start() {
       }
       results.push('Backup files cleaned');
 
-      // 8. Self-delete app
-      reply.send({ success: true, results });
+      // 8. Self-delete app (increased timeout for response flush)
+      reply.send({ success: true, results, errors: errors.length > 0 ? errors : undefined });
 
       setTimeout(() => {
-        // Remove .app on macOS
         if (process.platform === 'darwin') {
+          // Use shell command for reliable self-delete on macOS
           const appPaths = ['/Applications/AI Knowledge Base.app', resolve(home, 'Applications', 'AI Knowledge Base.app')];
           for (const p of appPaths) {
-            if (existsSync(p)) { rmSync(p, { recursive: true, force: true }); }
+            if (existsSync(p)) {
+              try { execSync(`rm -rf "${p}"`, { stdio: 'pipe' }); } catch { /* best effort */ }
+            }
           }
         }
-        // Linux: remove AppImage or deb-installed binary
         if (process.platform === 'linux') {
           const linuxPaths = [resolve(home, '.local', 'bin', 'ai-knowledge-dashboard')];
           for (const p of linuxPaths) {
@@ -545,7 +557,7 @@ async function start() {
           }
         }
         process.exit(0);
-      }, 1000);
+      }, 3000);
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : String(error) };
     }
@@ -553,14 +565,16 @@ async function start() {
 
   // ─── Health ────────────────────────────────────────────────────
 
+  const SIDECAR_TOKEN = process.env.SIDECAR_TOKEN || '';
+
   app.get('/api/health', async () => {
-    if (!sdkReady) {
-      return {
-        database: { connected: false, error: sdkError || 'Not initialized' },
-        ollama: { connected: false, model: null, error: sdkError || 'Not initialized' },
-      };
-    }
-    return sdk.healthCheck();
+    const health = sdkReady
+      ? await sdk.healthCheck()
+      : {
+          database: { connected: false, error: sdkError || 'Not initialized' },
+          ollama: { connected: false, model: null, error: sdkError || 'Not initialized' },
+        };
+    return { ...health, token: SIDECAR_TOKEN };
   });
 
   // ─── Knowledge CRUD ────────────────────────────────────────────
@@ -663,8 +677,19 @@ async function start() {
   app.get('/api/knowledge/recent', async (request, reply) => {
     const err = ensureReady(reply);
     if (err) return err;
-    const limit = Number((request.query as any).limit) || 20;
-    return sdk.listRecent(limit);
+    const q = request.query as any;
+    const limit = Number(q.limit) || 20;
+    const filters: { type?: string; scope?: string } = {};
+    if (q.type) filters.type = q.type;
+    if (q.scope) filters.scope = q.scope;
+    return sdk.listRecent(limit, filters);
+  });
+
+  app.get('/api/metrics/top-tags', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const limit = Number((request.query as any).limit) || 10;
+    return sdk.getTopTags(limit);
   });
 
   app.post<{ Body: Record<string, unknown> }>('/api/knowledge/search', async (request, reply) => {
@@ -709,7 +734,7 @@ async function start() {
 
   // ─── Start server ──────────────────────────────────────────────
 
-  await app.listen({ port: PORT, host: '0.0.0.0' });
+  await app.listen({ port: PORT, host: '127.0.0.1' });
   console.log(`Dashboard API running at http://localhost:${PORT}${sdkReady ? '' : ' (degraded mode)'}`);
 
   const shutdown = async () => {

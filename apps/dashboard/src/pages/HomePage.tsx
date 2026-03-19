@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { KnowledgeCard } from '../components/KnowledgeCard.js';
 import { TagBar } from '../components/TagBar.js';
-import { AddKnowledgeModal } from '../components/AddKnowledgeModal.js';
+import { KnowledgeModal } from '../components/KnowledgeModal.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
 
 const POLL_INTERVAL_MS = 10_000;
@@ -31,18 +31,28 @@ export function HomePage() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
+  // Available scopes (from stats API)
+  const [allScopes, setAllScopes] = useState<string[]>([]);
+
   // Modal state
   const [showModal, setShowModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<Record<string, unknown> | null>(null);
 
-  // Polling state
-  const lastTotalRef = useRef<number | null>(null);
+  // Polling state — track both count and lastUpdatedAt for cross-process detection
+  const lastSnapshotRef = useRef<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const types = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'];
 
-  // Load recent entries (silent — no loading state)
-  const loadRecent = useCallback(() => {
-    return api.listRecent(20).then(setRecentEntries).catch(() => {});
+  const hasActiveFilters = typeFilter !== '' || scopeFilter !== '' || selectedTags.length > 0 || query.trim() !== '';
+
+  // Load recent entries with server-side type/scope filters
+  const loadRecent = useCallback((typeF?: string, scopeF?: string) => {
+    const filters: { type?: string; scope?: string } = {};
+    if (typeF) filters.type = typeF;
+    if (scopeF) filters.scope = scopeF;
+    return api.listRecent(50, Object.keys(filters).length > 0 ? filters : undefined)
+      .then(setRecentEntries).catch(() => {});
   }, []);
 
   // Load tags (silent)
@@ -50,27 +60,43 @@ export function HomePage() {
     return api.listTags().then(setAllTags).catch(() => {});
   }, []);
 
-  // Initial load on mount (silent)
-  useEffect(() => {
-    loadRecent();
-    loadTags();
-  }, [loadRecent, loadTags]);
+  // Load available scopes
+  const loadScopes = useCallback(() => {
+    return (api.getStats() as Promise<{ byScope: { scope: string }[] }>)
+      .then(stats => setAllScopes(stats.byScope.map(s => s.scope)))
+      .catch(() => {});
+  }, []);
 
-  // Poll for new entries — refresh in background when total count changes
+  // Initial load on mount
+  useEffect(() => {
+    loadRecent(typeFilter, scopeFilter);
+    loadTags();
+    loadScopes();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload recent entries when type/scope filters change (non-search mode)
+  useEffect(() => {
+    if (!searched) {
+      loadRecent(typeFilter, scopeFilter);
+    }
+  }, [typeFilter, scopeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll for new/updated entries — detects changes from any process (OpenCode, Claude, etc.)
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const stats = await api.getStats() as { total: number };
-        if (lastTotalRef.current !== null && stats.total !== lastTotalRef.current) {
+        const stats = await api.getStats() as { total: number; lastUpdatedAt?: string };
+        const snapshot = `${stats.total}:${stats.lastUpdatedAt || ''}`;
+        if (lastSnapshotRef.current !== null && snapshot !== lastSnapshotRef.current) {
           setRefreshing(true);
-          await Promise.all([loadRecent(), loadTags()]);
+          await Promise.all([loadRecent(typeFilter, scopeFilter), loadTags()]);
           setRefreshing(false);
         }
-        lastTotalRef.current = stats.total;
+        lastSnapshotRef.current = snapshot;
       } catch { /* ignore polling errors */ }
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [loadRecent, loadTags]);
+  }, [loadRecent, loadTags, typeFilter, scopeFilter]);
 
   // Read ?tag= from URL on mount
   useEffect(() => {
@@ -85,7 +111,6 @@ export function HomePage() {
     if (selectedTags.length > 0) {
       setSearchParams({ tag: selectedTags.join(',') }, { replace: true });
     } else {
-      // Remove tag param if no tags selected
       const newParams = new URLSearchParams(searchParams);
       newParams.delete('tag');
       setSearchParams(newParams, { replace: true });
@@ -127,24 +152,48 @@ export function HomePage() {
     );
   };
 
-  const handleClearTags = () => {
+  const handleClearAll = () => {
     setSelectedTags([]);
+    setTypeFilter('');
+    setScopeFilter('');
+    setQuery('');
+    setSearched(false);
+    setResults([]);
   };
 
-  const handleAddSuccess = () => {
-    loadRecent();
+  const handleSuccess = () => {
+    loadRecent(typeFilter, scopeFilter);
     loadTags();
-    // Bump ref so polling doesn't double-refresh
-    if (lastTotalRef.current !== null) lastTotalRef.current += 1;
+    loadScopes();
+    // Reset snapshot so polling doesn't double-refresh
+    lastSnapshotRef.current = null;
   };
 
-  // Filter recent entries by selected tags (client-side)
+  const handleEdit = (entry: Record<string, unknown>) => {
+    setEditingEntry(entry);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingEntry(null);
+  };
+
+  // Filter recent entries by selected tags (client-side — tags are always client-side)
   const filteredRecent = selectedTags.length > 0
     ? recentEntries.filter(entry => {
         const entryTags = (entry.tags as string[]) ?? [];
         return selectedTags.some(tag => entryTags.includes(tag));
       })
     : recentEntries;
+
+  // Filter search results by tags (client-side)
+  const filteredResults = selectedTags.length > 0
+    ? results.filter(r => {
+        const entryTags = ((r.entry as Record<string, unknown>).tags as string[]) ?? [];
+        return selectedTags.some(tag => entryTags.includes(tag));
+      })
+    : results;
 
   return (
     <div>
@@ -177,14 +226,14 @@ export function HomePage() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
           style={{
             padding: '8px 12px', borderRadius: 6,
             backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: 'var(--text-secondary)', fontSize: 13,
+            color: typeFilter ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 13,
           }}
         >
           <option value="">{t('filters.all')} — {t('filters.type')}</option>
@@ -192,17 +241,33 @@ export function HomePage() {
             <option key={type} value={type}>{t(`types.${type}`)}</option>
           ))}
         </select>
-        <input
-          type="text"
+        <select
           value={scopeFilter}
           onChange={(e) => setScopeFilter(e.target.value)}
-          placeholder={t('filters.scope')}
           style={{
             padding: '8px 12px', borderRadius: 6,
             backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: 'var(--text-secondary)', fontSize: 13, width: 200,
+            color: scopeFilter ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 13,
           }}
-        />
+        >
+          <option value="">{t('filters.all')} — {t('filters.scope')}</option>
+          {allScopes.map(scope => (
+            <option key={scope} value={scope}>{scope}</option>
+          ))}
+        </select>
+        {hasActiveFilters && (
+          <button
+            onClick={handleClearAll}
+            style={{
+              padding: '8px 14px', borderRadius: 6,
+              border: '1px solid var(--border)', backgroundColor: 'transparent',
+              color: 'var(--accent)', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {t('filters.clear')}
+          </button>
+        )}
       </div>
 
       {/* Tag Bar */}
@@ -210,24 +275,25 @@ export function HomePage() {
         tags={allTags}
         selectedTags={selectedTags}
         onToggleTag={handleToggleTag}
-        onClearTags={handleClearTags}
+        onClearTags={() => setSelectedTags([])}
         loading={false}
       />
 
       {/* Search Results */}
-      {searched && results.length === 0 && (
+      {searched && filteredResults.length === 0 && (
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
           {t('search.noResults')}
         </p>
       )}
 
-      {searched && results.map((result) => (
+      {searched && filteredResults.map((result) => (
         <KnowledgeCard
           key={(result.entry as Record<string, unknown>).id as string}
           entry={result.entry}
           similarity={result.similarity}
           onDelete={handleDelete}
           onTagClick={handleToggleTag}
+          onEdit={handleEdit}
         />
       ))}
 
@@ -250,6 +316,7 @@ export function HomePage() {
               entry={entry}
               onDelete={handleDelete}
               onTagClick={handleToggleTag}
+              onEdit={handleEdit}
             />
           ))}
         </div>
@@ -257,16 +324,17 @@ export function HomePage() {
 
       {!searched && filteredRecent.length === 0 && (
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
-          {selectedTags.length > 0 ? t('search.noResults') : t('search.empty')}
+          {selectedTags.length > 0 || typeFilter || scopeFilter ? t('search.noResults') : t('search.empty')}
         </p>
       )}
 
       {/* FAB + Modal */}
-      <FloatingAddButton onClick={() => setShowModal(true)} />
-      <AddKnowledgeModal
+      <FloatingAddButton onClick={() => { setEditingEntry(null); setShowModal(true); }} />
+      <KnowledgeModal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        onSuccess={handleAddSuccess}
+        onClose={handleCloseModal}
+        onSuccess={handleSuccess}
+        entry={editingEntry}
       />
     </div>
   );

@@ -5,6 +5,7 @@ export interface KnowledgeCardProps {
   similarity?: number;
   onDelete: (id: string) => void;
   onTagClick: (tag: string) => void;
+  onEdit?: (entry: Record<string, unknown>) => void;
 }
 
 export function KnowledgeCard({
@@ -12,6 +13,7 @@ export function KnowledgeCard({
   similarity,
   onDelete,
   onTagClick,
+  onEdit,
 }: KnowledgeCardProps) {
   const { t } = useTranslation();
 
@@ -23,13 +25,18 @@ export function KnowledgeCard({
   return (
     <div
       key={entry.id as string}
+      onClick={() => onEdit?.(entry)}
       style={{
         backgroundColor: 'var(--bg-card)',
         borderRadius: 10,
         border: '1px solid var(--border)',
         padding: 16,
         marginBottom: 12,
+        cursor: onEdit ? 'pointer' : 'default',
+        transition: 'border-color 0.15s',
       }}
+      onMouseEnter={(e) => onEdit && (e.currentTarget.style.borderColor = 'var(--accent)')}
+      onMouseLeave={(e) => onEdit && (e.currentTarget.style.borderColor = 'var(--border)')}
     >
       <div
         style={{
@@ -70,14 +77,22 @@ export function KnowledgeCard({
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
+          {onEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(entry); }}
+              style={{
+                background: 'none', border: 'none',
+                color: 'var(--accent)', cursor: 'pointer', fontSize: 13,
+              }}
+            >
+              {t('actions.edit')}
+            </button>
+          )}
           <button
-            onClick={() => onDelete(entry.id as string)}
+            onClick={(e) => { e.stopPropagation(); onDelete(entry.id as string); }}
             style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--error)',
-              cursor: 'pointer',
-              fontSize: 13,
+              background: 'none', border: 'none',
+              color: 'var(--error)', cursor: 'pointer', fontSize: 13,
             }}
           >
             {t('actions.delete')}
@@ -108,7 +123,7 @@ export function KnowledgeCard({
         {((entry.tags as string[]) ?? []).map((tag) => (
           <button
             key={tag}
-            onClick={() => onTagClick(tag)}
+            onClick={(e) => { e.stopPropagation(); onTagClick(tag); }}
             style={{
               backgroundColor: 'var(--bg-input)',
               color: 'var(--accent)',
@@ -125,12 +140,7 @@ export function KnowledgeCard({
         ))}
       </div>
 
-      <div
-        style={{
-          fontSize: 11,
-          color: 'var(--text-secondary)',
-        }}
-      >
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
         v{entry.version as number} •{' '}
         {entry.agentId ? `Agent: ${entry.agentId}` : ''} •{' '}
         {new Date(entry.createdAt as string).toLocaleDateString()}

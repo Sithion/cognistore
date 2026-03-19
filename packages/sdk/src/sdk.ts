@@ -135,12 +135,21 @@ export class KnowledgeSDK {
     }
   }
 
-  async listRecent(limit = 20) {
+  async listRecent(limit = 20, filters?: { type?: string; scope?: string }) {
     this.ensureInitialized();
     try {
-      return await this.service!.listRecent(limit);
+      return await this.service!.listRecent(limit, filters);
     } catch (error) {
       throw this.wrapError(error, 'Failed to list recent knowledge');
+    }
+  }
+
+  async getTopTags(limit = 10) {
+    this.ensureInitialized();
+    try {
+      return await this.service!.topTags(limit);
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to get top tags');
     }
   }
 

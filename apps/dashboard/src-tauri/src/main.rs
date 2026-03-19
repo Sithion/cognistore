@@ -42,8 +42,8 @@ fn main() {
             // 4. Find available port
             let port = sidecar::find_available_port(3210);
 
-            // 5. Spawn sidecar
-            let child = sidecar::spawn_node(
+            // 5. Spawn sidecar (returns child process + identity token)
+            let (child, token) = sidecar::spawn_node(
                 &node_bin,
                 &script_path,
                 &resource_dir,
@@ -54,13 +54,13 @@ fn main() {
 
             app.manage(SidecarState::new(child));
 
-            // 6. Wait for server ready, then navigate WebView
+            // 6. Wait for OUR server to be ready (verifies sidecar token), then navigate WebView
             let window = app
                 .get_webview_window("main")
                 .expect("Main window not found");
 
             tauri::async_runtime::spawn(async move {
-                let ready = sidecar::wait_for_ready(port, Duration::from_secs(15)).await;
+                let ready = sidecar::wait_for_ready(port, &token, Duration::from_secs(15)).await;
                 if ready {
                     let url = format!("http://localhost:{}", port);
                     let _ = window.navigate(url.parse().unwrap());

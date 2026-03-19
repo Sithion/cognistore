@@ -178,10 +178,27 @@ export class KnowledgeRepository {
       .slice(0, limit);
   }
 
-  async listRecent(limit = 20) {
+  async listRecent(limit = 20, filters?: { type?: string; scope?: string }) {
+    const conditions: any[] = [];
+    if (filters?.type) conditions.push(sql`${knowledgeEntries.type} = ${filters.type}`);
+    if (filters?.scope) conditions.push(sql`${knowledgeEntries.scope} = ${filters.scope}`);
+
+    if (conditions.length === 0) {
+      return this.db
+        .select()
+        .from(knowledgeEntries)
+        .orderBy(sql`${knowledgeEntries.createdAt} DESC`)
+        .limit(limit);
+    }
+
+    const where = conditions.length === 1
+      ? conditions[0]
+      : sql`${conditions[0]} AND ${conditions[1]}`;
+
     return this.db
       .select()
       .from(knowledgeEntries)
+      .where(where)
       .orderBy(sql`${knowledgeEntries.createdAt} DESC`)
       .limit(limit);
   }
@@ -193,11 +210,25 @@ export class KnowledgeRepository {
     return result.map((r) => r.value);
   }
 
+  async topTags(limit = 10) {
+    const result = await this.db.all<{ tag: string; count: number }>(
+      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) GROUP BY value ORDER BY count DESC LIMIT ${limit}`
+    );
+    return result;
+  }
+
   async count() {
     const [result] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(knowledgeEntries);
     return Number(result.count);
+  }
+
+  async lastUpdatedAt(): Promise<string | null> {
+    const result = await this.db.all<{ latest: string }>(
+      sql`SELECT MAX(updated_at) as latest FROM knowledge_entries`
+    );
+    return result[0]?.latest ?? null;
   }
 
   async countByType() {
