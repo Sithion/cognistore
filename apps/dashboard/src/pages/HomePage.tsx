@@ -9,21 +9,13 @@ import { FloatingAddButton } from '../components/FloatingAddButton.js';
 
 const POLL_INTERVAL_MS = 10_000;
 
-interface SearchResult {
-  entry: Record<string, unknown>;
-  similarity: number;
-}
-
 export function HomePage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Search state
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
   const [recentEntries, setRecentEntries] = useState<Record<string, unknown>[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
   const [typeFilter, setTypeFilter] = useState('');
   const [scopeFilter, setScopeFilter] = useState('');
 
@@ -74,11 +66,9 @@ export function HomePage() {
     loadScopes();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reload recent entries when type/scope filters change (non-search mode)
+  // Reload recent entries when type/scope filters change
   useEffect(() => {
-    if (!searched) {
-      loadRecent(typeFilter, scopeFilter);
-    }
+    loadRecent(typeFilter, scopeFilter);
   }, [typeFilter, scopeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for new/updated entries — detects changes from any process (OpenCode, Claude, etc.)
@@ -117,29 +107,10 @@ export function HomePage() {
     }
   }, [selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
-    setLoading(true);
-    try {
-      const options: Record<string, unknown> = {};
-      if (typeFilter) options.type = typeFilter;
-      if (scopeFilter) options.scope = scopeFilter;
-      if (selectedTags.length > 0) options.tags = selectedTags;
-      const data = await api.search(query, options) as SearchResult[];
-      setResults(data);
-      setSearched(true);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     if (!confirm(t('delete.message'))) return;
     try {
       await api.deleteEntry(id);
-      setResults(results.filter(r => (r.entry as Record<string, unknown>).id !== id));
       setRecentEntries(recentEntries.filter(e => e.id !== id));
     } catch (error) {
       console.error('Delete failed:', error);
@@ -157,8 +128,6 @@ export function HomePage() {
     setTypeFilter('');
     setScopeFilter('');
     setQuery('');
-    setSearched(false);
-    setResults([]);
   };
 
   const handleSuccess = () => {
@@ -179,21 +148,31 @@ export function HomePage() {
     setEditingEntry(null);
   };
 
-  // Filter recent entries by selected tags (client-side — tags are always client-side)
-  const filteredRecent = selectedTags.length > 0
-    ? recentEntries.filter(entry => {
-        const entryTags = (entry.tags as string[]) ?? [];
-        return selectedTags.some(tag => entryTags.includes(tag));
-      })
-    : recentEntries;
-
-  // Filter search results by tags (client-side)
-  const filteredResults = selectedTags.length > 0
-    ? results.filter(r => {
-        const entryTags = ((r.entry as Record<string, unknown>).tags as string[]) ?? [];
-        return selectedTags.some(tag => entryTags.includes(tag));
-      })
-    : results;
+  // Filter recent entries by tags (client-side) and text query
+  const q = query.trim().toLowerCase();
+  const filteredRecent = recentEntries.filter(entry => {
+    // Tag filter
+    if (selectedTags.length > 0) {
+      const entryTags = (entry.tags as string[]) ?? [];
+      if (!selectedTags.some(tag => entryTags.includes(tag))) return false;
+    }
+    // Text filter (substring match on content, tags, source, scope)
+    if (q) {
+      const content = ((entry.content as string) ?? '').toLowerCase();
+      const tags = ((entry.tags as string[]) ?? []).join(' ').toLowerCase();
+      const source = ((entry.source as string) ?? '').toLowerCase();
+      const scope = ((entry.scope as string) ?? '').toLowerCase();
+      const type = ((entry.type as string) ?? '').toLowerCase();
+      if (
+        !content.includes(q) &&
+        !tags.includes(q) &&
+        !source.includes(q) &&
+        !scope.includes(q) &&
+        !type.includes(q)
+      ) return false;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -204,7 +183,6 @@ export function HomePage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           placeholder={t('search.placeholder')}
           style={{
             flex: 1, padding: '12px 16px', borderRadius: 8,
@@ -212,17 +190,6 @@ export function HomePage() {
             color: 'var(--text-primary)', fontSize: 14, outline: 'none',
           }}
         />
-        <button
-          onClick={handleSearch}
-          disabled={loading}
-          style={{
-            padding: '12px 24px', borderRadius: 8, border: 'none',
-            backgroundColor: 'var(--accent)', color: '#fff',
-            cursor: 'pointer', fontSize: 14, fontWeight: 600,
-          }}
-        >
-          {loading ? '...' : t('search.button')}
-        </button>
       </div>
 
       {/* Filters */}
@@ -279,26 +246,8 @@ export function HomePage() {
         loading={false}
       />
 
-      {/* Search Results */}
-      {searched && filteredResults.length === 0 && (
-        <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
-          {t('search.noResults')}
-        </p>
-      )}
-
-      {searched && filteredResults.map((result) => (
-        <KnowledgeCard
-          key={(result.entry as Record<string, unknown>).id as string}
-          entry={result.entry}
-          similarity={result.similarity}
-          onDelete={handleDelete}
-          onTagClick={handleToggleTag}
-          onEdit={handleEdit}
-        />
-      ))}
-
-      {/* Recent Knowledge */}
-      {!searched && filteredRecent.length > 0 && (
+      {/* Knowledge Entries */}
+      {filteredRecent.length > 0 && (
         <div>
           <h3 style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
             {t('search.recent')}
@@ -322,9 +271,9 @@ export function HomePage() {
         </div>
       )}
 
-      {!searched && filteredRecent.length === 0 && (
+      {filteredRecent.length === 0 && (
         <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
-          {selectedTags.length > 0 || typeFilter || scopeFilter ? t('search.noResults') : t('search.empty')}
+          {hasActiveFilters ? t('search.noResults') : t('search.empty')}
         </p>
       )}
 
