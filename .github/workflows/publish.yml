@@ -59,7 +59,7 @@ jobs:
         include:
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-13
+          - platform: macos-14
             target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -111,6 +111,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/dashboard
           tagName: v${{ steps.pkg-version.outputs.version }}

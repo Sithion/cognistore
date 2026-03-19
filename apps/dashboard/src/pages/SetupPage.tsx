@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type SetupStatus } from '../api/client.js';
 
+declare const __APP_VERSION__: string;
+
 type StepStatus = 'pending' | 'running' | 'done' | 'error';
 
 interface Step {
@@ -12,6 +14,7 @@ interface Step {
 
 export function SetupPage({ onComplete }: { onComplete: () => void }) {
   const [steps, setSteps] = useState<Step[]>([
+    { id: 'node', label: 'Installing Node.js v20', status: 'pending' },
     { id: 'ollama', label: 'Installing Ollama', status: 'pending' },
     { id: 'ollama-start', label: 'Starting Ollama', status: 'pending' },
     { id: 'database', label: 'Creating database', status: 'pending' },
@@ -37,6 +40,16 @@ export function SetupPage({ onComplete }: { onComplete: () => void }) {
       let status: SetupStatus;
       try { status = await api.getSetupStatus(); }
       catch { status = { ollamaInstalled: false, ollamaRunning: false, databaseReady: false, modelAvailable: false, configsReady: false, sdkReady: false, allReady: false }; }
+
+      // Step 0: Install Node.js v20
+      if (status.nodeReady) {
+        updateStep('node', { status: 'done' });
+      } else {
+        updateStep('node', { status: 'running' });
+        const res = await api.setupNode();
+        if (!res.success) { updateStep('node', { status: 'error', error: res.message }); setRunning(false); return; }
+        updateStep('node', { status: 'done' });
+      }
 
       // Step 1: Install Ollama
       if (status.ollamaInstalled) {
@@ -121,7 +134,8 @@ export function SetupPage({ onComplete }: { onComplete: () => void }) {
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 8 }}>🧠</div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent)' }}>AI Knowledge Base</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 4 }}>Setting up your environment...</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 11, marginTop: 4, opacity: 0.6 }}>v{__APP_VERSION__}</p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginTop: 8 }}>Setting up your environment...</p>
       </div>
 
       <div style={{

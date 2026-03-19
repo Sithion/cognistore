@@ -20,6 +20,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export interface SetupStatus {
+  nodeReady: boolean;
   ollamaInstalled: boolean;
   ollamaRunning: boolean;
   databaseReady: boolean;
@@ -39,6 +40,7 @@ export interface SetupResult {
 export const api = {
   // Setup
   getSetupStatus: () => request<SetupStatus>('/api/setup/status'),
+  setupNode: () => request<SetupResult>('/api/setup/node', { method: 'POST' }),
   setupOllama: () => request<SetupResult>('/api/setup/ollama', { method: 'POST' }),
   setupOllamaStart: () => request<SetupResult>('/api/setup/ollama-start', { method: 'POST' }),
   setupDatabase: () => request<SetupResult>('/api/setup/database', { method: 'POST' }),

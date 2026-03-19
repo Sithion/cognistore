@@ -9,6 +9,8 @@ use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // 1. Find Node.js
             let node_bin = sidecar::find_node().map_err(|e| {

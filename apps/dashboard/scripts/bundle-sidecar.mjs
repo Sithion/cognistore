@@ -9,9 +9,10 @@
  */
 
 import { execSync } from 'node:child_process';
-import { cpSync, rmSync, mkdirSync, existsSync } from 'node:fs';
+import { cpSync, rmSync, mkdirSync, existsSync, readdirSync as readDirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dashboardRoot = resolve(__dirname, '..');
@@ -99,8 +100,50 @@ for (const mod of requiredModules) {
   }
 }
 
-// 6. Copy templates (skills + configs)
-console.log('\n[5/5] Copying templates...');
+// 6. Rebuild better-sqlite3 with Node 20 (ensures MODULE_VERSION matches at runtime)
+console.log('\n[5/7] Rebuilding better-sqlite3 for Node 20...');
+const REQUIRED_NODE_MAJOR = 20;
+
+function findNode20() {
+  const nvmDir = resolve(homedir(), '.nvm', 'versions', 'node');
+  if (existsSync(nvmDir)) {
+    try {
+      const versions = readDirSync(nvmDir)
+        .filter(v => v.startsWith(`v${REQUIRED_NODE_MAJOR}.`))
+        .sort();
+      if (versions.length > 0) {
+        const nodeBin = resolve(nvmDir, versions[versions.length - 1], 'bin', 'node');
+        if (existsSync(nodeBin)) return nodeBin;
+      }
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+const node20 = findNode20();
+if (node20) {
+  const node20Version = execSync(`"${node20}" --version`, { encoding: 'utf-8' }).trim();
+  console.log(`  Using Node.js ${node20Version} at ${node20}`);
+  const npmBin = resolve(dirname(node20), 'npm');
+  try {
+    execSync(`"${npmBin}" rebuild better-sqlite3 --build-from-source`, {
+      cwd: bundleDir,
+      stdio: 'inherit',
+      env: { ...process.env, PATH: `${dirname(node20)}:${process.env.PATH}` },
+    });
+    console.log('  Rebuilt better-sqlite3 for Node 20');
+  } catch (e) {
+    console.warn(`  WARNING: Could not rebuild better-sqlite3: ${e.message}`);
+    console.warn('  The app may fail if the user runs a different Node.js version');
+  }
+} else {
+  console.warn(`  WARNING: Node.js v${REQUIRED_NODE_MAJOR} not found in nvm.`);
+  console.warn('  Install it: nvm install 20');
+  console.warn('  Skipping rebuild — native modules may not work at runtime.');
+}
+
+// 7. Copy templates (skills + configs)
+console.log('\n[6/7] Copying templates...');
 const templatesSrc = resolve(dashboardRoot, 'templates');
 if (existsSync(templatesSrc)) {
   cpSync(templatesSrc, resolve(bundleDir, 'templates'), { recursive: true });
@@ -109,6 +152,7 @@ if (existsSync(templatesSrc)) {
   console.warn('  WARNING: templates/ not found');
 }
 
+console.log('\n[7/7] Done!');
 console.log(`\nSidecar bundle ready at: ${bundleDir}`);
 console.log('Contents:');
 execSync(`ls -la "${bundleDir}"`, { stdio: 'inherit' });

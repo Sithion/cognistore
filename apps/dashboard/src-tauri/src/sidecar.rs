@@ -25,19 +25,36 @@ impl SidecarState {
     }
 }
 
-/// Find the Node.js binary on the system.
+/// The Node.js major version that native modules (better-sqlite3) are compiled against.
+const REQUIRED_NODE_MAJOR: u32 = 20;
+
+/// Find the Node.js binary on the system, preferring the version that matches
+/// the native modules compiled in the sidecar bundle.
 pub fn find_node() -> Result<PathBuf, String> {
-    // Try PATH first
-    if let Ok(output) = Command::new("which").arg("node").output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Ok(PathBuf::from(path));
+    // 1. Check nvm for the required major version first (most reliable)
+    if let Some(home) = dirs::home_dir() {
+        let nvm_dir = home.join(".nvm").join("versions").join("node");
+        if nvm_dir.exists() {
+            if let Ok(node) = find_nvm_node(&nvm_dir, REQUIRED_NODE_MAJOR) {
+                return Ok(node);
             }
         }
     }
 
-    // Fallback paths
+    // 2. Check if system node matches the required version
+    if let Ok(output) = Command::new("which").arg("node").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                let p = PathBuf::from(&path);
+                if check_node_major(&p, REQUIRED_NODE_MAJOR) {
+                    return Ok(p);
+                }
+            }
+        }
+    }
+
+    // 3. Fallback paths — only if version matches
     let fallbacks = [
         "/opt/homebrew/bin/node",
         "/usr/local/bin/node",
@@ -46,17 +63,16 @@ pub fn find_node() -> Result<PathBuf, String> {
 
     for path in &fallbacks {
         let p = PathBuf::from(path);
-        if p.exists() {
+        if p.exists() && check_node_major(&p, REQUIRED_NODE_MAJOR) {
             return Ok(p);
         }
     }
 
-    // Check common nvm paths
+    // 4. Last resort: any nvm version (pick latest)
     if let Some(home) = dirs::home_dir() {
         let nvm_dir = home.join(".nvm").join("versions").join("node");
         if nvm_dir.exists() {
             if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
-                // Pick the latest version
                 let mut versions: Vec<PathBuf> = entries
                     .filter_map(|e| e.ok())
                     .map(|e| e.path())
@@ -72,7 +88,58 @@ pub fn find_node() -> Result<PathBuf, String> {
         }
     }
 
-    Err("Node.js not found. Please install Node.js (https://nodejs.org) and try again.".into())
+    // 5. Any system node as absolute fallback
+    if let Ok(output) = Command::new("which").arg("node").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Ok(PathBuf::from(path));
+            }
+        }
+    }
+
+    Err(format!(
+        "Node.js v{} not found. The app will install it automatically via nvm during setup.",
+        REQUIRED_NODE_MAJOR
+    ))
+}
+
+/// Find a Node.js binary in nvm matching the required major version.
+fn find_nvm_node(nvm_dir: &PathBuf, major: u32) -> Result<PathBuf, String> {
+    let prefix = format!("v{}.", major);
+    let mut matches: Vec<PathBuf> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(nvm_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) {
+                let node_bin = entry.path().join("bin").join("node");
+                if node_bin.exists() {
+                    matches.push(node_bin);
+                }
+            }
+        }
+    }
+
+    matches.sort();
+    matches.last().cloned().ok_or_else(|| format!("No Node.js v{} found in nvm", major))
+}
+
+/// Check if a Node.js binary is the required major version.
+fn check_node_major(node_bin: &PathBuf, major: u32) -> bool {
+    if let Ok(output) = Command::new(node_bin).arg("--version").output() {
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Some(stripped) = version.strip_prefix('v') {
+                if let Some(major_str) = stripped.split('.').next() {
+                    if let Ok(v) = major_str.parse::<u32>() {
+                        return v == major;
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Spawn the Fastify server as a child process.
