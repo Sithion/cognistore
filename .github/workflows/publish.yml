@@ -120,9 +120,38 @@ jobs:
 
           echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
 
+  # ── Build web assets (runs once, platform-independent) ─────────
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web assets
+        working-directory: apps/dashboard
+        run: node scripts/bundle-sidecar.mjs --phase=web
+
+      - name: Upload sidecar web assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-web
+          retention-days: 1
+          path: |
+            apps/dashboard/sidecar-bundle/dist
+            apps/dashboard/sidecar-bundle/dist-server
+            apps/dashboard/sidecar-bundle/templates
+
   # ── Tauri Desktop App → GitHub Releases ────────────────────────
   publish-tauri:
-    needs: [create-release]
+    needs: [create-release, build-web]
     strategy:
       fail-fast: false
       matrix:
@@ -166,12 +195,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build monorepo
-        run: pnpm turbo build --filter=@ai-knowledge/dashboard
+      - name: Download web assets
+        uses: actions/download-artifact@v4
+        with:
+          name: sidecar-web
 
-      - name: Bundle sidecar
+      - name: Bundle native modules
         working-directory: apps/dashboard
-        run: node scripts/bundle-sidecar.mjs
+        run: node scripts/bundle-sidecar.mjs --phase=native
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
