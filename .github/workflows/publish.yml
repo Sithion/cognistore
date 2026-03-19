@@ -143,7 +143,7 @@ jobs:
         run: node scripts/bundle-sidecar.mjs --phase=web
 
       - name: Upload sidecar web assets
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: sidecar-web
           retention-days: 1
@@ -196,7 +196,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Download web assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: sidecar-web
           path: apps/dashboard/sidecar-bundle
