@@ -102,6 +102,9 @@ export const api = {
     return request<any[]>(`/api/plans?${params}`);
   },
 
+  getPlan: (id: string) =>
+    request<any>(`/api/plans/${id}`),
+
   getPlanRelations: (id: string) =>
     request<{ entry: any; relationType: string }[]>(`/api/plans/${id}/relations`),
 

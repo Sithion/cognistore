@@ -117,13 +117,13 @@ Copied to `~/.claude/skills/`:
 
 ### Copilot Skills
 
-Copied to `~/.copilot/skills/`:
+Copied to `~/.copilot/skills/` (directory format with hooks, same as Claude Code):
 
-| Skill | File | Purpose |
-|-------|------|---------|
-| `ai-knowledge-capture` | `~/.copilot/skills/ai-knowledge-capture.md` | Capture knowledge after tasks |
-| `ai-knowledge-query` | `~/.copilot/skills/ai-knowledge-query.md` | Query knowledge before tasks |
-| `ai-knowledge-plan` | `~/.copilot/skills/ai-knowledge-plan.md` | Save plans to knowledge base with task tracking |
+| Skill | Directory | Hook | Purpose |
+|-------|-----------|------|---------|
+| `ai-knowledge-query` | `~/.copilot/skills/ai-knowledge-query/SKILL.md` | `preToolUse` | Query knowledge before starting tasks |
+| `ai-knowledge-capture` | `~/.copilot/skills/ai-knowledge-capture/SKILL.md` | `sessionEnd` | Capture knowledge after completing tasks |
+| `ai-knowledge-plan` | `~/.copilot/skills/ai-knowledge-plan/SKILL.md` | `postToolUse` | Save plans to knowledge base with task management workflow |
 
 ## Instruction Templates
 

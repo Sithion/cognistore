@@ -1,14 +1,15 @@
 ---
 name: ai-knowledge-capture
 description: >
-  Store discoveries, decisions, fixes, and patterns in the AI Knowledge
-  semantic database. MANDATORY: Every agent must capture knowledge after
-  completing work — fixes, decisions, patterns, constraints, and gotchas.
+  MANDATORY — automatically triggered after completing ANY task. Store discoveries,
+  decisions, fixes, and patterns in the AI Knowledge semantic database.
+  This skill MUST run as your LAST action before finishing work.
+  Do NOT skip. Do NOT forget. Capture knowledge, then finish.
 ---
 
 # AI Knowledge Capture
 
-**MANDATORY**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — capture it in the knowledge base immediately. Every entry builds institutional memory that benefits all future sessions.
+**BLOCKING REQUIREMENT**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — you MUST capture it in the knowledge base immediately. This is NOT optional.
 
 ## When to Capture
 
@@ -33,41 +34,6 @@ mcp__ai-knowledge__addKnowledge({
 })
 ```
 
-### Examples
-
-**Fix discovered:**
-```
-mcp__ai-knowledge__addKnowledge({
-  content: "PostgreSQL pgvector extension requires CREATE EXTENSION before creating vector columns.",
-  type: "fix",
-  scope: "workspace:knowledge-base",
-  source: "database migration debugging",
-  tags: ["postgresql", "pgvector", "migration"],
-  confidenceScore: 0.95
-})
-```
-
-**Decision made:**
-```
-mcp__ai-knowledge__addKnowledge({
-  content: "Chose all-minilm (384 dimensions) over nomic-embed-text for embeddings. 3x faster, lower memory.",
-  type: "decision",
-  scope: "workspace:knowledge-base",
-  source: "embedding model selection",
-  tags: ["ollama", "embeddings"],
-  confidenceScore: 0.9
-})
-```
-
-## Rules
-
-- **All agents must capture** — no exceptions
-- **Capture immediately** — do not wait until end of session
-- **Never fix without documenting** — root cause and prevention are required
-- **Never decide without documenting** — future agents need reasoning
-- **Be concise but complete** — full context without re-investigation needed
-- **All entries in English** — regardless of user language preference
-
 ## What NOT to Capture
 
 Only store knowledge that **saves significant time in future sessions**. Do NOT capture:
@@ -75,8 +41,6 @@ Only store knowledge that **saves significant time in future sessions**. Do NOT 
 - **Publicly documented facts** — standard API docs, language syntax, framework basics
 - **Trivial fixes** — typos, missing imports, simple syntax errors
 - **Temporary state** — work-in-progress notes, current debugging status
-
-**DO capture**: hard-won insights, project-specific decisions, non-obvious gotchas, cross-session architectural context.
 
 **Rule of thumb**: If a web search answers it in 30 seconds, don't store it. If it took 5+ minutes of investigation, store it.
 
@@ -88,7 +52,12 @@ Only store knowledge that **saves significant time in future sessions**. Do NOT 
 2. If the existing entry is wrong → **DELETE it** with `mcp__ai-knowledge__deleteKnowledge(id)` and create a fresh one
 3. Only **ADD** when the knowledge is genuinely new — no existing entry covers the topic
 
-Duplicates pollute search results. One well-maintained entry is worth more than three stale duplicates.
+## Rules
+
+- **LAST action of every task** — capture before finishing
+- **No exceptions** — no task is "too simple" to capture knowledge from
+- **All entries in English** — regardless of conversation language
+- **Be concise but complete** — full context without re-investigation needed
 
 ## Scope Guidelines
 

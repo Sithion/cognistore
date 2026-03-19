@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_SKILL_DIR}/hooks/session-end-reminder.sh",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}

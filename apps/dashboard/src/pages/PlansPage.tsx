@@ -216,6 +216,28 @@ export function PlansPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadActivePlans]);
 
+  // Refresh selected plan detail (status, tasks, relations)
+  const refreshSelectedPlan = useCallback(async (planId: string) => {
+    try {
+      const [planData, t, r] = await Promise.all([
+        api.getPlan(planId),
+        api.listPlanTasks(planId),
+        api.getPlanRelations(planId),
+      ]);
+      if (planData) setSelectedPlan(planData as PlanEntry);
+      setTasks(t as PlanTask[]);
+      setRelations(r as PlanRelation[]);
+    } catch { /* silent — don't clear on transient errors */ }
+  }, []);
+
+  // Poll selected plan every 5s
+  useEffect(() => {
+    if (!selectedPlan) return;
+    const id = selectedPlan.id;
+    const interval = setInterval(() => refreshSelectedPlan(id), 5000);
+    return () => clearInterval(interval);
+  }, [selectedPlan?.id, refreshSelectedPlan]);
+
   const selectPlan = async (plan: PlanEntry) => {
     setSelectedPlan(plan);
     try {
@@ -229,15 +251,6 @@ export function PlansPage() {
       setTasks([]);
       setRelations([]);
     }
-  };
-
-  const updatePlanStatus = async (planId: string, status: string) => {
-    try {
-      await api.updatePlan(planId, { status });
-      if (selectedPlan?.id === planId) setSelectedPlan({ ...selectedPlan, status });
-      loadPlans();
-      loadActivePlans();
-    } catch { /* silent */ }
   };
 
   const toggleNotes = (taskId: string) => {
@@ -274,27 +287,6 @@ export function PlansPage() {
           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{selectedPlan.title}</h1>
-
-        {/* Status Actions */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-          {['draft', 'active', 'completed', 'archived'].map((s) => (
-            <button
-              key={s}
-              disabled={selectedPlan.status === s}
-              onClick={() => updatePlanStatus(selectedPlan.id, s)}
-              style={{
-                padding: '5px 14px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                border: 'none',
-                backgroundColor: selectedPlan.status === s ? STATUS_COLORS[s] : 'var(--bg-card)',
-                color: selectedPlan.status === s ? '#fff' : 'var(--text-secondary)',
-                cursor: selectedPlan.status === s ? 'default' : 'pointer',
-                opacity: selectedPlan.status === s ? 1 : 0.7,
-              }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
 
         {/* Tasks */}
         {tasks.length > 0 && (

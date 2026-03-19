@@ -1,5 +1,22 @@
 # Patch Notes
 
+## v0.9.2
+
+### Fixes
+- **PlansPage**: removed plan status change buttons from dashboard — plan status can only be changed by agents via MCP
+
+### Improvements
+- **Copilot skills**: converted from flat `.md` files to directory format (`SKILL.md` + hooks) matching Claude Code structure
+- **Copilot hooks**: added `preToolUse`, `sessionEnd`, and `postToolUse` hooks (parity with Claude Code)
+- **Instruction templates**: stronger enforcement language with CHECKPOINT-based flow for both Claude Code and Copilot
+- **Skill descriptions**: rewritten with MANDATORY/BLOCKING REQUIREMENT language for better auto-triggering
+- **UserPromptSubmit hook**: new earliest-possible hook fires when user sends a message, BEFORE any tool use — reminds to query knowledge base and use createPlan() for multi-step tasks
+- **Plan enforcement**: added CHECKPOINT 3 to instruction templates — 3+ steps = mandatory createPlan()
+- **Plan file guard hook**: new PreToolUse hook on Write/Edit detects plan-like filenames (plan.md, TODO.md, etc.) and warns to use createPlan() instead
+- **Plan skill rewrite**: explicit FORBIDDEN section listing banned patterns (local files, task-list-only, chat-only plans)
+- **PostToolUse hook strengthened**: ExitPlanMode hook now explicitly forbids local file plans and task-list substitutes
+- **Upgrade cleanup**: old flat Copilot skill files (`.md`) are automatically removed during upgrade
+
 ## v0.9.1
 
 ### Upgrade System (New)

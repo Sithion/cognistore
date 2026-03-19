@@ -1,16 +1,17 @@
 ---
 name: ai-knowledge-query
 description: >
-  Query the AI Knowledge semantic database before starting any task.
-  MANDATORY: Every agent must call this before analysis, implementation,
-  or decision-making to avoid redundant work and leverage prior discoveries.
+  MANDATORY — automatically triggered before ANY task. Query the AI Knowledge
+  semantic database before analysis, implementation, or decision-making.
+  This skill MUST run as your FIRST action in every session, every task.
+  Do NOT skip. Do NOT defer. Query first, then work.
 user-invocable: true
 argument-hint: <natural language query describing the task or problem>
 ---
 
 # AI Knowledge Query
 
-**MANDATORY**: Before starting ANY task — analysis, implementation, planning, or decision-making — query the knowledge base first. A single query costs ~30 tokens. A missed cache hit wastes 2,000–8,000 tokens on redundant work.
+**BLOCKING REQUIREMENT**: Before starting ANY task — analysis, implementation, planning, or decision-making — you MUST query the knowledge base first. This is NOT optional. A single query costs ~30 tokens. A missed cache hit wastes 2,000–8,000 tokens on redundant work.
 
 ## When to Query
 
@@ -40,9 +41,9 @@ mcp__ai-knowledge__getKnowledge(query: "React form validation approach")
 
 | Similarity Score | Action |
 |-----------------|--------|
-| > 0.85 | **Use directly** — skip redundant analysis |
-| 0.70–0.85 | **Evaluate** — combine with targeted fresh analysis |
-| < 0.70 or empty | **Proceed** with full analysis, then capture findings |
+| > 0.50 | **Use directly** — skip redundant analysis |
+| 0.30–0.50 | **Evaluate** — combine with targeted fresh analysis |
+| < 0.30 or empty | **Proceed** with full analysis, then capture findings |
 
 ## Rules
 

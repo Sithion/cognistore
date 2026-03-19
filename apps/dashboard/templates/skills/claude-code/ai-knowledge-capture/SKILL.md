@@ -1,16 +1,17 @@
 ---
 name: ai-knowledge-capture
 description: >
-  Store discoveries, decisions, fixes, and patterns in the AI Knowledge
-  semantic database. MANDATORY: Every agent must capture knowledge after
-  completing work — fixes, decisions, patterns, constraints, and gotchas.
+  MANDATORY — automatically triggered after completing ANY task. Store discoveries,
+  decisions, fixes, and patterns in the AI Knowledge semantic database.
+  This skill MUST run as your LAST action before finishing work.
+  Do NOT skip. Do NOT forget. Capture knowledge, then finish.
 user-invocable: true
 argument-hint: <knowledge content to store>
 ---
 
 # AI Knowledge Capture
 
-**MANDATORY**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — capture it in the knowledge base immediately. Every entry builds institutional memory that benefits all future sessions.
+**BLOCKING REQUIREMENT**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — you MUST capture it in the knowledge base immediately. This is NOT optional.
 
 ## When to Capture
 

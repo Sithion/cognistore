@@ -1,23 +1,33 @@
 ---
 name: ai-knowledge-plan
 description: >
-  Persist implementation plans with task tracking in the AI Knowledge database.
-  MANDATORY: All plans MUST be stored exclusively in the knowledge base
-  via createPlan(). Never save plans to local files.
+  MANDATORY — automatically triggered when planning any non-trivial task.
+  ALL implementation plans MUST be created via createPlan() in the AI Knowledge
+  database. NEVER write plans to local files (plan.md, TODO.md, etc.).
+  NEVER use only TodoWrite or in-memory task lists as a substitute for createPlan().
+  If you are about to plan work with 3+ steps, you MUST call createPlan() FIRST.
 user-invocable: true
 argument-hint: <plan title and description>
 ---
 
 # AI Knowledge Plan
 
-**MANDATORY**: All implementation plans MUST be stored in the knowledge base. The knowledge base is the **ONLY** source of truth for plans. Never save plans to local files (e.g., plan.md).
+**BLOCKING REQUIREMENT**: ALL implementation plans MUST be stored in the knowledge base via `createPlan()`. This is the ONLY acceptable way to persist plans.
 
-## When to Create a Plan
+## What Counts as a Plan
 
-Create a plan whenever you:
-- Start a non-trivial implementation task (3+ files, architectural decisions)
-- Design an approach that should be preserved for future reference
-- Plan a multi-step migration or refactoring
+If your work involves **3 or more steps**, **architectural decisions**, or **multi-file changes**, you MUST create a plan. Examples:
+- Feature implementation → **createPlan()**
+- Bug fix requiring investigation → **createPlan()**
+- Refactoring across files → **createPlan()**
+- Migration or upgrade → **createPlan()**
+
+## FORBIDDEN — Never Do These
+
+- **NEVER** write a plan to a local file (plan.md, TODO.md, PLAN.md, etc.)
+- **NEVER** use only TodoWrite/task lists as a substitute — those are for in-session tracking, NOT plan persistence
+- **NEVER** describe a plan only in chat without persisting it
+- **NEVER** skip createPlan() because "it's a small task" — if it has 3+ steps, it needs a plan
 
 ## How to Create (with Tasks)
 
@@ -39,29 +49,35 @@ mcp__ai-knowledge__createPlan({
 
 **Important**: Always include a `tasks` array when creating a plan. If you retrieve a plan without tasks, create them immediately using `addPlanTask`.
 
-## Task Management During Execution
+## Task Management During Execution (MANDATORY — Real-Time Tracking)
 
-1. **Before starting work**, check task state:
+**You MUST update task status in the knowledge base as you work. This is NOT optional. Do NOT batch updates at the end — update EACH task BEFORE starting it and AFTER finishing it.**
+
+1. **Before starting ANY work on a plan**, list current tasks:
    ```
    mcp__ai-knowledge__listPlanTasks(planId: "<plan-id>")
    ```
 
-2. **For each task**, mark in_progress before starting:
+2. **BEFORE starting each task**, mark it `in_progress` IMMEDIATELY:
    ```
    mcp__ai-knowledge__updatePlanTask(taskId: "<task-id>", status: "in_progress")
    ```
+   Do NOT skip this. Do NOT start working on a task without marking it first.
 
-3. **When done**, mark completed:
+3. **AFTER completing each task**, mark it `completed` IMMEDIATELY with notes:
    ```
    mcp__ai-knowledge__updatePlanTask(taskId: "<task-id>", status: "completed", notes: "What was done")
    ```
+   Do NOT move to the next task without marking the current one completed first.
 
-4. **If blocked**, add notes:
+4. **If blocked**, add notes explaining why:
    ```
    mcp__ai-knowledge__updatePlanTask(taskId: "<task-id>", notes: "Blocked: reason...")
    ```
 
 5. **When resuming** a plan, find the first `pending` or `in_progress` task and continue from there.
+
+**The correct flow for EACH task is: `in_progress` → do the work → `completed`. Never skip the `in_progress` step.**
 
 6. **To add new tasks** discovered during execution:
    ```
@@ -88,8 +104,6 @@ When you finish the last task, you MUST:
 2. If all completed → call `updatePlan(planId, { status: "completed" })`
 3. If any NOT completed → leave plan as `active`, add notes to pending tasks explaining what remains
 
-This ensures plans are never left in `active` state when all work is done.
-
 ## Linking Related Knowledge
 
 - **Input** (consulted during planning): Pass `relatedKnowledgeIds` when creating the plan, or use `addPlanRelation` with `relationType: "input"`
@@ -97,7 +111,7 @@ This ensures plans are never left in `active` state when all work is done.
 
 ## Rules
 
-- **Plans go ONLY in the knowledge base** — never in local plan files
+- **Plans go ONLY in the knowledge base** — NEVER in local files
 - **Always include tasks** when creating a plan
 - **Always include relatedKnowledgeIds** if you queried knowledge beforehand
 - **Update task status in real-time** — mark in_progress when starting, completed when done

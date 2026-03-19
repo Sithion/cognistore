@@ -464,13 +464,22 @@ async function start() {
         }
       }
 
-      // Copilot skills
+      // Copilot skills (directory format with hooks)
       for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
-        const src = resolve(skillsDir, 'copilot', `${name}.md`);
-        if (existsSync(src)) {
-          const destDir = resolve(home, '.copilot', 'skills');
+        const srcDir = resolve(skillsDir, 'copilot', name);
+        if (existsSync(srcDir)) {
+          const destDir = resolve(home, '.copilot', 'skills', name);
           mkdirSync(destDir, { recursive: true });
-          cpSync(src, resolve(destDir, `${name}.md`));
+          cpSync(srcDir, destDir, { recursive: true });
+          // Make hook scripts executable
+          const hooksDir = resolve(destDir, 'hooks');
+          if (existsSync(hooksDir)) {
+            for (const file of readdirSync(hooksDir)) {
+              if (file.endsWith('.sh')) {
+                chmodSync(resolve(hooksDir, file), 0o755);
+              }
+            }
+          }
           results.push(`Skill ${name} installed (Copilot)`);
         }
       }
@@ -585,12 +594,24 @@ async function start() {
       }
 
       for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
-        const src = resolve(skillsDir, 'copilot', `${name}.md`);
-        if (existsSync(src)) {
-          const destDir = resolve(home, '.copilot', 'skills');
+        const srcDir = resolve(skillsDir, 'copilot', name);
+        if (existsSync(srcDir)) {
+          const destDir = resolve(home, '.copilot', 'skills', name);
           mkdirSync(destDir, { recursive: true });
-          cpSync(src, resolve(destDir, `${name}.md`));
+          cpSync(srcDir, destDir, { recursive: true });
+          const hooksDir = resolve(destDir, 'hooks');
+          if (existsSync(hooksDir)) {
+            for (const file of readdirSync(hooksDir)) {
+              if (file.endsWith('.sh')) chmodSync(resolve(hooksDir, file), 0o755);
+            }
+          }
         }
+      }
+
+      // Clean up old flat Copilot skill files (pre-0.9.2 format)
+      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
+        const oldFile = resolve(home, '.copilot', 'skills', `${name}.md`);
+        if (existsSync(oldFile)) unlinkSync(oldFile);
       }
 
       results.push({ step: 'skills', status: 'success' });
@@ -639,8 +660,12 @@ async function start() {
       for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
         const claudeDir = resolve(home, '.claude', 'skills', name);
         if (existsSync(claudeDir)) { rmSync(claudeDir, { recursive: true, force: true }); results.push(`Skill ${name} removed (Claude)`); }
+        // Remove new directory format
+        const copilotDir = resolve(home, '.copilot', 'skills', name);
+        if (existsSync(copilotDir)) { rmSync(copilotDir, { recursive: true, force: true }); results.push(`Skill ${name} removed (Copilot)`); }
+        // Clean up old flat file format (pre-0.9.2)
         const copilotFile = resolve(home, '.copilot', 'skills', `${name}.md`);
-        if (existsSync(copilotFile)) { unlinkSync(copilotFile); results.push(`Skill ${name} removed (Copilot)`); }
+        if (existsSync(copilotFile)) { unlinkSync(copilotFile); }
       }
 
       // 4. Remove Ollama model
@@ -920,6 +945,14 @@ async function start() {
     const limit = Number(q.limit) || 20;
     const status = q.status || undefined;
     return sdk.listPlans(limit, status);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/plans/:id', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const result = sdk.getPlanById(request.params.id);
+    if (!result) { reply.code(404); return { error: 'Not found' }; }
+    return result;
   });
 
   app.get<{ Params: { id: string } }>('/api/plans/:id/relations', async (request, reply) => {

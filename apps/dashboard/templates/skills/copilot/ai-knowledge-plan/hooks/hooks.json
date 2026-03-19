@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_SKILL_DIR}/hooks/pre-plan-file-check.sh",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "${COPILOT_SKILL_DIR}/hooks/post-plan-check.sh",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}
