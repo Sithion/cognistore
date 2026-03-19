@@ -11,7 +11,7 @@ Store, search, and retrieve knowledge using local vector embeddings — directly
 [![GitHub Release](https://img.shields.io/github/v/release/Sithion/ai-knowledge)](https://github.com/Sithion/ai-knowledge/releases)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-yellow.svg)](LICENSE)
 
-[Download](#quick-start) · [Features](#features) · [MCP Integration](#mcp-integration) · [Dashboard](#dashboard) · [Development](#development)
+[Download](#quick-start) · [Features](#features) · [MCP Integration](#mcp-integration) · [Dashboard](#dashboard) · [Development](#development) · [Patch Notes](PATCH-NOTES.md)
 
 ![AI Knowledge Base Dashboard](screenshot.png)
 

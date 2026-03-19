@@ -48,6 +48,10 @@ export const api = {
   setupConfigure: () => request<SetupResult>('/api/setup/configure', { method: 'POST' }),
   setupComplete: () => request<SetupResult>('/api/setup/complete', { method: 'POST' }),
 
+  // Upgrade
+  checkUpgrade: () => request<{ needsUpgrade: boolean; fromVersion: string | null; toVersion: string; isFirstInstall: boolean }>('/api/upgrade/check'),
+  runUpgrade: () => request<{ success: boolean; fromVersion: string; toVersion: string; results: { step: string; status: string; message?: string }[] }>('/api/upgrade/run', { method: 'POST' }),
+
   // Uninstall
   uninstallAll: () => request<SetupResult>('/api/uninstall', { method: 'POST' }),
 

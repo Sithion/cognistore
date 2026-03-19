@@ -34,6 +34,23 @@ The Tauri app's setup wizard creates resources; the uninstall button must remove
 | Copy Copilot skills to `~/.copilot/skills/ai-knowledge-*.md` | Remove skill files |
 | App installed in /Applications/ (macOS) | Self-delete via rmSync |
 
+## Development Rules (MANDATORY)
+
+### Upgrade Scripts
+Every feature that changes **any** of the following MUST include an upgrade script that runs automatically when the app updates:
+- **Database schema** → add a `.sql` migration file in `packages/core/src/db/migrations/{version}.sql`
+- **Skills/hooks** → the upgrade system re-copies all templates on version change (no extra work needed)
+- **Agent instructions** → re-injected automatically on version change
+- **MCP configs** → re-written automatically on version change
+
+The upgrade system (`/api/upgrade/run`) compares `~/.ai-knowledge/.version` with the running app version. On mismatch, it re-deploys all artifacts.
+
+### Patch Notes
+Every change MUST update `PATCH-NOTES.md` at the project root. Group entries by version and category (features, fixes, improvements). This file is linked from README.md.
+
+### Testing
+Every new feature should have corresponding tests in `packages/tests/`. The test suite runs on CI for every PR and feature branch push.
+
 ## Path Resolution
 
 The Tauri sidecar sets environment variables for the Fastify server:

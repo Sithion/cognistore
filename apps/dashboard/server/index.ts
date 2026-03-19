@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, statSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -20,6 +20,28 @@ const __dirname = dirname(__filename);
 const PORT = Number(process.env.DASHBOARD_PORT) || 3210;
 const TEMPLATES_PATH = process.env.TEMPLATES_PATH || join(__dirname, '..', 'templates');
 const INSTALL_DIR = resolve(homedir(), '.ai-knowledge');
+const VERSION_FILE = resolve(INSTALL_DIR, '.version');
+
+// Read app version from package.json
+const APP_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8'));
+    return pkg.version as string;
+  } catch {
+    return '0.0.0';
+  }
+})();
+
+/** Get the last deployed version from ~/.ai-knowledge/.version */
+function getDeployedVersion(): string | null {
+  try { return readFileSync(VERSION_FILE, 'utf-8').trim(); } catch { return null; }
+}
+
+/** Save the current version as deployed */
+function saveDeployedVersion(): void {
+  mkdirSync(INSTALL_DIR, { recursive: true });
+  writeFileSync(VERSION_FILE, APP_VERSION);
+}
 
 async function start() {
   const sdk = new KnowledgeSDK();
@@ -466,10 +488,127 @@ async function start() {
         sdkReady = false;
       }
       const ok = await tryInitSDK();
+      if (ok) saveDeployedVersion();
       return { success: ok, sdkReady };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : String(error) };
     }
+  });
+
+  // ─── Upgrade endpoints ────────────────────────────────────────
+
+  app.get('/api/upgrade/check', async () => {
+    const deployed = getDeployedVersion();
+    const current = APP_VERSION;
+    const needsUpgrade = deployed !== null && deployed !== current;
+    return {
+      needsUpgrade,
+      fromVersion: deployed,
+      toVersion: current,
+      isFirstInstall: deployed === null,
+    };
+  });
+
+  let upgradeRunning = false;
+  app.post('/api/upgrade/run', async (request, reply) => {
+    if (upgradeRunning) { reply.code(409); return { error: 'Upgrade already in progress' }; }
+    upgradeRunning = true;
+    const results: { step: string; status: 'success' | 'error'; message?: string }[] = [];
+
+    // Step 1: Database migrations (handled automatically by createDbClient, but log it)
+    try {
+      if (sdkReady) { await sdk.close(); sdkReady = false; }
+      const ok = await tryInitSDK();
+      results.push({ step: 'database', status: ok ? 'success' : 'error', message: ok ? 'Schema up to date' : 'SDK init failed' });
+    } catch (e: any) {
+      results.push({ step: 'database', status: 'error', message: e.message });
+    }
+
+    // Step 2: Re-inject agent instructions
+    const configTemplateDir = resolve(TEMPLATES_PATH, 'configs');
+    try {
+      const claudeTemplate = existsSync(resolve(configTemplateDir, 'claude-code-instructions.md'))
+        ? resolve(configTemplateDir, 'claude-code-instructions.md') : '';
+      await configManager.injectConfig(ConfigManager.CLAUDE_MD, claudeTemplate, 'Claude Code');
+      results.push({ step: 'instructions-claude', status: 'success' });
+    } catch (e: any) {
+      results.push({ step: 'instructions-claude', status: 'error', message: e.message });
+    }
+
+    try {
+      const copilotTemplate = existsSync(resolve(configTemplateDir, 'copilot-instructions.md'))
+        ? resolve(configTemplateDir, 'copilot-instructions.md') : '';
+      await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotTemplate, 'GitHub Copilot');
+      results.push({ step: 'instructions-copilot', status: 'success' });
+    } catch (e: any) {
+      results.push({ step: 'instructions-copilot', status: 'error', message: e.message });
+    }
+
+    // Step 3: Re-setup MCP configs
+    try {
+      const mcpEntry = {
+        type: 'stdio', command: 'npx', args: ['-y', '@ai-knowledge/mcp-server'],
+        env: {
+          SQLITE_PATH: resolve(INSTALL_DIR, 'knowledge.db'),
+          OLLAMA_HOST: process.env.OLLAMA_HOST || 'http://localhost:11434',
+          OLLAMA_MODEL: process.env.OLLAMA_MODEL || 'all-minilm',
+          EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS || '384',
+        },
+      };
+      await configManager.setupMcpConfig(ConfigManager.MCP_CONFIG, mcpEntry);
+      try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, mcpEntry); } catch { /* optional */ }
+      try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, mcpEntry); } catch { /* optional */ }
+      try { await configManager.setupOpenCodeMcp(mcpEntry); } catch { /* optional */ }
+      results.push({ step: 'mcp-configs', status: 'success' });
+    } catch (e: any) {
+      results.push({ step: 'mcp-configs', status: 'error', message: e.message });
+    }
+
+    // Step 4: Re-deploy skills and hooks
+    try {
+      const skillsDir = resolve(TEMPLATES_PATH, 'skills');
+      const home = homedir();
+
+      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
+        const srcDir = resolve(skillsDir, 'claude-code', name);
+        if (existsSync(srcDir)) {
+          const destDir = resolve(home, '.claude', 'skills', name);
+          mkdirSync(destDir, { recursive: true });
+          cpSync(srcDir, destDir, { recursive: true });
+          const hooksDir = resolve(destDir, 'hooks');
+          if (existsSync(hooksDir)) {
+            for (const file of readdirSync(hooksDir)) {
+              if (file.endsWith('.sh')) chmodSync(resolve(hooksDir, file), 0o755);
+            }
+          }
+        }
+      }
+
+      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
+        const src = resolve(skillsDir, 'copilot', `${name}.md`);
+        if (existsSync(src)) {
+          const destDir = resolve(home, '.copilot', 'skills');
+          mkdirSync(destDir, { recursive: true });
+          cpSync(src, resolve(destDir, `${name}.md`));
+        }
+      }
+
+      results.push({ step: 'skills', status: 'success' });
+    } catch (e: any) {
+      results.push({ step: 'skills', status: 'error', message: e.message });
+    }
+
+    // Step 5: Save new version
+    try {
+      saveDeployedVersion();
+      results.push({ step: 'version', status: 'success', message: `v${APP_VERSION}` });
+    } catch (e: any) {
+      results.push({ step: 'version', status: 'error', message: e.message });
+    }
+
+    upgradeRunning = false;
+    const allSuccess = results.every((r) => r.status === 'success');
+    return { success: allSuccess, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results };
   });
 
   // ─── Uninstall endpoint ────────────────────────────────────────
@@ -747,7 +886,7 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     const entry = await sdk.getKnowledgeById(request.params.id);
-    if (!entry) return { error: 'Not found' };
+    if (!entry) { reply.code(404); return { error: 'Not found' }; }
     return entry;
   });
 
@@ -761,7 +900,7 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     const result = await sdk.updateKnowledge(request.params.id, request.body);
-    if (!result) return { error: 'Not found' };
+    if (!result) { reply.code(404); return { error: 'Not found' }; }
     return result;
   });
 
@@ -801,7 +940,7 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     const result = sdk.updatePlan(request.params.id, request.body as any);
-    if (!result) return { error: 'Not found' };
+    if (!result) { reply.code(404); return { error: 'Not found' }; }
     return result;
   });
 
