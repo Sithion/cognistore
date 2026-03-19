@@ -88,6 +88,7 @@ export const api = {
     database: { sizeBytes: number; sizeFormatted: string; path: string };
     activity: { last24h: number; last7d: number; last30d: number; total: number };
     activityByDay: { date: string; count: number }[];
+    operationsByDay: { date: string; reads: number; writes: number }[];
     heatmap: { date: string; count: number }[];
     typeDistribution: { name: string; value: number }[];
     operations: { readsLastHour: number; readsLastDay: number; writesLastHour: number; writesLastDay: number };

@@ -3,7 +3,7 @@ import { api } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
-  AreaChart, Area, ResponsiveContainer,
+  AreaChart, Area, ResponsiveContainer, Legend, Line, LineChart,
 } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
 import { fetchStats, fetchMetrics, fetchTags } from '../store/statsSlice.js';
@@ -556,42 +556,43 @@ export function StatsPage() {
         emptyText="No activity in the last 15 days"
         style={{ marginBottom: 24 }}
       >
-        {metrics && metrics.activityByDay.some((d) => d.count > 0) && (
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={metrics.activityByDay}>
-              <defs>
-                <linearGradient id="colorActivity" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="date"
-                tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
-                tickFormatter={(v) => v.slice(5)}
-              />
-              <YAxis hide />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'var(--bg-card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-                itemStyle={{ color: 'var(--text-primary)' }}
-                labelStyle={{ color: 'var(--text-secondary)' }}
-                labelFormatter={(v) => `Date: ${v}`}
-              />
-              <Area
-                type="monotone"
-                dataKey="count"
-                stroke="#8b5cf6"
-                fill="url(#colorActivity)"
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
+        {metrics && metrics.operationsByDay && metrics.operationsByDay.length > 0 && (() => {
+          const chartData = metrics.operationsByDay.map((d) => ({
+            date: d.date,
+            total: d.reads + d.writes,
+            reads: d.reads,
+            writes: d.writes,
+          }));
+          return (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={chartData}>
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 10 }}
+                  tickFormatter={(v) => v.slice(5)}
+                />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  itemStyle={{ color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-secondary)' }}
+                  labelFormatter={(v) => `Date: ${v}`}
+                />
+                <Legend
+                  wrapperStyle={{ fontSize: 11, color: 'var(--text-secondary)' }}
+                />
+                <Line type="monotone" dataKey="total" name="Total" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="reads" name="Reads" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="writes" name="Writes" stroke="#22c55e" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          );
+        })()}
       </WidgetCard>
 
       {/* ── Contribution Heatmap + Top Tags ── */}

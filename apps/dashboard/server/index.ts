@@ -931,6 +931,10 @@ async function start() {
     let operations = { readsLastHour: 0, readsLastDay: 0, writesLastHour: 0, writesLastDay: 0 };
     try { operations = sdk.getOperationCounts(); } catch { /* silent */ }
 
+    // Operations by day (reads/writes per day for chart)
+    let operationsByDay: { date: string; reads: number; writes: number }[] = [];
+    try { operationsByDay = sdk.getOperationsByDay(15); } catch { /* silent */ }
+
     return {
       database: {
         sizeBytes: dbSizeBytes,
@@ -946,6 +950,7 @@ async function start() {
         total: stats.total,
       },
       activityByDay,
+      operationsByDay,
       heatmap,
       typeDistribution,
       operations,

@@ -10,6 +10,7 @@
 - **Markdown rendering**: plan detail view and card previews (both Plans and Knowledge) now render content as formatted markdown (headings, lists, code blocks, tables, blockquotes)
 - **Unified UI pattern**: both Knowledge and Plans pages now use floating action button (FAB) + full-page form view instead of modal overlay
 - **Unified 5s polling**: all pages now auto-refresh every 5 seconds; removed manual refresh interval selector from Stats page
+- **Activity chart**: replaced single-line area chart with 3-line chart (Total, Reads, Writes) with color legend
 
 ### Fixes
 - **Copilot instructions template**: rewrote `copilot-instructions.md` template to explicitly reference all 3 mandatory skills (`ai-knowledge-query`, `ai-knowledge-capture`, `ai-knowledge-plan`) by name — fixes issue where Copilot treated skills as optional and wrote plans to local files instead of using `createPlan()`

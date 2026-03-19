@@ -426,6 +426,32 @@ export class KnowledgeRepository {
     };
   }
 
+  getOperationsByDay(days: number = 15): { date: string; reads: number; writes: number }[] {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const rows = this.sqlite.prepare(`
+      SELECT date(created_at) as date, operation, COUNT(*) as count
+      FROM operations_log
+      WHERE created_at >= ?
+      GROUP BY date(created_at), operation
+      ORDER BY date(created_at)
+    `).all(cutoff) as { date: string; operation: string; count: number }[];
+
+    const map: Record<string, { reads: number; writes: number }> = {};
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      map[dateStr] = { reads: 0, writes: 0 };
+    }
+    for (const row of rows) {
+      if (!map[row.date]) map[row.date] = { reads: 0, writes: 0 };
+      if (row.operation === 'read') map[row.date].reads = row.count;
+      else if (row.operation === 'write') map[row.date].writes = row.count;
+    }
+    return Object.entries(map).map(([date, counts]) => ({ date, ...counts }));
+  }
+
   cleanupOldOperations(): number {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     return this.sqlite.prepare('DELETE FROM operations_log WHERE created_at < ?').run(cutoff).changes;

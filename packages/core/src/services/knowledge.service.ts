@@ -174,6 +174,10 @@ export class KnowledgeService {
     return this.repository.getOperationCounts();
   }
 
+  getOperationsByDay(days: number = 15) {
+    return this.repository.getOperationsByDay(days);
+  }
+
   cleanupOldOperations() {
     return this.repository.cleanupOldOperations();
   }

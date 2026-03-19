@@ -263,6 +263,11 @@ export class KnowledgeSDK {
     return this.service!.getOperationCounts();
   }
 
+  getOperationsByDay(days: number = 15) {
+    this.ensureInitialized();
+    return this.service!.getOperationsByDay(days);
+  }
+
   cleanupOldOperations() {
     if (!this.initialized || !this.service) return 0;
     return this.service!.cleanupOldOperations();
