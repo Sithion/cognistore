@@ -9,6 +9,7 @@ export const knowledgeEntries = sqliteTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
+    title: text('title').notNull().default(''),
     content: text('content').notNull(),
     tags: text('tags', { mode: 'json' }).notNull().$type<string[]>().default([]),
     type: text('type').notNull(),

@@ -83,7 +83,7 @@ The configure step performs multiple actions:
    - `~/.claude.json`
    - `~/.copilot/mcp-config.json`
    - `~/.config/opencode/opencode.json`
-4. **Copy skills** — Installs AI skills for Claude Code and Copilot
+4. **Copy skills** — Installs AI skills for Claude Code (query, capture, plan) and Copilot (query, capture, plan)
 
 ---
 
@@ -91,10 +91,10 @@ The configure step performs multiple actions:
 
 ### Overview
 
-The uninstall feature is accessed via the Infrastructure page. It performs a complete teardown of all installed components, then self-deletes the application.
+The uninstall feature is accessed via the Settings page (formerly Infrastructure/Monitoring). It performs a complete teardown of all installed components, then self-deletes the application.
 
 **Endpoint:** `POST /api/uninstall`
-**Frontend:** `apps/dashboard/src/pages/InfrastructurePage.tsx` (Danger Zone section)
+**Frontend:** `apps/dashboard/src/pages/SettingsPage.tsx` (Danger Zone section)
 
 ### Safety: 3-Step Confirmation
 
@@ -110,7 +110,7 @@ The uninstall button requires a 3-step confirmation to prevent accidental data l
 |---|--------|---------|
 | 1 | Remove instruction markers | Delete `AI-KNOWLEDGE:BEGIN/END` blocks from CLAUDE.md, copilot-instructions.md |
 | 2 | Remove MCP entries | Delete `ai-knowledge` from all `mcpServers`/`mcp` configs |
-| 3 | Remove skills | Delete `~/.claude/skills/ai-knowledge-*/` directories and `~/.copilot/skills/ai-knowledge-*.md` files |
+| 3 | Remove skills | Delete `~/.claude/skills/ai-knowledge-*/` directories (query, capture, plan) and `~/.copilot/skills/ai-knowledge-*.md` files |
 | 4 | Uninstall Ollama model | `ollama rm all-minilm` |
 | 5 | Uninstall Ollama binary | `brew uninstall ollama` (macOS) or remove binary (Linux) |
 | 6 | Close SDK | Gracefully close database connections |
@@ -134,4 +134,6 @@ Every resource created by setup **must** be removed by uninstall. This is a mand
 | MCP config entries (4 files) | Remove via ConfigManager |
 | Claude skills directories | Remove directories |
 | Copilot skill files | Remove files |
+| Claude plan skill directory | Remove `~/.claude/skills/ai-knowledge-plan/` |
+| Copilot plan skill file | Remove `~/.copilot/skills/ai-knowledge-plan.md` |
 | App in /Applications/ | Self-delete via rmSync |

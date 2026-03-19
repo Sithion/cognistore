@@ -3,56 +3,22 @@ name: CI
 on:
   pull_request:
     branches: [main]
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  push:
+    branches: [main, 'feature/**']
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'pnpm'
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm test
-
-      - name: Validate MCP server package
-        run: cd apps/mcp-server && npm publish --dry-run --access public 2>&1
-
-      - name: Smoke test dashboard serves frontend
-        run: |
-          node -e "
-            const http = require('http');
-            const fs = require('fs');
-            const path = require('path');
-            const distPath = path.resolve('apps/dashboard/dist');
-            const indexHtml = path.join(distPath, 'index.html');
-            if (!fs.existsSync(indexHtml)) { console.error('FAIL: dist/index.html not found'); process.exit(1); }
-            const server = http.createServer((req, res) => {
-              res.writeHead(200, {'Content-Type': 'text/html'});
-              res.end(fs.readFileSync(indexHtml));
-            });
-            server.listen(3299, '127.0.0.1', () => {
-              http.get('http://127.0.0.1:3299/', (r) => {
-                let body = '';
-                r.on('data', d => body += d);
-                r.on('end', () => {
-                  server.close();
-                  if (r.statusCode === 200 && body.includes('<div id=\"root\">')) {
-                    console.log('OK: Dashboard frontend built and serves correctly');
-                  } else {
-                    console.error('FAIL: unexpected response', r.statusCode);
-                    process.exit(1);
-                  }
-                });
-              });
-            });
-          "
+      - name: Run tests
+        run: cd packages/tests && npx playwright test --reporter=list
+      - name: Dry-run npm publish
+        run: cd apps/mcp-server && npm publish --dry-run

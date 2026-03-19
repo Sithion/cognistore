@@ -91,6 +91,46 @@ export const api = {
 
   getHealth: () => request('/api/health'),
 
+  // Plans
+  listPlans: (limit = 20, status?: string) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.set('status', status);
+    return request<any[]>(`/api/plans?${params}`);
+  },
+
+  getPlanRelations: (id: string) =>
+    request<{ entry: any; relationType: string }[]>(`/api/plans/${id}/relations`),
+
+  addPlanRelation: (id: string, knowledgeId: string, relationType: 'input' | 'output') =>
+    request(`/api/plans/${id}/relations`, { method: 'POST', body: JSON.stringify({ knowledgeId, relationType }) }),
+
+  updatePlan: (id: string, data: Record<string, unknown>) =>
+    request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deletePlan: (id: string) =>
+    request(`/api/plans/${id}`, { method: 'DELETE' }),
+
+  // Plan Tasks
+  listPlanTasks: (planId: string) =>
+    request<any[]>(`/api/plans/${planId}/tasks`),
+
+  createPlanTask: (planId: string, data: Record<string, unknown>) =>
+    request(`/api/plans/${planId}/tasks`, { method: 'POST', body: JSON.stringify(data) }),
+
+  updatePlanTask: (taskId: string, data: Record<string, unknown>) =>
+    request(`/api/plans/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deletePlanTask: (taskId: string) =>
+    request(`/api/plans/tasks/${taskId}`, { method: 'DELETE' }),
+
+  // Plan Metrics
+  getPlanMetrics: () =>
+    request<{
+      plans: { total: number; draft: number; active: number; completed: number; archived: number };
+      tasks: { total: number; pending: number; inProgress: number; completed: number; avgPerPlan: number };
+      plansByDay: { date: string; count: number }[];
+    }>('/api/metrics/plans'),
+
   // Maintenance
   cleanupDatabase: () => request<{ success: boolean; orphansRemoved: number; vacuumed: boolean; sizeAfter: string }>(
     '/api/maintenance/cleanup', { method: 'POST' }

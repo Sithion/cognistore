@@ -81,6 +81,7 @@ Create a new knowledge entry.
 **Body:**
 ```json
 {
+  "title": "React.memo for list items",
   "content": "Use React.memo for expensive list items",
   "tags": ["react", "performance", "memo"],
   "type": "pattern",
@@ -91,7 +92,7 @@ Create a new knowledge entry.
 }
 ```
 
-Required: `content`, `tags`, `type`, `scope`, `source`
+Required: `title`, `content`, `tags`, `type`, `scope`, `source`
 
 **Response:** `KnowledgeEntry`
 
@@ -203,6 +204,126 @@ Finalize setup and re-initialize the SDK.
 ### POST /api/uninstall
 
 Full teardown: remove configs, skills, data, Ollama, and self-delete app. See [Setup & Uninstall](./setup-uninstall.md) for details.
+
+## Plans CRUD
+
+### GET /api/plans
+
+List plans with optional status filter.
+
+| Query Param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `limit` | number | 20 | Max plans to return |
+| `status` | string | — | Filter by status: `draft`, `active`, `completed`, `archived` |
+
+**Response:** `Plan[]`
+
+### POST /api/plans
+
+Create a new plan.
+
+**Body:**
+```json
+{
+  "title": "Migration to v2 API",
+  "content": "Step-by-step migration plan...",
+  "tags": ["migration", "api"],
+  "scope": "workspace:my-app",
+  "source": "planning-session",
+  "tasks": [
+    { "description": "Audit current endpoints", "priority": "high" },
+    { "description": "Write migration scripts", "priority": "medium" }
+  ],
+  "relatedKnowledgeIds": ["uuid-1", "uuid-2"]
+}
+```
+
+Required: `title`, `content`, `tags`, `scope`, `source`
+
+**Response:** `Plan`
+
+### PUT /api/plans/:id
+
+Update a plan. Only include fields to change.
+
+**Body:**
+```json
+{
+  "status": "active",
+  "title": "Updated title"
+}
+```
+
+**Response:** `Plan`
+
+### DELETE /api/plans/:id
+
+Delete a plan and all associated tasks and relations.
+
+**Response:** `{ success: true }`
+
+### GET /api/plans/:id/relations
+
+Get knowledge entries linked to a plan.
+
+**Response:** `{ entry: KnowledgeEntry, relationType: "input" | "output" }[]`
+
+### POST /api/plans/:id/relations
+
+Link a knowledge entry to a plan.
+
+**Body:**
+```json
+{
+  "knowledgeId": "uuid-of-entry",
+  "relationType": "input"
+}
+```
+
+**Response:** `{ success: true }`
+
+## Plan Tasks
+
+### GET /api/plans/:planId/tasks
+
+List tasks for a plan, ordered by position.
+
+**Response:** `PlanTask[]`
+
+### POST /api/plans/:planId/tasks
+
+Add a task to a plan.
+
+**Body:**
+```json
+{
+  "description": "Write unit tests",
+  "priority": "high",
+  "notes": null
+}
+```
+
+**Response:** `PlanTask`
+
+### PUT /api/tasks/:id
+
+Update a task (status, description, priority, notes).
+
+**Body:**
+```json
+{
+  "status": "completed",
+  "notes": "All tests passing"
+}
+```
+
+**Response:** `PlanTask`
+
+### DELETE /api/tasks/:id
+
+Delete a task.
+
+**Response:** `{ success: true }`
 
 ## Error Handling
 

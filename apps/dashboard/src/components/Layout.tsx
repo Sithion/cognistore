@@ -6,6 +6,7 @@ declare const __APP_VERSION__: string;
 
 const navItems = [
   { key: 'home', path: '/', icon: '🔍' },
+  { key: 'plans', path: '/plans', icon: '📋' },
   { key: 'stats', path: '/stats', icon: '📊' },
   { key: 'settings', path: '/settings', icon: '⚙' },
 ];

@@ -24,6 +24,7 @@ export class KnowledgeRepository {
       .insert(knowledgeEntries)
       .values({
         id,
+        title: input.title,
         content: input.content,
         tags: input.tags,
         type: input.type,
@@ -251,6 +252,140 @@ export class KnowledgeRepository {
       .from(knowledgeEntries)
       .groupBy(knowledgeEntries.scope);
     return results.map((r) => ({ scope: r.scope, count: Number(r.count) }));
+  }
+
+  // ─── Plans (separate table) ──────────────────────────────────
+
+  createPlan(input: { title: string; content: string; tags: string[]; scope: string; source: string; status?: string; embedding: number[] }): any {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    this.sqlite.prepare(
+      'INSERT INTO plans (id, title, content, tags, scope, status, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, input.title, input.content, JSON.stringify(input.tags), input.scope, input.status ?? 'draft', input.source, now, now);
+
+    // Insert embedding into plans_embeddings
+    try {
+      this.sqlite.prepare('INSERT INTO plans_embeddings (id, embedding) VALUES (?, ?)').run(
+        id, new Float32Array(input.embedding).buffer
+      );
+    } catch { /* vec table may not exist yet */ }
+
+    return this.getPlanById(id);
+  }
+
+  getPlanById(id: string): any | null {
+    return this.sqlite.prepare('SELECT * FROM plans WHERE id = ?').get(id) ?? null;
+  }
+
+  updatePlan(id: string, updates: Record<string, unknown>): any | null {
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === undefined) continue;
+      const col = key === 'tags' ? 'tags' : key.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
+      setClauses.push(`${col} = ?`);
+      values.push(key === 'tags' ? JSON.stringify(value) : value);
+    }
+    if (setClauses.length === 0) return this.getPlanById(id);
+
+    setClauses.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    this.sqlite.prepare(`UPDATE plans SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    return this.getPlanById(id);
+  }
+
+  deletePlan(id: string): boolean {
+    // Cascade deletes plan_relations and plan_tasks via FK
+    const result = this.sqlite.prepare('DELETE FROM plans WHERE id = ?').run(id);
+    try { this.sqlite.prepare('DELETE FROM plans_embeddings WHERE id = ?').run(id); } catch { /* silent */ }
+    return result.changes > 0;
+  }
+
+  listPlans(limit = 20, status?: string): any[] {
+    if (status) {
+      return this.sqlite.prepare('SELECT * FROM plans WHERE status = ? ORDER BY created_at DESC LIMIT ?').all(status, limit) as any[];
+    }
+    return this.sqlite.prepare('SELECT * FROM plans ORDER BY created_at DESC LIMIT ?').all(limit) as any[];
+  }
+
+  // ─── Plan Relations ─────────────────────────────────────────
+
+  addPlanRelation(planId: string, knowledgeId: string, relationType: 'input' | 'output'): void {
+    this.sqlite
+      .prepare('INSERT OR IGNORE INTO plan_relations (plan_id, knowledge_id, relation_type, created_at) VALUES (?, ?, ?, ?)')
+      .run(planId, knowledgeId, relationType, new Date().toISOString());
+  }
+
+  getPlanRelations(planId: string): { id: string; relationType: string }[] {
+    return this.sqlite
+      .prepare('SELECT knowledge_id as id, relation_type as relationType FROM plan_relations WHERE plan_id = ? ORDER BY created_at')
+      .all(planId) as { id: string; relationType: string }[];
+  }
+
+  deletePlanRelations(planId: string): number {
+    return this.sqlite.prepare('DELETE FROM plan_relations WHERE plan_id = ?').run(planId).changes;
+  }
+
+  // ─── Plan Tasks ─────────────────────────────────────────────
+
+  createPlanTask(input: { planId: string; description: string; status?: string; priority?: string; notes?: string | null; position?: number }): any {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const maxPos = this.sqlite.prepare('SELECT MAX(position) as max FROM plan_tasks WHERE plan_id = ?').get(input.planId) as any;
+    const position = input.position ?? ((maxPos?.max ?? -1) + 1);
+
+    this.sqlite.prepare(
+      'INSERT INTO plan_tasks (id, plan_id, description, status, priority, notes, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, input.planId, input.description, input.status ?? 'pending', input.priority ?? 'medium', input.notes ?? null, position, now, now);
+
+    return this.getPlanTaskById(id);
+  }
+
+  updatePlanTask(id: string, updates: { description?: string; status?: string; priority?: string; notes?: string | null; position?: number }): any | null {
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.description !== undefined) { setClauses.push('description = ?'); values.push(updates.description); }
+    if (updates.status !== undefined) { setClauses.push('status = ?'); values.push(updates.status); }
+    if (updates.priority !== undefined) { setClauses.push('priority = ?'); values.push(updates.priority); }
+    if (updates.notes !== undefined) { setClauses.push('notes = ?'); values.push(updates.notes); }
+    if (updates.position !== undefined) { setClauses.push('position = ?'); values.push(updates.position); }
+
+    if (setClauses.length === 0) return this.getPlanTaskById(id);
+
+    setClauses.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    this.sqlite.prepare(`UPDATE plan_tasks SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+    return this.getPlanTaskById(id);
+  }
+
+  deletePlanTask(id: string): boolean {
+    return this.sqlite.prepare('DELETE FROM plan_tasks WHERE id = ?').run(id).changes > 0;
+  }
+
+  listPlanTasks(planId: string): any[] {
+    return this.sqlite.prepare('SELECT * FROM plan_tasks WHERE plan_id = ? ORDER BY position ASC').all(planId) as any[];
+  }
+
+  getPlanTaskById(id: string): any | null {
+    return this.sqlite.prepare('SELECT * FROM plan_tasks WHERE id = ?').get(id) ?? null;
+  }
+
+  getPlanTaskStats(): { total: number; pending: number; inProgress: number; completed: number } {
+    const result = this.sqlite.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+      FROM plan_tasks
+    `).get() as any;
+    return { total: result?.total ?? 0, pending: result?.pending ?? 0, inProgress: result?.in_progress ?? 0, completed: result?.completed ?? 0 };
   }
 
   // ─── Operations Log ────────────────────────────────────────────

@@ -13,6 +13,7 @@ The knowledge base uses **SQLite** with the **sqlite-vec** extension for vector 
 | Column | Type | Default | Description |
 |--------|------|---------|-------------|
 | `id` | TEXT PK | UUIDv4 | Unique identifier |
+| `title` | TEXT NOT NULL | `''` | Short descriptive title |
 | `content` | TEXT NOT NULL | — | Knowledge content (free text) |
 | `tags` | TEXT NOT NULL | `'[]'` | JSON array of string tags |
 | `type` | TEXT NOT NULL | — | One of: `decision`, `pattern`, `fix`, `constraint`, `gotcha` |
@@ -44,21 +45,108 @@ USING vec0(
 
 This is a **sqlite-vec** virtual table that stores 384-dimensional float32 vectors with cosine distance metric. It supports KNN (k-nearest-neighbor) queries.
 
+### plans (relational table)
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `id` | TEXT PK | UUIDv4 | Unique identifier |
+| `title` | TEXT NOT NULL | — | Plan title |
+| `content` | TEXT NOT NULL | — | Full plan content (steps, approach, considerations) |
+| `tags` | TEXT NOT NULL | `'[]'` | JSON array of string tags |
+| `scope` | TEXT NOT NULL | — | `global` or `workspace:<project-name>` |
+| `status` | TEXT NOT NULL | `'draft'` | One of: `draft`, `active`, `completed`, `archived` |
+| `source` | TEXT NOT NULL | `''` | Origin of the plan |
+| `created_at` | TEXT NOT NULL | — | ISO timestamp |
+| `updated_at` | TEXT NOT NULL | — | ISO timestamp |
+
+**Indices:**
+- `idx_plans_status` on `status`
+- `idx_plans_scope` on `scope`
+
+### plan_relations (join table)
+
+Links plans to knowledge entries with a relation type.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PK AUTOINCREMENT | Row ID |
+| `plan_id` | TEXT NOT NULL FK → plans(id) ON DELETE CASCADE | Parent plan |
+| `knowledge_id` | TEXT NOT NULL FK → knowledge_entries(id) ON DELETE CASCADE | Linked entry |
+| `relation_type` | TEXT NOT NULL | `input` (consulted during planning) or `output` (created during execution) |
+| `created_at` | TEXT NOT NULL | ISO timestamp |
+
+**Constraints:** `UNIQUE(plan_id, knowledge_id, relation_type)`
+
+**Indices:**
+- `idx_plan_relations_plan` on `plan_id`
+- `idx_plan_relations_knowledge` on `knowledge_id`
+
+### plan_tasks (todo list per plan)
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `id` | TEXT PK | UUIDv4 | Unique identifier |
+| `plan_id` | TEXT NOT NULL FK → plans(id) ON DELETE CASCADE | Parent plan |
+| `description` | TEXT NOT NULL | — | Task description |
+| `status` | TEXT NOT NULL | `'pending'` | One of: `pending`, `in_progress`, `completed` |
+| `priority` | TEXT NOT NULL | `'medium'` | One of: `low`, `medium`, `high` |
+| `notes` | TEXT | NULL | Optional notes about progress or blockers |
+| `position` | INTEGER NOT NULL | `0` | Sort order within the plan |
+| `created_at` | TEXT NOT NULL | — | ISO timestamp |
+| `updated_at` | TEXT NOT NULL | — | ISO timestamp |
+
+**Indices:**
+- `idx_plan_tasks_plan` on `plan_id`
+- `idx_plan_tasks_status` on `status`
+
+### plans_embeddings (virtual table)
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS plans_embeddings
+USING vec0(
+  id TEXT PRIMARY KEY,
+  embedding float[384] distance_metric=cosine
+);
+```
+
+Separate sqlite-vec virtual table for plan embeddings, identical structure to `knowledge_embeddings`.
+
+### schema_version (migration tracking)
+
+Tracks which SQL migrations have been applied.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `version` | TEXT PK | Migration version (e.g., `0.8.0`, `0.9.0`) |
+| `applied_at` | TEXT NOT NULL | ISO timestamp when migration was run |
+
+## Migration System
+
+**Files:** `packages/core/src/db/migrations/*.sql`, `packages/core/src/db/client.ts`
+
+Schema changes are managed through versioned SQL migration files. On startup, `createDbClient()` calls `runMigrations()` which:
+
+1. Creates the `schema_version` table if it does not exist
+2. Reads all `.sql` files from the migrations directory, sorted by version
+3. Skips migrations already recorded in `schema_version`
+4. Executes pending migrations in order within a transaction
+5. Records each applied migration in `schema_version`
+
+For pre-migration databases (existing databases with no `schema_version` table but with `knowledge_entries`), the runner bootstraps by recording `0.8.0` as already applied and then running subsequent migrations.
+
+```
+packages/core/src/db/migrations/
+├── 0.8.0.sql   # Base schema: knowledge_entries, operations_log
+├── 0.9.0.sql   # Plans: plans, plan_relations, plan_tasks, title column
+└── meta/
+    └── _journal.json
+```
+
 ## Auto-Schema Creation
 
 **File:** `packages/core/src/db/client.ts`
 
-The `createDbClient()` function calls `ensureSchema()` which creates tables and indices if they don't exist. This means the MCP server can initialize from scratch without the setup wizard — the SDK will create the database and schema on first use.
-
-```typescript
-function ensureSchema(sqlite: BetterSqlite3.Database): void {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS knowledge_entries (...);
-    CREATE INDEX IF NOT EXISTS idx_type ON knowledge_entries(type);
-    CREATE INDEX IF NOT EXISTS idx_scope ON knowledge_entries(scope);
-  `);
-}
-```
+The `createDbClient()` function runs versioned migrations and then creates sqlite-vec virtual tables (idempotent). This means the MCP server can initialize from scratch without the setup wizard — the SDK will create the database and schema on first use.
 
 ## SQLite Configuration
 

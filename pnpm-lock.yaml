@@ -228,6 +228,31 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/tests:
+    dependencies:
+      '@ai-knowledge/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ai-knowledge/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@ai-knowledge/shared':
+        specifier: workspace:*
+        version: link:../shared
+      better-sqlite3:
+        specifier: ^12.8.0
+        version: 12.8.0
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.50.0
+        version: 1.58.2
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
 packages:
 
   '@babel/code-frame@7.29.0':

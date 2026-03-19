@@ -109,10 +109,11 @@ Key differences:
 
 Copied to `~/.claude/skills/`:
 
-| Skill | Directory | Purpose |
-|-------|-----------|---------|
-| `ai-knowledge-capture` | `~/.claude/skills/ai-knowledge-capture/SKILL.md` | Capture knowledge after completing tasks |
-| `ai-knowledge-query` | `~/.claude/skills/ai-knowledge-query/SKILL.md` | Query knowledge before starting tasks |
+| Skill | Directory | Hook | Purpose |
+|-------|-----------|------|---------|
+| `ai-knowledge-capture` | `~/.claude/skills/ai-knowledge-capture/SKILL.md` | `Stop` | Capture knowledge after completing tasks |
+| `ai-knowledge-query` | `~/.claude/skills/ai-knowledge-query/SKILL.md` | `PreToolUse` | Query knowledge before starting tasks |
+| `ai-knowledge-plan` | `~/.claude/skills/ai-knowledge-plan/SKILL.md` | `PostToolUse` (ExitPlanMode) | Save plans to knowledge base with task management workflow |
 
 ### Copilot Skills
 
@@ -122,6 +123,7 @@ Copied to `~/.copilot/skills/`:
 |-------|------|---------|
 | `ai-knowledge-capture` | `~/.copilot/skills/ai-knowledge-capture.md` | Capture knowledge after tasks |
 | `ai-knowledge-query` | `~/.copilot/skills/ai-knowledge-query.md` | Query knowledge before tasks |
+| `ai-knowledge-plan` | `~/.copilot/skills/ai-knowledge-plan.md` | Save plans to knowledge base with task tracking |
 
 ## Instruction Templates
 
@@ -136,6 +138,10 @@ Injected block teaches Claude Code the knowledge-first protocol:
 ### Copilot (`~/.github/copilot-instructions.md`)
 
 Similar protocol adapted for Copilot's instruction format.
+
+### Plan Persistence Rule
+
+Both Claude Code and Copilot instructions include the rule: **plans must be stored in the knowledge base** using `createPlan`, never as local files. The `ai-knowledge-plan` skill reinforces this with a `PostToolUse` hook on `ExitPlanMode` that reminds agents to persist their plans before leaving plan mode.
 
 ## Backup Strategy
 

@@ -10,11 +10,17 @@ import {
   createKnowledgeSchema,
   updateKnowledgeSchema,
   searchOptionsSchema,
+  createPlanSchema,
+  updatePlanSchema,
   type CreateKnowledgeInput,
   type UpdateKnowledgeInput,
   type SearchOptions,
   type SearchResult,
   type KnowledgeEntry,
+  type Plan,
+  type CreatePlanInput,
+  type UpdatePlanInput,
+  type PlanTask,
   type HealthStatus,
   type SDKConfig,
 } from '@ai-knowledge/shared';
@@ -170,6 +176,87 @@ export class KnowledgeSDK {
       throw this.wrapError(error, 'Failed to get stats');
     }
   }
+
+  // ─── Plans (separate entity) ─────────────────────────────────
+
+  async createPlan(input: CreatePlanInput & { relatedKnowledgeIds?: string[]; tasks?: { description: string; priority?: string }[] }): Promise<Plan> {
+    this.ensureInitialized();
+    const { relatedKnowledgeIds, tasks, ...rest } = input;
+    const parsed = createPlanSchema.safeParse(rest);
+    if (!parsed.success) {
+      throw new ValidationError(`Invalid plan input: ${parsed.error.message}`);
+    }
+    try {
+      const plan = await this.service!.createPlan({ ...parsed.data as CreatePlanInput, tasks });
+      if (relatedKnowledgeIds) {
+        for (const kid of relatedKnowledgeIds) {
+          try { this.service!.addPlanRelation(plan.id, kid, 'input'); } catch { /* silent */ }
+        }
+      }
+      return plan;
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to create plan');
+    }
+  }
+
+  getPlanById(id: string): Plan | null {
+    this.ensureInitialized();
+    return this.service!.getPlanById(id);
+  }
+
+  updatePlan(id: string, updates: UpdatePlanInput): Plan | null {
+    this.ensureInitialized();
+    return this.service!.updatePlan(id, updates);
+  }
+
+  deletePlan(id: string): boolean {
+    this.ensureInitialized();
+    return this.service!.deletePlan(id);
+  }
+
+  listPlans(limit = 20, status?: string): Plan[] {
+    this.ensureInitialized();
+    return this.service!.listPlans(limit, status);
+  }
+
+  addPlanRelation(planId: string, knowledgeId: string, relationType: 'input' | 'output'): void {
+    this.ensureInitialized();
+    this.service!.addPlanRelation(planId, knowledgeId, relationType);
+  }
+
+  async getPlanRelations(planId: string) {
+    this.ensureInitialized();
+    return this.service!.getPlanRelations(planId);
+  }
+
+  // ─── Plan Tasks ─────────────────────────────────────────────
+
+  createPlanTask(input: { planId: string; description: string; priority?: string; notes?: string | null }): PlanTask {
+    this.ensureInitialized();
+    return this.service!.createPlanTask(input);
+  }
+
+  updatePlanTask(id: string, updates: { description?: string; status?: string; priority?: string; notes?: string | null; position?: number }): PlanTask | null {
+    this.ensureInitialized();
+    return this.service!.updatePlanTask(id, updates);
+  }
+
+  deletePlanTask(id: string): boolean {
+    this.ensureInitialized();
+    return this.service!.deletePlanTask(id);
+  }
+
+  listPlanTasks(planId: string): PlanTask[] {
+    this.ensureInitialized();
+    return this.service!.listPlanTasks(planId);
+  }
+
+  getPlanTaskStats() {
+    this.ensureInitialized();
+    return this.service!.getPlanTaskStats();
+  }
+
+  // ─── Operations ─────────────────────────────────────────────
 
   getOperationCounts() {
     this.ensureInitialized();

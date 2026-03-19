@@ -6,6 +6,7 @@ import { Layout } from './components/Layout.js';
 import { HomePage } from './pages/HomePage.js';
 import { StatsPage } from './pages/StatsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
+import { PlansPage } from './pages/PlansPage.js';
 import { SetupPage } from './pages/SetupPage.js';
 import { api } from './api/client.js';
 import { UpdateChecker } from './components/UpdateChecker.js';
@@ -46,6 +47,7 @@ export function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/plans" element={<PlansPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

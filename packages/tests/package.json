@@ -1,0 +1,24 @@
+{
+  "name": "@ai-knowledge/tests",
+  "version": "0.9.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:e2e": "npx playwright test --grep @e2e",
+    "test:load": "npx playwright test --grep @load",
+    "test:perf": "npx playwright test --grep @perf",
+    "build": "echo 'No build needed for test package'"
+  },
+  "dependencies": {
+    "@ai-knowledge/core": "workspace:*",
+    "@ai-knowledge/shared": "workspace:*",
+    "@ai-knowledge/sdk": "workspace:*",
+    "better-sqlite3": "^12.8.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "typescript": "^5.7.0"
+  }
+}

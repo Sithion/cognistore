@@ -4,9 +4,13 @@ import * as sqliteVec from 'sqlite-vec';
 import { DEFAULT_SQLITE_PATH } from '@ai-knowledge/shared';
 import * as schema from './schema/index.js';
 import { createEmbeddingsTable } from './schema/sqlite-vec.js';
+import { runMigrations, runSeeds } from './migrate.js';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function resolvePath(path: string): string {
   if (path.startsWith('~')) {
@@ -32,42 +36,34 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
   // Load sqlite-vec extension
   sqliteVec.load(sqlite);
 
-  // Ensure schema exists (auto-create tables if missing)
-  ensureSchema(sqlite);
+  // Check if this is a fresh install (no schema_version table yet, no knowledge_entries)
+  const hasSchemaVersion = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'").get();
+  const hasKnowledgeEntries = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_entries'").get();
+  const isFreshInstall = !hasSchemaVersion && !hasKnowledgeEntries;
 
-  // Ensure virtual table exists
+  // Run versioned migrations
+  const migrationsDir = resolve(__dirname, 'migrations');
+  const seedsDir = resolve(__dirname, 'seeds');
+  runMigrations(sqlite, migrationsDir);
+  runSeeds(sqlite, seedsDir, isFreshInstall);
+
+  // Ensure sqlite-vec virtual tables (always idempotent)
   createEmbeddingsTable(sqlite);
+  createPlansEmbeddingsTable(sqlite);
 
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }
 
-function ensureSchema(sqlite: BetterSqlite3.Database): void {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS knowledge_entries (
-      id TEXT PRIMARY KEY,
-      content TEXT NOT NULL,
-      tags TEXT NOT NULL DEFAULT '[]',
-      type TEXT NOT NULL,
-      scope TEXT NOT NULL,
-      source TEXT NOT NULL,
-      version INTEGER NOT NULL DEFAULT 1,
-      expires_at TEXT,
-      confidence_score REAL NOT NULL DEFAULT 1.0,
-      related_ids TEXT,
-      agent_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_type ON knowledge_entries(type);
-    CREATE INDEX IF NOT EXISTS idx_scope ON knowledge_entries(scope);
-
-    CREATE TABLE IF NOT EXISTS operations_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      operation TEXT NOT NULL CHECK(operation IN ('read', 'write')),
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_ops_created_at ON operations_log(created_at);
-    CREATE INDEX IF NOT EXISTS idx_ops_operation ON operations_log(operation);
-  `);
+function createPlansEmbeddingsTable(sqlite: BetterSqlite3.Database): void {
+  try {
+    sqlite.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS plans_embeddings USING vec0(
+        id TEXT PRIMARY KEY,
+        embedding float[384] distance_metric=cosine
+      );
+    `);
+  } catch {
+    // Table already exists
+  }
 }

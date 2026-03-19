@@ -176,6 +176,9 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {/* ── Maintenance Section ── */}
+      <MaintenanceSection />
+
       {/* ── Uninstall Section ── */}
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--error)', marginBottom: 16 }}>
@@ -266,6 +269,55 @@ export function SettingsPage() {
           <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Uninstalling... The app will close shortly.</p>
         )}
       </div>
+      </div>
+    </div>
+  );
+}
+
+function MaintenanceSection() {
+  const [cleaning, setCleaning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleCleanup = async () => {
+    setCleaning(true);
+    setResult(null);
+    try {
+      const res = await api.cleanupDatabase();
+      setResult(`${res.orphansRemoved} orphan${res.orphansRemoved !== 1 ? 's' : ''} removed${res.sizeAfter ? ` — DB: ${res.sizeAfter}` : ''}`);
+    } catch {
+      setResult('Cleanup failed');
+    }
+    setCleaning(false);
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+      <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
+        Maintenance
+      </h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          onClick={handleCleanup}
+          disabled={cleaning}
+          title="Remove unused embeddings"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)',
+            border: '1px solid var(--border)', cursor: cleaning ? 'not-allowed' : 'pointer',
+            opacity: cleaning ? 0.6 : 1,
+          }}
+        >
+          {cleaning ? (
+            <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+          ) : (
+            <span style={{ fontSize: 14 }}>🗑</span>
+          )}
+          Remove unused embeddings
+        </button>
+        {result && (
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{result}</span>
+        )}
       </div>
     </div>
   );

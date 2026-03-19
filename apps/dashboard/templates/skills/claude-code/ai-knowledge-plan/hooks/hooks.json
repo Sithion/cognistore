@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_SKILL_DIR}/hooks/post-plan-check.sh",
+            "timeout": 5
+          }
+        ],
+        "matcher": "ExitPlanMode"
+      }
+    ]
+  }
+}

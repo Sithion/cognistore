@@ -451,7 +451,7 @@ export function StatsPage() {
   } = useAppSelector((s) => s.stats);
 
   const [topTags, setTopTags] = useState<{ tag: string; count: number }[]>([]);
-  const [cleaning, setCleaning] = useState(false);
+  // cleanup moved to Settings page
 
 
   const loadTopTags = useCallback(() => {
@@ -581,34 +581,7 @@ export function StatsPage() {
         <MetricCard label="Total Entries" value={stats?.total ?? 0} />
         <MetricCard label="Last 24h" value={metrics?.activity.last24h ?? 0} sub="new entries" />
         <MetricCard label="Last 7 days" value={metrics?.activity.last7d ?? 0} sub="new entries" />
-        <div style={{ flex: 1, minWidth: 140, position: 'relative' }}>
-          <MetricCard label="Database Size" value={metrics?.database.sizeFormatted ?? '-'} sub={metrics?.database.path} />
-          <button
-            onClick={async () => {
-              setCleaning(true);
-              try {
-                await api.cleanupDatabase();
-                refreshAll();
-              } catch { /* silent */ }
-              setCleaning(false);
-            }}
-            disabled={cleaning}
-            title={t('stats.cleanTooltip')}
-            style={{
-              position: 'absolute', top: 8, right: 8,
-              padding: '4px 6px', fontSize: 12,
-              backgroundColor: 'transparent',
-              color: 'var(--text-secondary)',
-              border: 'none', borderRadius: 4,
-              cursor: cleaning ? 'not-allowed' : 'pointer',
-              opacity: cleaning ? 0.5 : 0.6,
-              transition: 'all 0.2s',
-              lineHeight: 1,
-            }}
-          >
-            {cleaning ? <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} /> : '🗑'}
-          </button>
-        </div>
+        <MetricCard label="Database Size" value={metrics?.database.sizeFormatted ?? '-'} sub={metrics?.database.path} />
       </div>
 
       {/* ── Operations Row ── */}
@@ -721,6 +694,140 @@ export function StatsPage() {
           </div>
         )}
       </WidgetCard>
+
+      {/* ── Plan Analytics Section ── */}
+      <PlanAnalyticsSection />
     </div>
+  );
+}
+
+/* ── Plan Analytics Section ── */
+
+const PLAN_STATUS_COLORS: Record<string, string> = {
+  Draft: '#6b7280', Active: '#3b82f6', Completed: '#22c55e', Archived: '#a78bfa',
+};
+
+const TASK_STATUS_COLORS: Record<string, string> = {
+  Pending: '#6b7280', 'In Progress': '#3b82f6', Completed: '#22c55e',
+};
+
+function PlanAnalyticsSection() {
+  const { t } = useTranslation();
+  const [data, setData] = useState<{
+    plans: { total: number; draft: number; active: number; completed: number; archived: number };
+    tasks: { total: number; pending: number; inProgress: number; completed: number; avgPerPlan: number };
+    plansByDay: { date: string; count: number }[];
+  } | null>(null);
+
+  useEffect(() => {
+    api.getPlanMetrics().then(setData).catch(() => {});
+  }, []);
+
+  if (!data || data.plans.total === 0) return null;
+
+  const planDistribution = [
+    { name: 'Draft', value: data.plans.draft },
+    { name: 'Active', value: data.plans.active },
+    { name: 'Completed', value: data.plans.completed },
+    { name: 'Archived', value: data.plans.archived },
+  ].filter((d) => d.value > 0);
+
+  const taskDistribution = [
+    { name: 'Pending', value: data.tasks.pending },
+    { name: 'In Progress', value: data.tasks.inProgress },
+    { name: 'Completed', value: data.tasks.completed },
+  ].filter((d) => d.value > 0);
+
+  return (
+    <>
+      <h2 style={{ fontSize: 15, fontWeight: 700, marginTop: 32, marginBottom: 16, color: 'var(--text-primary)' }}>
+        Plans
+      </h2>
+
+      {/* Plan Metric Cards */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+        <MetricCard label="Total Plans" value={data.plans.total} />
+        <MetricCard label="Active" value={data.plans.active} />
+        <MetricCard label="Completed" value={data.plans.completed} />
+        <MetricCard label="Avg Tasks/Plan" value={data.tasks.avgPerPlan} />
+      </div>
+
+      {/* Plan Charts */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        {/* Plan Status Distribution */}
+        {planDistribution.length > 0 && (
+          <WidgetCard title="Plan Status" state="loaded">
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={planDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
+                  {planDistribution.map((d) => (
+                    <Cell key={d.name} fill={PLAN_STATUS_COLORS[d.name] || '#6b7280'} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }}
+                  itemStyle={{ color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-primary)' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {planDistribution.map((d) => (
+                <span key={d.name} style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: PLAN_STATUS_COLORS[d.name] }} />
+                  {d.name}: {d.value}
+                </span>
+              ))}
+            </div>
+          </WidgetCard>
+        )}
+
+        {/* Task Completion Rate */}
+        {taskDistribution.length > 0 && (
+          <WidgetCard title="Task Status" state="loaded">
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={taskDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
+                  {taskDistribution.map((d) => (
+                    <Cell key={d.name} fill={TASK_STATUS_COLORS[d.name] || '#6b7280'} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }}
+                  itemStyle={{ color: 'var(--text-primary)' }}
+                  labelStyle={{ color: 'var(--text-primary)' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {taskDistribution.map((d) => (
+                <span key={d.name} style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: TASK_STATUS_COLORS[d.name] }} />
+                  {d.name}: {d.value}
+                </span>
+              ))}
+            </div>
+          </WidgetCard>
+        )}
+      </div>
+
+      {/* Plans Activity Chart */}
+      {data.plansByDay.some((d) => d.count > 0) && (
+        <WidgetCard title="Plans Activity (15 days)" state="loaded">
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={data.plansByDay}>
+              <XAxis dataKey="date" tickFormatter={(v) => v.slice(5)} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} width={30} />
+              <Tooltip
+                contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }}
+                itemStyle={{ color: 'var(--text-primary)' }}
+                labelStyle={{ color: 'var(--text-primary)' }}
+              />
+              <Area type="monotone" dataKey="count" stroke="#3b82f6" fill="#3b82f620" strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </WidgetCard>
+      )}
+    </>
   );
 }

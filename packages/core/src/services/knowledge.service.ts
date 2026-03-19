@@ -5,6 +5,10 @@ import type {
   SearchOptions,
   KnowledgeEntry,
   SearchResult,
+  Plan,
+  CreatePlanInput,
+  UpdatePlanInput,
+  PlanTask,
 } from '@ai-knowledge/shared';
 
 export interface EmbeddingProvider {
@@ -83,6 +87,83 @@ export class KnowledgeService {
     return { total: count, byType, byScope, lastUpdatedAt };
   }
 
+  // ─── Plans (separate entity) ────────────────────────────────
+
+  async createPlan(input: CreatePlanInput & { tasks?: { description: string; priority?: string }[] }): Promise<Plan> {
+    const { tasks, ...planInput } = input;
+    const embedding = await this.embeddingProvider.embed(input.tags.join(' '));
+    const row = this.repository.createPlan({ ...planInput, embedding });
+    const plan = this.toPlan(row);
+
+    if (tasks && tasks.length > 0) {
+      for (let i = 0; i < tasks.length; i++) {
+        this.repository.createPlanTask({ planId: plan.id, description: tasks[i].description, priority: tasks[i].priority, position: i });
+      }
+    }
+
+    return plan;
+  }
+
+  getPlanById(id: string): Plan | null {
+    const row = this.repository.getPlanById(id);
+    return row ? this.toPlan(row) : null;
+  }
+
+  updatePlan(id: string, updates: UpdatePlanInput): Plan | null {
+    const row = this.repository.updatePlan(id, updates as Record<string, unknown>);
+    return row ? this.toPlan(row) : null;
+  }
+
+  deletePlan(id: string): boolean {
+    return this.repository.deletePlan(id);
+  }
+
+  listPlans(limit = 20, status?: string): Plan[] {
+    const rows = this.repository.listPlans(limit, status);
+    return rows.map((r) => this.toPlan(r));
+  }
+
+  // ─── Plan Relations ─────────────────────────────────────────
+
+  addPlanRelation(planId: string, knowledgeId: string, relationType: 'input' | 'output') {
+    this.repository.addPlanRelation(planId, knowledgeId, relationType);
+  }
+
+  async getPlanRelations(planId: string) {
+    const relations = this.repository.getPlanRelations(planId);
+    const results: { entry: KnowledgeEntry; relationType: string }[] = [];
+    for (const rel of relations) {
+      const entry = await this.repository.findById(rel.id);
+      if (entry) results.push({ entry: this.toKnowledgeEntry(entry), relationType: rel.relationType });
+    }
+    return results;
+  }
+
+  // ─── Plan Tasks ─────────────────────────────────────────────
+
+  createPlanTask(input: { planId: string; description: string; status?: string; priority?: string; notes?: string | null; position?: number }): PlanTask {
+    return this.toPlanTask(this.repository.createPlanTask(input));
+  }
+
+  updatePlanTask(id: string, updates: { description?: string; status?: string; priority?: string; notes?: string | null; position?: number }): PlanTask | null {
+    const row = this.repository.updatePlanTask(id, updates);
+    return row ? this.toPlanTask(row) : null;
+  }
+
+  deletePlanTask(id: string): boolean {
+    return this.repository.deletePlanTask(id);
+  }
+
+  listPlanTasks(planId: string): PlanTask[] {
+    return this.repository.listPlanTasks(planId).map((r) => this.toPlanTask(r));
+  }
+
+  getPlanTaskStats() {
+    return this.repository.getPlanTaskStats();
+  }
+
+  // ─── Operations ─────────────────────────────────────────────
+
   getOperationCounts() {
     return this.repository.getOperationCounts();
   }
@@ -91,9 +172,12 @@ export class KnowledgeService {
     return this.repository.cleanupOldOperations();
   }
 
+  // ─── Converters ─────────────────────────────────────────────
+
   private toKnowledgeEntry(row: any): KnowledgeEntry {
     return {
       id: row.id,
+      title: row.title ?? '',
       content: row.content,
       embedding: [],
       tags: Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]'),
@@ -109,8 +193,36 @@ export class KnowledgeService {
           : JSON.parse(row.relatedIds)
         : null,
       agentId: row.agentId,
-      createdAt: new Date(row.createdAt),
-      updatedAt: new Date(row.updatedAt),
+      createdAt: new Date(row.createdAt ?? row.created_at),
+      updatedAt: new Date(row.updatedAt ?? row.updated_at),
+    };
+  }
+
+  private toPlan(row: any): Plan {
+    return {
+      id: row.id,
+      title: row.title,
+      content: row.content,
+      tags: Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]'),
+      scope: row.scope,
+      status: row.status,
+      source: row.source ?? '',
+      createdAt: new Date(row.created_at ?? row.createdAt),
+      updatedAt: new Date(row.updated_at ?? row.updatedAt),
+    };
+  }
+
+  private toPlanTask(row: any): PlanTask {
+    return {
+      id: row.id,
+      planId: row.plan_id ?? row.planId,
+      description: row.description,
+      status: row.status,
+      priority: row.priority,
+      notes: row.notes ?? null,
+      position: row.position,
+      createdAt: new Date(row.created_at ?? row.createdAt),
+      updatedAt: new Date(row.updated_at ?? row.updatedAt),
     };
   }
 }

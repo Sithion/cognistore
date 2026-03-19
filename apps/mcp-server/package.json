@@ -1,6 +1,6 @@
 {
   "name": "@ai-knowledge/mcp-server",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": false,
   "type": "module",
   "description": "MCP server for AI Knowledge Base — integrates with Claude Code and GitHub Copilot",

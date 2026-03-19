@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+./scripts/security-check.sh

@@ -157,6 +157,8 @@ export function HomePage() {
   // Filter recent entries by tags (client-side) and text query
   const q = query.trim().toLowerCase();
   const filteredRecent = recentEntries.filter(entry => {
+    // Exclude plans — they have their own page
+    if ((entry.type as string) === 'plan') return false;
     // Tag filter
     if (selectedTags.length > 0) {
       const entryTags = (entry.tags as string[]) ?? [];

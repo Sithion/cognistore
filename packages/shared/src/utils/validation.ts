@@ -1,10 +1,16 @@
 import { z } from 'zod';
-import { KnowledgeType } from '../types/knowledge.js';
+import { KnowledgeType, KnowledgeStatus, TaskStatus, TaskPriority } from '../types/knowledge.js';
 import { DEFAULT_SIMILARITY_THRESHOLD, DEFAULT_SEARCH_LIMIT } from '../constants/defaults.js';
 
 export const knowledgeTypeSchema = z.nativeEnum(KnowledgeType);
+export const knowledgeStatusSchema = z.nativeEnum(KnowledgeStatus);
+export const taskStatusSchema = z.nativeEnum(TaskStatus);
+export const taskPrioritySchema = z.nativeEnum(TaskPriority);
+
+// ─── Knowledge ────────────────────────────────────────────────
 
 export const createKnowledgeSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
   content: z.string().min(1, 'Content is required'),
   tags: z.array(z.string().min(1)).min(1, 'At least one tag is required'),
   type: knowledgeTypeSchema,
@@ -17,6 +23,7 @@ export const createKnowledgeSchema = z.object({
 });
 
 export const updateKnowledgeSchema = z.object({
+  title: z.string().min(1).optional(),
   content: z.string().min(1).optional(),
   tags: z.array(z.string().min(1)).min(1).optional(),
   type: knowledgeTypeSchema.optional(),
@@ -34,4 +41,43 @@ export const searchOptionsSchema = z.object({
   scope: z.string().optional(),
   limit: z.number().int().min(1).max(100).optional().default(DEFAULT_SEARCH_LIMIT),
   threshold: z.number().min(0).max(1).optional().default(DEFAULT_SIMILARITY_THRESHOLD),
+});
+
+// ─── Plans ────────────────────────────────────────────────────
+
+export const createPlanSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  content: z.string().min(1, 'Content is required'),
+  tags: z.array(z.string().min(1)).min(1, 'At least one tag is required'),
+  scope: z.string().min(1, 'Scope is required'),
+  source: z.string().min(1, 'Source is required'),
+  status: knowledgeStatusSchema.optional().default(KnowledgeStatus.DRAFT),
+});
+
+export const updatePlanSchema = z.object({
+  title: z.string().min(1).optional(),
+  content: z.string().min(1).optional(),
+  tags: z.array(z.string().min(1)).min(1).optional(),
+  scope: z.string().min(1).optional(),
+  status: knowledgeStatusSchema.optional(),
+  source: z.string().min(1).optional(),
+});
+
+// ─── Plan Tasks ───────────────────────────────────────────────
+
+export const createPlanTaskSchema = z.object({
+  planId: z.string().min(1),
+  description: z.string().min(1, 'Description is required'),
+  status: taskStatusSchema.optional().default(TaskStatus.PENDING),
+  priority: taskPrioritySchema.optional().default(TaskPriority.MEDIUM),
+  notes: z.string().nullable().optional().default(null),
+  position: z.number().int().min(0).optional(),
+});
+
+export const updatePlanTaskSchema = z.object({
+  description: z.string().min(1).optional(),
+  status: taskStatusSchema.optional(),
+  priority: taskPrioritySchema.optional(),
+  notes: z.string().nullable().optional(),
+  position: z.number().int().min(0).optional(),
 });

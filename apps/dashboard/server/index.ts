@@ -423,7 +423,7 @@ async function start() {
       const home = homedir();
 
       // Claude Code skills (with hooks directories)
-      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture']) {
+      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
         const srcDir = resolve(skillsDir, 'claude-code', name);
         if (existsSync(srcDir)) {
           const destDir = resolve(home, '.claude', 'skills', name);
@@ -443,7 +443,7 @@ async function start() {
       }
 
       // Copilot skills
-      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture']) {
+      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
         const src = resolve(skillsDir, 'copilot', `${name}.md`);
         if (existsSync(src)) {
           const destDir = resolve(home, '.copilot', 'skills');
@@ -497,7 +497,7 @@ async function start() {
       await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp(), results, errors);
 
       // 3. Remove skills
-      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture']) {
+      for (const name of ['ai-knowledge-query', 'ai-knowledge-capture', 'ai-knowledge-plan']) {
         const claudeDir = resolve(home, '.claude', 'skills', name);
         if (existsSync(claudeDir)) { rmSync(claudeDir, { recursive: true, force: true }); results.push(`Skill ${name} removed (Claude)`); }
         const copilotFile = resolve(home, '.copilot', 'skills', `${name}.md`);
@@ -770,6 +770,118 @@ async function start() {
     if (err) return err;
     const deleted = await sdk.deleteKnowledge(request.params.id);
     return { deleted };
+  });
+
+  // ─── Plans endpoints ─────────────────────────────────────────
+
+  app.get('/api/plans', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const q = request.query as any;
+    const limit = Number(q.limit) || 20;
+    const status = q.status || undefined;
+    return sdk.listPlans(limit, status);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/plans/:id/relations', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return sdk.getPlanRelations(request.params.id);
+  });
+
+  app.post<{ Params: { id: string }; Body: { knowledgeId: string; relationType: 'input' | 'output' } }>('/api/plans/:id/relations', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const { knowledgeId, relationType } = request.body;
+    sdk.addPlanRelation(request.params.id, knowledgeId, relationType);
+    return { success: true };
+  });
+
+  app.put<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/plans/:id', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const result = sdk.updatePlan(request.params.id, request.body as any);
+    if (!result) return { error: 'Not found' };
+    return result;
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/plans/:id', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return { deleted: sdk.deletePlan(request.params.id) };
+  });
+
+  // ─── Plan Tasks endpoints ───────────────────────────────────
+
+  app.get<{ Params: { id: string } }>('/api/plans/:id/tasks', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return sdk.listPlanTasks(request.params.id);
+  });
+
+  app.post<{ Params: { id: string }; Body: { description: string; priority?: string; notes?: string } }>('/api/plans/:id/tasks', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return sdk.createPlanTask({ planId: request.params.id, ...request.body });
+  });
+
+  app.put<{ Params: { taskId: string }; Body: Record<string, unknown> }>('/api/plans/tasks/:taskId', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    const result = sdk.updatePlanTask(request.params.taskId, request.body as any);
+    if (!result) return { error: 'Task not found' };
+    return result;
+  });
+
+  app.delete<{ Params: { taskId: string } }>('/api/plans/tasks/:taskId', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return { deleted: sdk.deletePlanTask(request.params.taskId) };
+  });
+
+  // ─── Plan Metrics endpoint ──────────────────────────────────
+
+  app.get('/api/metrics/plans', async (_request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+
+    try {
+      const allPlans = sdk.listPlans(1000);
+      const taskStats = sdk.getPlanTaskStats();
+
+      const plansByStatus = { total: 0, draft: 0, active: 0, completed: 0, archived: 0 };
+      for (const p of allPlans) {
+        plansByStatus.total++;
+        const s = (p as any).status as string;
+        if (s in plansByStatus) (plansByStatus as any)[s]++;
+      }
+
+      // Plans created per day (last 15 days)
+      const now = new Date();
+      const plansByDay: { date: string; count: number }[] = [];
+      for (let i = 14; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const count = allPlans.filter((p: any) => {
+          const created = new Date(p.createdAt).toISOString().split('T')[0];
+          return created === dateStr;
+        }).length;
+        plansByDay.push({ date: dateStr, count });
+      }
+
+      return {
+        plans: plansByStatus,
+        tasks: {
+          ...taskStats,
+          avgPerPlan: plansByStatus.total > 0 ? Math.round((taskStats.total / plansByStatus.total) * 10) / 10 : 0,
+        },
+        plansByDay,
+      };
+    } catch (error) {
+      reply.code(500);
+      return { error: 'Failed to load plan metrics', message: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   // ─── Start server ──────────────────────────────────────────────

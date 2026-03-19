@@ -78,7 +78,7 @@ Steps per platform:
 7. tauri-action → build + upload to GitHub Release
 ```
 
-Binaries are signed with `TAURI_SIGNING_PRIVATE_KEY` for auto-update verification.
+Binaries are signed with `TAURI_SIGNING_PRIVATE_KEY` for auto-update verification. The `tauri-action` generates `latest.json` automatically with `updaterJsonKeepUniversal: true` — there is no separate `generate-updater` job.
 
 ## Secrets
 

@@ -129,12 +129,18 @@ export function KnowledgeCard({
         </div>
       </div>
 
+      {(entry.title as string) && (
+        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+          {entry.title as string}
+        </h4>
+      )}
       <p
         style={{
           color: 'var(--text-primary)',
-          fontSize: 14,
+          fontSize: 13,
           lineHeight: 1.5,
           marginBottom: 8,
+          opacity: (entry.title as string) ? 0.7 : 1,
         }}
       >
         {(entry.content as string).substring(0, 200)}

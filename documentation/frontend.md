@@ -26,9 +26,21 @@ Knowledge management interface with search, filters, and CRUD.
 **Components:**
 - Search bar with natural language query input
 - Filter dropdowns: type (decision/pattern/fix/constraint/gotcha), scope, tags
-- Knowledge cards grid with tag chips, type badges, and similarity scores
+- Knowledge cards grid with title, tag chips, type badges, and similarity scores
 - Floating action button (FAB) → add knowledge modal
 - Auto-refresh polling (detects new entries every 10 seconds)
+
+### PlansPage (`/plans`)
+
+Plan management with live task tracking.
+
+**Components:**
+- Active plans section at top showing plans with `active` status
+- Task list per plan with status icons: ○ pending, spinner in_progress, ✓ completed
+- Priority left-border colors: red (high), yellow (medium), gray (low)
+- Progress bars and mini progress counters (e.g., "3/5 tasks")
+- Plan relations sections (input/output knowledge entries)
+- Plan status lifecycle: draft → active → completed → archived
 
 ### StatsPage (`/stats`)
 
@@ -41,17 +53,19 @@ Analytics dashboard with charts and metrics.
 - 15-day activity trend area chart
 - 90-day contribution heatmap
 - Tag cloud with size variation
+- Plans analytics section: donut charts (status/scope distribution), area chart (plan activity), metric cards (total plans, active, completed)
 - Auto-refresh interval selector (Off / 1s / 10s / 30s / 1m / 5m)
 - Manual refresh button with inline spinner
 
-### InfrastructurePage (`/infra`)
+### SettingsPage (`/settings`)
 
-System health monitoring and uninstall.
+System health monitoring, maintenance, and uninstall. (Renamed from InfrastructurePage/Monitoring in v0.8.1.)
 
 **Components:**
 - Service status cards: Database (connected/path), Ollama (connected/host)
 - Overall health indicator (green/red)
 - Health polling every 5 seconds
+- Maintenance section: cleanup orphan embeddings button (moved from StatsPage)
 - Danger Zone: uninstall button with 3-step confirmation dialog
 
 ### SetupPage (conditional, first launch)
@@ -125,16 +139,17 @@ App Mount:
   → If not ready → show SetupPage
 
 Dashboard Routes:
-  /       → HomePage
-  /stats  → StatsPage
-  /infra  → InfrastructurePage
+  /          → HomePage
+  /plans     → PlansPage
+  /stats     → StatsPage
+  /settings  → SettingsPage
 ```
 
 ## Layout
 
 **Sidebar:**
 - App logo + name
-- Navigation links (Knowledge, Stats, Infrastructure)
+- Navigation links (Knowledge, Plans, Stats, Settings)
 - Language selector (EN/ES/PT buttons)
 - App version display
 

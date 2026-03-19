@@ -6,8 +6,28 @@ export enum KnowledgeType {
   GOTCHA = 'gotcha',
 }
 
+export enum KnowledgeStatus {
+  DRAFT = 'draft',
+  ACTIVE = 'active',
+  COMPLETED = 'completed',
+  ARCHIVED = 'archived',
+}
+
+export enum TaskStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+}
+
+export enum TaskPriority {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+}
+
 export interface KnowledgeEntry {
   id: string;
+  title: string;
   content: string;
   embedding: number[];
   tags: string[];
@@ -24,6 +44,7 @@ export interface KnowledgeEntry {
 }
 
 export interface CreateKnowledgeInput {
+  title: string;
   content: string;
   tags: string[];
   type: KnowledgeType;
@@ -36,6 +57,7 @@ export interface CreateKnowledgeInput {
 }
 
 export interface UpdateKnowledgeInput {
+  title?: string;
   content?: string;
   tags?: string[];
   type?: KnowledgeType;
@@ -46,6 +68,78 @@ export interface UpdateKnowledgeInput {
   relatedIds?: string[] | null;
   agentId?: string | null;
 }
+
+// ─── Plans (separate entity) ─────────────────────────────────
+
+export interface Plan {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  scope: string;
+  status: KnowledgeStatus;
+  source: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreatePlanInput {
+  title: string;
+  content: string;
+  tags: string[];
+  scope: string;
+  source: string;
+  status?: KnowledgeStatus;
+}
+
+export interface UpdatePlanInput {
+  title?: string;
+  content?: string;
+  tags?: string[];
+  scope?: string;
+  status?: KnowledgeStatus;
+  source?: string;
+}
+
+// ─── Plan Tasks ──────────────────────────────────────────────
+
+export interface PlanTask {
+  id: string;
+  planId: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  notes: string | null;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreatePlanTaskInput {
+  planId: string;
+  description: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  notes?: string | null;
+  position?: number;
+}
+
+export interface UpdatePlanTaskInput {
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  notes?: string | null;
+  position?: number;
+}
+
+// ─── Plan Relations ──────────────────────────────────────────
+
+export interface PlanRelation {
+  entry: KnowledgeEntry;
+  relationType: 'input' | 'output';
+}
+
+// ─── Search ──────────────────────────────────────────────────
 
 export interface SearchOptions {
   tags?: string[];

@@ -31,7 +31,8 @@ The app acts as an [MCP](https://modelcontextprotocol.io/) server for **Claude C
 - **Semantic search** — Find knowledge by meaning, not just keywords. Powered by Ollama embeddings running natively.
 - **MCP integration** — Works as a plugin for Claude Code, GitHub Copilot, and OpenCode out of the box.
 - **Zero configuration** — The setup wizard handles everything: Ollama, database, model downloads, MCP config injection, and AI skills installation.
-- **Desktop dashboard** — Browse, search, filter, and manage your knowledge base through the built-in UI with stats and charts.
+- **Plans** — Create and manage implementation plans with task lists, priority tracking, and relations to knowledge entries.
+- **Desktop dashboard** — Browse, search, filter, and manage your knowledge base and plans through the built-in UI with stats and charts.
 - **Auto-update** — The app checks for updates every 30 minutes and installs them automatically.
 - **Multi-language** — Dashboard available in English, Spanish, and Portuguese.
 - **Cross-platform** — macOS (`.dmg`) and Linux (`.AppImage`, `.deb`).
@@ -103,12 +104,18 @@ If you prefer to configure the MCP server manually:
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `addKnowledge` | Store a knowledge entry with automatic semantic embedding | `content`, `tags`, `type`, `scope`, `source` |
+| `addKnowledge` | Store a knowledge entry with automatic semantic embedding | `title`, `content`, `tags`, `type`, `scope`, `source` |
 | `getKnowledge` | Search across entries using natural language queries | `query`, `tags`, `type`, `scope`, `limit`, `threshold` |
-| `updateKnowledge` | Update an existing entry (re-embeds if content changes) | `id`, `content`, `tags` |
+| `updateKnowledge` | Update an existing entry (re-embeds if tags change) | `id`, `title`, `content`, `tags` |
 | `deleteKnowledge` | Remove an entry by ID | `id` |
 | `listTags` | List all unique tags in the knowledge base | — |
 | `healthCheck` | Verify database and Ollama connectivity | — |
+| `createPlan` | Create a plan with optional tasks and knowledge relations | `title`, `content`, `tags`, `scope`, `source` |
+| `updatePlan` | Update plan title, content, tags, scope, or status | `planId`, `status`, `title`, `content` |
+| `addPlanRelation` | Link a knowledge entry to a plan (input or output) | `planId`, `knowledgeId`, `relationType` |
+| `addPlanTask` | Add a task to a plan's todo list | `planId`, `description`, `priority` |
+| `updatePlanTask` | Mark task in_progress/completed, add notes | `taskId`, `status`, `notes` |
+| `listPlanTasks` | List tasks for a plan ordered by position | `planId` |
 
 ### Knowledge Types
 
@@ -128,33 +135,44 @@ The setup wizard installs skills with lifecycle hooks that enforce knowledge bas
 
 - **ai-knowledge-query** — Hooks into `PreToolUse` to remind agents to query before making changes
 - **ai-knowledge-capture** — Hooks into `Stop` to remind agents to capture findings before ending a session
+- **ai-knowledge-plan** — Hooks into `PostToolUse` (ExitPlanMode) to remind agents to save plans to the knowledge base with task management workflow
 
 Hooks are non-blocking (system messages only) and skip automatically when the agent is already using ai-knowledge tools.
 
 ## Dashboard
 
-The desktop app includes a full dashboard with three main pages:
+The desktop app includes a full dashboard with four main pages:
 
 ### Knowledge (Home)
 
 - Semantic search with natural language queries
 - Filter by type, scope, and tags
+- Knowledge cards with title, tag chips, type badges, and similarity scores
 - Add new knowledge entries via modal form
 - Auto-refresh with polling for new entries
+
+### Plans
+
+- Active plans section showing live task lists with progress bars
+- Task status icons: pending (circle), in_progress (spinner), completed (checkmark)
+- Priority left-border colors: red (high), yellow (medium), gray (low)
+- Mini progress counters and plan relations (input/output sections)
 
 ### Stats
 
 - Type and scope distribution charts (pie + bar)
+- Plans analytics section with donut charts, area chart, and metric cards
 - 15-day activity trend (area chart)
 - 90-day contribution heatmap
 - Metric cards: total entries, 24h/7d activity, database size
 - Tag cloud visualization
 - Configurable auto-refresh interval (Off / 1s / 10s / 30s / 1m / 5m)
 
-### Monitoring
+### Settings
 
 - Service health monitoring (Database, Ollama)
 - Real-time status polling every 5 seconds
+- Maintenance section with cleanup orphan embeddings button
 - Uninstall wizard with 3-step confirmation (removes all data, configs, and dependencies)
 
 ## Architecture

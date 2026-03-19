@@ -23,12 +23,12 @@ The system consists of three runtime subsystems:
 │  @ai-knowledge/mcp-server│    │  Tauri Desktop App               │
 │  (npx, standalone)       │    │  ┌────────────┐ ┌──────────────┐ │
 │                          │    │  │ React UI   │ │ Fastify      │ │
-│  addKnowledge            │    │  │ (WebView)  │→│ sidecar      │ │
-│  getKnowledge            │    │  └────────────┘ └──────┬───────┘ │
-│  updateKnowledge         │    │                        │         │
-│  deleteKnowledge         │    └────────────────────────┼─────────┘
-│  listTags                │                             │
-│  healthCheck             │                             │
+│  12 tools (knowledge +   │    │  │ (WebView)  │→│ sidecar      │ │
+│  plans + tasks + health) │    │  └────────────┘ └──────┬───────┘ │
+│                          │    │                        │         │
+│                          │    └────────────────────────┼─────────┘
+│                          │                             │
+│                          │                             │
 └──────────┬───────────────┘                             │
            │                                             │
            ▼                                             ▼
@@ -74,7 +74,7 @@ All cross-package dependencies use `workspace:*` protocol via pnpm.
 ### Write Path (addKnowledge)
 
 ```
-1. MCP client sends addKnowledge(content, tags, type, scope, source)
+1. MCP client sends addKnowledge(title, content, tags, type, scope, source)
 2. MCP server validates input with Zod schema (packages/shared)
 3. SDK.add() delegates to KnowledgeService.add()
 4. Service joins tags into text → sends to Ollama /api/embeddings
@@ -82,7 +82,7 @@ All cross-package dependencies use `workspace:*` protocol via pnpm.
 6. Repository generates UUIDv4 + ISO timestamps
 7. INSERT into knowledge_entries table (Drizzle ORM)
 8. INSERT embedding into knowledge_embeddings virtual table (sqlite-vec)
-9. Return { id, content, tags, type, scope, source, createdAt }
+9. Return { id, title, content, tags, type, scope, source, createdAt }
 ```
 
 ### Read Path (getKnowledge)
@@ -106,6 +106,37 @@ All cross-package dependencies use `workspace:*` protocol via pnpm.
 4. UPDATE knowledge_entries + replace embedding if changed
 ```
 
+### Plans (Separate Entity)
+
+Plans are stored in their own `plans` table with a separate `plans_embeddings` virtual table. They are linked to knowledge entries via `plan_relations` and have associated `plan_tasks` for todo tracking. The plan lifecycle is: `draft` -> `active` -> `completed` -> `archived`.
+
+```
+Write: createPlan(title, content, tags, scope, source, tasks?, relatedKnowledgeIds?)
+  1. Validate input → INSERT into plans table
+  2. If tasks provided → INSERT each into plan_tasks
+  3. If relatedKnowledgeIds → INSERT into plan_relations (type=input)
+  4. Embed tags → INSERT into plans_embeddings
+
+Task Flow: addPlanTask / updatePlanTask / listPlanTasks
+  - Tasks ordered by position (auto-calculated)
+  - Status: pending → in_progress → completed
+  - Priority: low / medium / high
+```
+
+### Migration System
+
+Database schema changes are managed through versioned SQL migration files:
+
+```
+packages/core/src/db/migrations/
+├── 0.8.0.sql    # Base schema (knowledge_entries, operations_log)
+├── 0.9.0.sql    # Plans table, plan_tasks, plan_relations, title column
+└── meta/
+    └── _journal.json
+```
+
+A `schema_version` table tracks which migrations have been applied. On startup, `createDbClient()` runs `runMigrations()` which detects the current version and applies pending migrations. Pre-migration databases (no `schema_version` table) are bootstrapped automatically.
+
 ## Key Design Decisions
 
 | Decision | Choice | Rationale |
@@ -127,7 +158,7 @@ ai-knowledge/
 ├── apps/
 │   ├── dashboard/              # Tauri v2 desktop application
 │   │   ├── src/                # React frontend
-│   │   │   ├── pages/          # HomePage, StatsPage, InfrastructurePage, SetupPage
+│   │   │   ├── pages/          # HomePage, PlansPage, StatsPage, SettingsPage, SetupPage
 │   │   │   ├── components/     # Sidebar, UpdateChecker, LanguageSelector
 │   │   │   ├── store/          # Redux Toolkit (statsSlice)
 │   │   │   ├── i18n/           # Translations (EN, ES, PT)
@@ -153,8 +184,9 @@ ai-knowledge/
 │   │       └── schemas.ts      # Zod validation schemas
 │   ├── core/                   # Database layer
 │   │   └── src/
-│   │       ├── db/client.ts    # createDbClient(), ensureSchema(), sqlite-vec loader
-│   │       ├── db/schema/      # Drizzle table definitions + sqlite-vec virtual table
+│   │       ├── db/client.ts    # createDbClient(), migration runner, sqlite-vec loader
+│   │       ├── db/schema/      # Drizzle table definitions + sqlite-vec virtual tables
+│   │       ├── db/migrations/  # Versioned SQL migrations (0.8.0.sql, 0.9.0.sql)
 │   │       ├── repositories/   # KnowledgeRepository (CRUD + vector search)
 │   │       └── services/       # KnowledgeService (embedding + persistence orchestration)
 │   ├── embeddings/             # Ollama client

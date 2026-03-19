@@ -4,6 +4,7 @@ import { KnowledgeSDK } from '@ai-knowledge/sdk';
 import { KnowledgeType } from '@ai-knowledge/shared';
 
 const knowledgeTypeValues = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'] as const;
+const knowledgeStatusValues = ['draft', 'active', 'completed', 'archived'] as const;
 
 export function createServer(sdk: KnowledgeSDK): McpServer {
   const server = new McpServer({
@@ -16,6 +17,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     'addKnowledge',
     'Store a new knowledge entry with semantic embedding. Content is vectorized for future semantic search.',
     {
+      title: z.string().describe('Short descriptive title for the knowledge entry'),
       content: z.string().describe('The knowledge content text to store'),
       tags: z.array(z.string()).describe('Mandatory categorical tags for filtering'),
       type: z.enum(knowledgeTypeValues).describe('Type of knowledge entry'),
@@ -26,6 +28,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     },
     async (params) => {
       const result = await sdk.addKnowledge({
+        title: params.title,
         content: params.content,
         tags: params.tags,
         type: params.type as KnowledgeType,
@@ -68,6 +71,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     'Update an existing knowledge entry. If content changes, embedding is regenerated. Version auto-increments.',
     {
       id: z.string().describe('UUID of the knowledge entry to update'),
+      title: z.string().optional().describe('New title'),
       content: z.string().optional().describe('New content text'),
       tags: z.array(z.string()).optional().describe('New tags'),
       type: z.enum(knowledgeTypeValues).optional().describe('New type'),
@@ -78,6 +82,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     async (params) => {
       const { id, ...updates } = params;
       const result = await sdk.updateKnowledge(id, {
+        title: updates.title,
         content: updates.content,
         tags: updates.tags,
         type: updates.type as KnowledgeType | undefined,
@@ -124,6 +129,120 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     async () => {
       const health = await sdk.healthCheck();
       return { content: [{ type: 'text' as const, text: JSON.stringify(health, null, 2) }] };
+    }
+  );
+
+  // createPlan
+  server.tool(
+    'createPlan',
+    'Create a new plan in the knowledge base. Plans are the ONLY way to persist implementation plans — never use local files. Status starts as draft.',
+    {
+      title: z.string().describe('Plan title (short, descriptive)'),
+      content: z.string().describe('Full plan content (steps, approach, considerations)'),
+      tags: z.array(z.string()).describe('Tags for categorization'),
+      scope: z.string().describe('Scope: "global" or "workspace:<project-name>"'),
+      source: z.string().describe('Source/context of the plan'),
+      relatedKnowledgeIds: z.array(z.string()).optional().describe('IDs of knowledge entries consulted during planning (input relations)'),
+      tasks: z.array(z.object({
+        description: z.string(),
+        priority: z.enum(['low', 'medium', 'high']).optional(),
+      })).optional().describe('Initial tasks for the plan todo list'),
+    },
+    async (params) => {
+      const result = await sdk.createPlan({
+        title: params.title,
+        content: params.content,
+        tags: params.tags,
+        scope: params.scope,
+        source: params.source,
+        relatedKnowledgeIds: params.relatedKnowledgeIds,
+        tasks: params.tasks,
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  // updatePlan
+  server.tool(
+    'updatePlan',
+    'Update an existing plan. Use to change status (draft → active → completed → archived), title, content, tags, or scope.',
+    {
+      planId: z.string().describe('UUID of the plan to update'),
+      title: z.string().optional().describe('New title'),
+      content: z.string().optional().describe('New content'),
+      tags: z.array(z.string()).optional().describe('New tags'),
+      scope: z.string().optional().describe('New scope'),
+      status: z.enum(knowledgeStatusValues).optional().describe('New status'),
+      source: z.string().optional().describe('New source'),
+    },
+    async (params) => {
+      const { planId, ...updates } = params;
+      const result = sdk.updatePlan(planId, updates as any);
+      const text = result ? JSON.stringify(result, null, 2) : 'Plan not found';
+      return { content: [{ type: 'text' as const, text }] };
+    }
+  );
+
+  // addPlanRelation
+  server.tool(
+    'addPlanRelation',
+    'Link a knowledge entry to a plan. Use "input" for entries consulted during planning, "output" for entries created/updated during execution.',
+    {
+      planId: z.string().describe('UUID of the plan'),
+      knowledgeId: z.string().describe('UUID of the knowledge entry to link'),
+      relationType: z.enum(['input', 'output']).describe('"input" = consulted during planning, "output" = created/updated during execution'),
+    },
+    async (params) => {
+      sdk.addPlanRelation(params.planId, params.knowledgeId, params.relationType);
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ success: true, ...params }) }] };
+    }
+  );
+
+  // addPlanTask
+  server.tool(
+    'addPlanTask',
+    'Add a task to a plan todo list. Position is auto-calculated.',
+    {
+      planId: z.string().describe('UUID of the plan'),
+      description: z.string().describe('Task description'),
+      priority: z.enum(['low', 'medium', 'high']).optional().describe('Priority (default: medium)'),
+      notes: z.string().optional().describe('Optional notes'),
+    },
+    async (params) => {
+      const task = sdk.createPlanTask(params);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(task, null, 2) }] };
+    }
+  );
+
+  // updatePlanTask
+  server.tool(
+    'updatePlanTask',
+    'Update a plan task. Mark in_progress when starting, completed when done. Add notes for context.',
+    {
+      taskId: z.string().describe('UUID of the task'),
+      status: z.enum(['pending', 'in_progress', 'completed']).optional().describe('New status'),
+      description: z.string().optional().describe('New description'),
+      priority: z.enum(['low', 'medium', 'high']).optional().describe('New priority'),
+      notes: z.string().nullable().optional().describe('Notes about progress or blockers'),
+    },
+    async (params) => {
+      const { taskId, ...updates } = params;
+      const task = sdk.updatePlanTask(taskId, updates);
+      const text = task ? JSON.stringify(task, null, 2) : 'Task not found';
+      return { content: [{ type: 'text' as const, text }] };
+    }
+  );
+
+  // listPlanTasks
+  server.tool(
+    'listPlanTasks',
+    'List all tasks for a plan, ordered by position. Use to check progress or resume work.',
+    {
+      planId: z.string().describe('UUID of the plan'),
+    },
+    async (params) => {
+      const tasks = sdk.listPlanTasks(params.planId);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(tasks, null, 2) }] };
     }
   );
 

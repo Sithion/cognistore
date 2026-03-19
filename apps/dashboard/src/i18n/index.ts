@@ -5,7 +5,7 @@ const resources = {
   en: {
     translation: {
       app: { title: 'AI Knowledge Base', subtitle: 'Semantic knowledge management for AI agents' },
-      nav: { home: 'Knowledge Base', add: 'Add Knowledge', tags: 'Tags', stats: 'Statistics', settings: 'Settings' },
+      nav: { home: 'Knowledge Base', add: 'Add Knowledge', tags: 'Tags', plans: 'Plans', stats: 'Statistics', settings: 'Settings' },
       search: { placeholder: 'Search knowledge semantically...', button: 'Search', noResults: 'No results found.', resultsCount: '{{count}} result(s) found', recent: 'Recent Knowledge', empty: 'No knowledge entries yet. Add some knowledge to get started.' },
       knowledge: { content: 'Content', tags: 'Tags', type: 'Type', scope: 'Scope', source: 'Source', confidence: 'Confidence', expires: 'Expires', agent: 'Agent', version: 'Version', created: 'Created', updated: 'Updated', relatedIds: 'Related' },
       types: { decision: 'Decision', pattern: 'Pattern', fix: 'Fix', constraint: 'Constraint', gotcha: 'Gotcha' },
@@ -31,6 +31,7 @@ const resources = {
         uninstallConfirm2: 'Are you absolutely sure? This cannot be undone.',
         uninstallSuccess: 'Data removed successfully. This page will stop working shortly.',
       },
+      plans: { title: 'Plans', empty: 'No plans yet.', all: 'All', draft: 'Draft', active: 'Active', completed: 'Completed', archived: 'Archived', input: 'Consulted', output: 'Produced', noRelations: 'No related knowledge entries.', tasks: 'Tasks', activePlans: 'Active Plans', noTasks: 'No tasks yet.', progress: 'completed' },
       update: { section: 'Updates', check: 'Check for updates', checking: 'Checking...', upToDate: 'Up to date', available: 'Update available' },
       settings: { language: 'Language' },
       language: { en: 'English', es: 'Spanish', pt: 'Portuguese (BR)' },
@@ -39,7 +40,7 @@ const resources = {
   es: {
     translation: {
       app: { title: 'Base de Conocimiento IA', subtitle: 'Gestión semántica de conocimiento para agentes de IA' },
-      nav: { home: 'Base de Conocimiento', add: 'Agregar Conocimiento', tags: 'Etiquetas', stats: 'Estadísticas', settings: 'Configuración' },
+      nav: { home: 'Base de Conocimiento', add: 'Agregar Conocimiento', tags: 'Etiquetas', plans: 'Planes', stats: 'Estadísticas', settings: 'Configuración' },
       search: { placeholder: 'Buscar conocimiento semánticamente...', button: 'Buscar', noResults: 'No se encontraron resultados.', resultsCount: '{{count}} resultado(s) encontrado(s)', recent: 'Conocimiento Reciente', empty: 'Aún no hay entradas. Agrega conocimiento para comenzar.' },
       knowledge: { content: 'Contenido', tags: 'Etiquetas', type: 'Tipo', scope: 'Ámbito', source: 'Fuente', confidence: 'Confianza', expires: 'Expira', agent: 'Agente', version: 'Versión', created: 'Creado', updated: 'Actualizado', relatedIds: 'Relacionados' },
       types: { decision: 'Decisión', pattern: 'Patrón', fix: 'Corrección', constraint: 'Restricción', gotcha: 'Trampa' },
@@ -65,6 +66,7 @@ const resources = {
         uninstallConfirm2: '¿Estás absolutamente seguro? Esto no se puede deshacer.',
         uninstallSuccess: 'Monitoreo eliminado exitosamente. Esta página dejará de funcionar en breve.',
       },
+      plans: { title: 'Planes', empty: 'Aún no hay planes.', all: 'Todos', draft: 'Borrador', active: 'Activo', completed: 'Completado', archived: 'Archivado', input: 'Consultados', output: 'Producidos', noRelations: 'Sin entradas relacionadas.', tasks: 'Tareas', activePlans: 'Planes Activos', noTasks: 'Sin tareas aún.', progress: 'completadas' },
       update: { section: 'Actualizaciones', check: 'Buscar actualizaciones', checking: 'Buscando...', upToDate: 'Actualizado', available: 'Actualización disponible' },
       settings: { language: 'Idioma' },
       language: { en: 'Inglés', es: 'Español', pt: 'Portugués (BR)' },
@@ -73,7 +75,7 @@ const resources = {
   pt: {
     translation: {
       app: { title: 'Base de Conhecimento IA', subtitle: 'Gestão semântica de conhecimento para agentes de IA' },
-      nav: { home: 'Base de Conhecimento', add: 'Adicionar Conhecimento', tags: 'Tags', stats: 'Estatísticas', settings: 'Configurações' },
+      nav: { home: 'Base de Conhecimento', add: 'Adicionar Conhecimento', tags: 'Tags', plans: 'Planos', stats: 'Estatísticas', settings: 'Configurações' },
       search: { placeholder: 'Buscar conhecimento semanticamente...', button: 'Buscar', noResults: 'Nenhum resultado encontrado.', resultsCount: '{{count}} resultado(s) encontrado(s)', recent: 'Conhecimento Recente', empty: 'Nenhuma entrada ainda. Adicione conhecimento para começar.' },
       knowledge: { content: 'Conteúdo', tags: 'Tags', type: 'Tipo', scope: 'Escopo', source: 'Fonte', confidence: 'Confiança', expires: 'Expira', agent: 'Agente', version: 'Versão', created: 'Criado', updated: 'Atualizado', relatedIds: 'Relacionados' },
       types: { decision: 'Decisão', pattern: 'Padrão', fix: 'Correção', constraint: 'Restrição', gotcha: 'Pegadinha' },
@@ -99,6 +101,7 @@ const resources = {
         uninstallConfirm2: 'Tem certeza absoluta? Isso não pode ser desfeito.',
         uninstallSuccess: 'Monitoramento removido com sucesso. Esta página vai parar de funcionar em breve.',
       },
+      plans: { title: 'Planos', empty: 'Nenhum plano ainda.', all: 'Todos', draft: 'Rascunho', active: 'Ativo', completed: 'Concluído', archived: 'Arquivado', input: 'Consultados', output: 'Produzidos', noRelations: 'Sem entradas relacionadas.', tasks: 'Tarefas', activePlans: 'Planos Ativos', noTasks: 'Sem tarefas ainda.', progress: 'concluídas' },
       update: { section: 'Atualizações', check: 'Verificar atualizações', checking: 'Verificando...', upToDate: 'Atualizado', available: 'Atualização disponível' },
       settings: { language: 'Idioma' },
       language: { en: 'Inglês', es: 'Espanhol', pt: 'Português (BR)' },

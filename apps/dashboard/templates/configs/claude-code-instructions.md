@@ -37,6 +37,8 @@
 
 7. **Only store high-value knowledge** — capture hard-won insights, non-obvious gotchas, project-specific decisions, and architectural constraints. Do NOT store trivial fixes, standard API docs, or anything a web search answers in 30 seconds.
 
+8. **Plans go in the knowledge base** — when creating implementation plans, use `createPlan()` to store them. Never save plans to local files. The knowledge base is the single source of truth for all plans.
+
 ### Quick Reference
 
 | Tool | Required Params | When |

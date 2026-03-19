@@ -2,7 +2,7 @@
 
 ## Overview
 
-The MCP server (`@ai-knowledge/mcp-server`) is the primary interface for AI coding agents. It exposes 6 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) stdio transport. Published to npm as a standalone package.
+The MCP server (`@ai-knowledge/mcp-server`) is the primary interface for AI coding agents. It exposes 12 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) stdio transport. Published to npm as a standalone package.
 
 ## Transport
 
@@ -20,6 +20,7 @@ Store a new knowledge entry with automatic semantic embedding.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `title` | string | Yes | — | Short descriptive title |
 | `content` | string | Yes | — | The knowledge content text |
 | `tags` | string[] | Yes | — | Categorical tags for filtering and embedding |
 | `type` | enum | Yes | — | `decision`, `pattern`, `fix`, `constraint`, or `gotcha` |
@@ -48,6 +49,7 @@ Update an existing entry. Re-embeds if tags change. Auto-increments version.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | Yes | UUID of the entry to update |
+| `title` | string | No | New title |
 | `content` | string | No | New content text |
 | `tags` | string[] | No | New tags (triggers re-embedding) |
 | `type` | enum | No | New type |
@@ -70,6 +72,75 @@ List all unique tags across all knowledge entries. No parameters.
 ### healthCheck
 
 Verify database connectivity and Ollama availability. No parameters. Returns status for both services.
+
+### createPlan
+
+Create a new plan with optional initial tasks and knowledge relations. Status starts as `draft`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `title` | string | Yes | — | Plan title (short, descriptive) |
+| `content` | string | Yes | — | Full plan content (steps, approach, considerations) |
+| `tags` | string[] | Yes | — | Tags for categorization |
+| `scope` | string | Yes | — | `global` or `workspace:<project-name>` |
+| `source` | string | Yes | — | Source/context of the plan |
+| `relatedKnowledgeIds` | string[] | No | — | IDs of knowledge entries consulted during planning (creates input relations) |
+| `tasks` | object[] | No | — | Initial tasks with `description` and optional `priority` (`low`/`medium`/`high`) |
+
+### updatePlan
+
+Update an existing plan's title, content, tags, scope, status, or source.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `planId` | string | Yes | UUID of the plan to update |
+| `title` | string | No | New title |
+| `content` | string | No | New content |
+| `tags` | string[] | No | New tags |
+| `scope` | string | No | New scope |
+| `status` | enum | No | `draft`, `active`, `completed`, or `archived` |
+| `source` | string | No | New source |
+
+### addPlanRelation
+
+Link a knowledge entry to a plan as input or output.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `planId` | string | Yes | UUID of the plan |
+| `knowledgeId` | string | Yes | UUID of the knowledge entry to link |
+| `relationType` | enum | Yes | `input` (consulted during planning) or `output` (created during execution) |
+
+### addPlanTask
+
+Add a task to a plan's todo list. Position is auto-calculated.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `planId` | string | Yes | — | UUID of the plan |
+| `description` | string | Yes | — | Task description |
+| `priority` | enum | No | `medium` | `low`, `medium`, or `high` |
+| `notes` | string | No | — | Optional notes |
+
+### updatePlanTask
+
+Update a plan task's status, description, priority, or notes.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `taskId` | string | Yes | UUID of the task |
+| `status` | enum | No | `pending`, `in_progress`, or `completed` |
+| `description` | string | No | New description |
+| `priority` | enum | No | `low`, `medium`, or `high` |
+| `notes` | string/null | No | Notes about progress or blockers |
+
+### listPlanTasks
+
+List all tasks for a plan, ordered by position. Use to check progress or resume work.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `planId` | string | Yes | UUID of the plan |
 
 ## Bundling Strategy
 
