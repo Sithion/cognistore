@@ -610,7 +610,6 @@ async function start() {
     const allSuccess = results.every((r) => r.status === 'success');
     return { success: allSuccess, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results };
   });
-
   // ─── Uninstall endpoint ────────────────────────────────────────
 
   app.post('/api/uninstall', async (_request, reply) => {
