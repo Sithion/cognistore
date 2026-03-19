@@ -253,6 +253,115 @@ export function PlansPage() {
   const outputRelations = relations.filter((r) => r.relationType === 'output');
   const statusFilters = ['', 'draft', 'active', 'completed', 'archived'];
 
+  // ── Detail View (full page) ──
+  if (selectedPlan) {
+    return (
+      <div>
+        <button
+          onClick={() => setSelectedPlan(null)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
+            background: 'none', border: 'none', color: 'var(--text-secondary)',
+            cursor: 'pointer', fontSize: 13, padding: 0,
+          }}
+        >
+          ← Back to plans
+        </button>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <StatusBadge status={selectedPlan.status} />
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
+        </div>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{selectedPlan.title}</h1>
+
+        {/* Status Actions */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+          {['draft', 'active', 'completed', 'archived'].map((s) => (
+            <button
+              key={s}
+              disabled={selectedPlan.status === s}
+              onClick={() => updatePlanStatus(selectedPlan.id, s)}
+              style={{
+                padding: '5px 14px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                border: 'none',
+                backgroundColor: selectedPlan.status === s ? STATUS_COLORS[s] : 'var(--bg-card)',
+                color: selectedPlan.status === s ? '#fff' : 'var(--text-secondary)',
+                cursor: selectedPlan.status === s ? 'default' : 'pointer',
+                opacity: selectedPlan.status === s ? 1 : 0.7,
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Tasks */}
+        {tasks.length > 0 && (
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+              {t('plans.tasks')}
+            </h3>
+            <ProgressBar completed={completedTasks} total={tasks.length} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {tasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  expandedNotes={expandedNotes.has(task.id)}
+                  onToggleNotes={() => toggleNotes(task.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Content */}
+        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
+          <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+            {selectedPlan.content}
+          </p>
+          <div style={{ display: 'flex', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
+            {selectedPlan.tags.map((tag) => (
+              <span key={tag} style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, backgroundColor: 'var(--bg-input)', color: 'var(--accent)' }}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Relations */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 250 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+              {t('plans.input')}
+            </h3>
+            {inputRelations.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {inputRelations.map((rel) => <RelationCard key={rel.entry.id as string} entry={rel.entry} />)}
+              </div>
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 250 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+              {t('plans.output')}
+            </h3>
+            {outputRelations.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {outputRelations.map((rel) => <RelationCard key={rel.entry.id as string} entry={rel.entry} />)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── List View ──
   return (
     <div>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>{t('plans.title')}</h1>
@@ -324,9 +433,9 @@ export function PlansPage() {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 20 }}>
+      <div>
         {/* ── Plans List ── */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div>
           {error ? (
             <p style={{ color: 'var(--error)', fontSize: 13 }}>{error}</p>
           ) : loading ? (
@@ -379,106 +488,6 @@ export function PlansPage() {
           )}
         </div>
 
-        {/* ── Plan Detail ── */}
-        {selectedPlan && (
-          <div style={{ flex: 1.5, minWidth: 0 }}>
-            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20 }}>
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <StatusBadge status={selectedPlan.status} />
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
-              </div>
-              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{selectedPlan.title}</h2>
-
-              {/* Status Actions */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-                {['draft', 'active', 'completed', 'archived'].map((s) => (
-                  <button
-                    key={s}
-                    disabled={selectedPlan.status === s}
-                    onClick={() => updatePlanStatus(selectedPlan.id, s)}
-                    style={{
-                      padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                      border: 'none',
-                      backgroundColor: selectedPlan.status === s ? STATUS_COLORS[s] : 'var(--bg-input)',
-                      color: selectedPlan.status === s ? '#fff' : 'var(--text-secondary)',
-                      cursor: selectedPlan.status === s ? 'default' : 'pointer',
-                      opacity: selectedPlan.status === s ? 1 : 0.7,
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-
-              {/* Tasks */}
-              {tasks.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                    {t('plans.tasks')}
-                  </h3>
-                  <ProgressBar completed={completedTasks} total={tasks.length} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {tasks.map((task) => (
-                      <TaskItem
-                        key={task.id}
-                        task={task}
-                        expandedNotes={expandedNotes.has(task.id)}
-                        onToggleNotes={() => toggleNotes(task.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Content */}
-              <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', marginBottom: 20, maxHeight: 300, overflow: 'auto' }}>
-                {selectedPlan.content}
-              </div>
-
-              {/* Tags */}
-              <div style={{ display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap' }}>
-                {selectedPlan.tags.map((tag) => (
-                  <span key={tag} style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, backgroundColor: 'var(--bg-input)', color: 'var(--accent)' }}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              {/* Relations: Input */}
-              <div style={{ marginBottom: 16 }}>
-                <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                  {t('plans.input')}
-                </h3>
-                {inputRelations.length === 0 ? (
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {inputRelations.map((rel) => (
-                      <RelationCard key={rel.entry.id as string} entry={rel.entry} />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Relations: Output */}
-              <div>
-                <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                  {t('plans.output')}
-                </h3>
-                {outputRelations.length === 0 ? (
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {outputRelations.map((rel) => (
-                      <RelationCard key={rel.entry.id as string} entry={rel.entry} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

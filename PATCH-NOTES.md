@@ -8,6 +8,7 @@
 - Visual progress with step-by-step status indicators
 
 ### Bug Fixes
+- **Embedded migrations**: MCP server now works via npx (SQL embedded in code, not external files)
 - **UpdateChecker**: distinguish manual vs automatic checks — errors only shown when user clicks "Check for updates"
 - **UpdateChecker**: new states `upToDate`, `error`, `unavailable` with proper SettingsPage feedback
 - **Plan creation**: rollback plan if task creation fails (no more orphaned plans)

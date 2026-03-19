@@ -1,9 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { unlinkSync } from 'node:fs';
+import { unlinkSync, mkdirSync } from 'node:fs';
 import BetterSqlite3 from 'better-sqlite3';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const sqliteVec = require('sqlite-vec');
 import { createDbClient } from '@ai-knowledge/core';
+import { runMigrations } from '@ai-knowledge/core';
 
 function tmpDbPath(): string {
   return join(tmpdir(), `ai-knowledge-migration-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
@@ -125,6 +129,37 @@ test.describe('Migration system', () => {
         .all() as { name: string }[];
       const columnNames = columns.map((c) => c.name);
       expect(columnNames).toContain('title');
+
+      sqlite.close();
+    } finally {
+      cleanupDb(dbPath);
+    }
+  });
+
+  test('embedded migrations work when .sql files do not exist (bundled mode)', () => {
+    const dbPath = tmpDbPath();
+    try {
+      // Create DB manually with sqlite-vec loaded but NO migration files
+      mkdirSync(join(tmpdir(), 'nonexistent-dir-test'), { recursive: true });
+      const sqlite = new BetterSqlite3(dbPath);
+      sqlite.pragma('journal_mode = WAL');
+      sqlite.pragma('foreign_keys = ON');
+      sqliteVec.load(sqlite);
+
+      // Run migrations with a nonexistent directory — should use embedded SQL
+      const fakeDir = join(tmpdir(), `nonexistent-migrations-${Date.now()}`);
+      runMigrations(sqlite, fakeDir);
+
+      // All tables should exist from embedded migrations
+      expect(tableExists(sqlite, 'knowledge_entries')).toBe(true);
+      expect(tableExists(sqlite, 'plans')).toBe(true);
+      expect(tableExists(sqlite, 'plan_tasks')).toBe(true);
+      expect(tableExists(sqlite, 'plan_relations')).toBe(true);
+      expect(tableExists(sqlite, 'operations_log')).toBe(true);
+
+      const versions = getSchemaVersions(sqlite);
+      expect(versions).toContain('0.8.0');
+      expect(versions).toContain('0.9.0');
 
       sqlite.close();
     } finally {
