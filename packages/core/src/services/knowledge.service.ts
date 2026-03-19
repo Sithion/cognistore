@@ -96,8 +96,14 @@ export class KnowledgeService {
     const plan = this.toPlan(row);
 
     if (tasks && tasks.length > 0) {
-      for (let i = 0; i < tasks.length; i++) {
-        this.repository.createPlanTask({ planId: plan.id, description: tasks[i].description, priority: tasks[i].priority, position: i });
+      try {
+        for (let i = 0; i < tasks.length; i++) {
+          this.repository.createPlanTask({ planId: plan.id, description: tasks[i].description, priority: tasks[i].priority, position: i });
+        }
+      } catch (err) {
+        // Rollback: delete the plan if task creation fails
+        this.repository.deletePlan(plan.id);
+        throw err;
       }
     }
 

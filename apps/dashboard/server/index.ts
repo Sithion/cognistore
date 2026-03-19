@@ -488,6 +488,7 @@ async function start() {
         sdkReady = false;
       }
       const ok = await tryInitSDK();
+      if (ok) saveDeployedVersion();
       return { success: ok, sdkReady };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : String(error) };
@@ -508,7 +509,10 @@ async function start() {
     };
   });
 
-  app.post('/api/upgrade/run', async () => {
+  let upgradeRunning = false;
+  app.post('/api/upgrade/run', async (request, reply) => {
+    if (upgradeRunning) { reply.code(409); return { error: 'Upgrade already in progress' }; }
+    upgradeRunning = true;
     const results: { step: string; status: 'success' | 'error'; message?: string }[] = [];
 
     // Step 1: Database migrations (handled automatically by createDbClient, but log it)
@@ -602,15 +606,9 @@ async function start() {
       results.push({ step: 'version', status: 'error', message: e.message });
     }
 
+    upgradeRunning = false;
     const allSuccess = results.every((r) => r.status === 'success');
     return { success: allSuccess, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results };
-  });
-
-  // Also save version after initial setup completes
-  app.addHook('onResponse', (request) => {
-    if (request.url === '/api/setup/complete' && request.method === 'POST') {
-      try { saveDeployedVersion(); } catch { /* silent */ }
-    }
   });
 
   // ─── Uninstall endpoint ────────────────────────────────────────
@@ -888,7 +886,7 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     const entry = await sdk.getKnowledgeById(request.params.id);
-    if (!entry) return { error: 'Not found' };
+    if (!entry) { reply.code(404); return { error: 'Not found' }; }
     return entry;
   });
 
@@ -902,7 +900,7 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     const result = await sdk.updateKnowledge(request.params.id, request.body);
-    if (!result) return { error: 'Not found' };
+    if (!result) { reply.code(404); return { error: 'Not found' }; }
     return result;
   });
 
@@ -942,7 +940,7 @@ async function start() {
     const err = ensureReady(reply);
     if (err) return err;
     const result = sdk.updatePlan(request.params.id, request.body as any);
-    if (!result) return { error: 'Not found' };
+    if (!result) { reply.code(404); return { error: 'Not found' }; }
     return result;
   });
 

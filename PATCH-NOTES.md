@@ -2,7 +2,24 @@
 
 ## v0.9.1
 
-- **Fix:** CI workflow no longer triggers on push to `main` (only PRs + feature branches)
+### Upgrade System (New)
+- App detects version changes on startup and shows upgrade screen (`vOLD → vNEW`)
+- Re-deploys: database migrations, agent instructions, MCP configs, skills/hooks
+- Visual progress with step-by-step status indicators
+
+### Bug Fixes
+- **UpdateChecker**: distinguish manual vs automatic checks — errors only shown when user clicks "Check for updates"
+- **UpdateChecker**: new states `upToDate`, `error`, `unavailable` with proper SettingsPage feedback
+- **Plan creation**: rollback plan if task creation fails (no more orphaned plans)
+- **HTTP status codes**: 404 returned for missing resources (was 200 with error body)
+- **Upgrade race condition**: concurrent upgrade requests blocked with 409 Conflict
+- **PlansPage**: shows error message instead of infinite loading on API failure
+- **Version tracking**: `.version` file saved on setup completion (not via fragile hook)
+
+### Other
+- **CI:** no longer triggers on push to `main` (only PRs + feature branches)
+- **PATCH-NOTES.md** added and linked from README
+- **CLAUDE.md**: development rules (upgrade scripts, patch notes, testing) for all contributors
 
 ## v0.9.0
 

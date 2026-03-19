@@ -26,16 +26,19 @@ export function SettingsPage() {
 
   useEffect(() => {
     return onUpdateState((state) => {
-      setUpdateState(prev => {
-        if (state === 'idle' && prev === 'checking') {
-          setCheckResult('upToDate');
-          setTimeout(() => setCheckResult(null), 3000);
-        } else if (state === 'available') {
-          setCheckResult('available');
-          setTimeout(() => setCheckResult(null), 3000);
-        }
-        return state;
-      });
+      setUpdateState(state);
+      if (state === 'upToDate') {
+        setCheckResult('upToDate');
+        setTimeout(() => setCheckResult(null), 5000);
+      } else if (state === 'available') {
+        setCheckResult('available');
+      } else if (state === 'error') {
+        setCheckResult('error');
+        setTimeout(() => setCheckResult(null), 5000);
+      } else if (state === 'unavailable') {
+        setCheckResult('unavailable');
+        setTimeout(() => setCheckResult(null), 5000);
+      }
     });
   }, []);
 
@@ -149,6 +152,8 @@ export function SettingsPage() {
           </button>
           {checkResult === 'upToDate' && <span style={{ fontSize: 13, color: 'var(--success)' }}>{t('update.upToDate')}</span>}
           {checkResult === 'available' && <span style={{ fontSize: 13, color: 'var(--accent)' }}>{t('update.available')}</span>}
+          {checkResult === 'error' && <span style={{ fontSize: 13, color: 'var(--error)' }}>Check failed — try again</span>}
+          {checkResult === 'unavailable' && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Only available in desktop app</span>}
         </div>
       </div>
 

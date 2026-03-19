@@ -178,14 +178,18 @@ export function PlansPage() {
   const [activeTasksMap, setActiveTasksMap] = useState<Record<string, PlanTask[]>>({});
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // Load all plans
   const loadPlans = useCallback(async () => {
     try {
+      setError(null);
       const data = await api.listPlans(50, statusFilter || undefined);
       setPlans(data as PlanEntry[]);
-    } catch { /* silent */ }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load plans');
+    }
     setLoading(false);
   }, [statusFilter]);
 
@@ -323,7 +327,9 @@ export function PlansPage() {
       <div style={{ display: 'flex', gap: 20 }}>
         {/* ── Plans List ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {loading ? (
+          {error ? (
+            <p style={{ color: 'var(--error)', fontSize: 13 }}>{error}</p>
+          ) : loading ? (
             <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
           ) : plans.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)' }}>{t('plans.empty')}</p>
