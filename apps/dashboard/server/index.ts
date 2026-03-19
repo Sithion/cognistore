@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, statSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -417,13 +417,22 @@ async function start() {
       const skillsDir = resolve(TEMPLATES_PATH, 'skills');
       const home = homedir();
 
-      // Claude Code skills
+      // Claude Code skills (with hooks directories)
       for (const name of ['ai-knowledge-query', 'ai-knowledge-capture']) {
-        const src = resolve(skillsDir, 'claude-code', name, 'SKILL.md');
-        if (existsSync(src)) {
+        const srcDir = resolve(skillsDir, 'claude-code', name);
+        if (existsSync(srcDir)) {
           const destDir = resolve(home, '.claude', 'skills', name);
           mkdirSync(destDir, { recursive: true });
-          cpSync(src, resolve(destDir, 'SKILL.md'));
+          cpSync(srcDir, destDir, { recursive: true });
+          // Make hook scripts executable
+          const hooksDir = resolve(destDir, 'hooks');
+          if (existsSync(hooksDir)) {
+            for (const file of readdirSync(hooksDir)) {
+              if (file.endsWith('.sh')) {
+                chmodSync(resolve(hooksDir, file), 0o755);
+              }
+            }
+          }
           results.push(`Skill ${name} installed (Claude)`);
         }
       }
@@ -558,6 +567,27 @@ async function start() {
         }
         process.exit(0);
       }, 3000);
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  // ─── Database maintenance ─────────────────────────────────────
+
+  app.post('/api/maintenance/cleanup', async (_request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    try {
+      const result = await sdk.cleanupDatabase();
+      const dbPath = resolve(INSTALL_DIR, 'knowledge.db');
+      const sizeBytes = statSync(dbPath).size;
+      return {
+        success: true,
+        ...result,
+        sizeAfter: sizeBytes < 1024 * 1024
+          ? `${(sizeBytes / 1024).toFixed(1)} KB`
+          : `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`,
+      };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : String(error) };
     }

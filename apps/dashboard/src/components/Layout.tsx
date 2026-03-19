@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { triggerUpdateCheck, onUpdateState } from './UpdateChecker.js';
 
 declare const __APP_VERSION__: string;
 
 const navItems = [
   { key: 'home', path: '/', icon: '🔍' },
   { key: 'stats', path: '/stats', icon: '📊' },
-  { key: 'infra', path: '/infra', icon: '⚙' },
+  { key: 'monitoring', path: '/monitoring', icon: '⚙' },
 ];
 
 const languages = [
@@ -20,6 +21,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [updateState, setUpdateState] = useState<string>('idle');
+  const [checkResult, setCheckResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    return onUpdateState((state) => {
+      setUpdateState(state);
+      if (state === 'idle') {
+        // Show "up to date" briefly after a manual check
+        if (updateState === 'checking') {
+          setCheckResult('upToDate');
+          setTimeout(() => setCheckResult(null), 3000);
+        }
+      } else if (state === 'available') {
+        setCheckResult('available');
+        setTimeout(() => setCheckResult(null), 3000);
+      }
+    });
+  }, [updateState]);
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -76,8 +95,50 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
+        {/* Check for Updates */}
+        {!collapsed && (
+          <div style={{ paddingTop: 12, borderTop: '1px solid var(--border)', marginBottom: 8, textAlign: 'center' }}>
+            <button
+              onClick={() => {
+                setCheckResult(null);
+                triggerUpdateCheck();
+              }}
+              disabled={updateState === 'checking'}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: checkResult === 'upToDate' ? 'var(--success)' : checkResult === 'available' ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: updateState === 'checking' ? 'not-allowed' : 'pointer',
+                fontSize: 11,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                margin: '0 auto',
+                padding: '4px 0',
+              }}
+            >
+              {updateState === 'checking' ? (
+                <>
+                  <span style={{
+                    width: 10, height: 10,
+                    border: '2px solid var(--border)', borderTopColor: 'var(--accent)',
+                    borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0,
+                  }} />
+                  {t('update.checking')}
+                </>
+              ) : checkResult === 'upToDate' ? (
+                <>{t('update.upToDate')}</>
+              ) : checkResult === 'available' ? (
+                <>{t('update.available')}</>
+              ) : (
+                <>{t('update.check')}</>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Language Switcher */}
-        <div style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 4, justifyContent: 'center', paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 4, justifyContent: 'center', paddingTop: collapsed ? 12 : 0, borderTop: collapsed ? '1px solid var(--border)' : 'none' }}>
           {languages.map((lang) => (
             <button
               key={lang.code}

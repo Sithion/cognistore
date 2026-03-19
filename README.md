@@ -13,6 +13,8 @@ Store, search, and retrieve knowledge using local vector embeddings — directly
 
 [Download](#quick-start) · [Features](#features) · [MCP Integration](#mcp-integration) · [Dashboard](#dashboard) · [Development](#development)
 
+![AI Knowledge Base Dashboard](screenshot.png)
+
 </div>
 
 ---
@@ -122,14 +124,16 @@ Entries are categorized by type for structured retrieval:
 
 ### AI Skills
 
-The setup wizard installs skills that teach your AI assistant when and how to use the knowledge base:
+The setup wizard installs skills with lifecycle hooks that enforce knowledge base usage:
 
-- **ai-knowledge-query** — Queries the knowledge base before starting any task to avoid redundant work
-- **ai-knowledge-capture** — Captures discoveries, decisions, fixes, and patterns after completing work
+- **ai-knowledge-query** — Hooks into `PreToolUse` to remind agents to query before making changes
+- **ai-knowledge-capture** — Hooks into `Stop` to remind agents to capture findings before ending a session
+
+Hooks are non-blocking (system messages only) and skip automatically when the agent is already using ai-knowledge tools.
 
 ## Dashboard
 
-The desktop app includes a full dashboard with four main pages:
+The desktop app includes a full dashboard with three main pages:
 
 ### Knowledge (Home)
 
@@ -147,16 +151,11 @@ The desktop app includes a full dashboard with four main pages:
 - Tag cloud visualization
 - Configurable auto-refresh interval (Off / 1s / 10s / 30s / 1m / 5m)
 
-### Infrastructure
+### Monitoring
 
 - Service health monitoring (Database, Ollama)
 - Real-time status polling every 5 seconds
 - Uninstall wizard with 3-step confirmation (removes all data, configs, and dependencies)
-
-### Settings
-
-- Language selector (English, Spanish, Portuguese)
-- App version display
 
 ## Architecture
 

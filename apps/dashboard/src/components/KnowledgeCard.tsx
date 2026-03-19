@@ -6,6 +6,8 @@ export interface KnowledgeCardProps {
   onDelete: (id: string) => void;
   onTagClick: (tag: string) => void;
   onEdit?: (entry: Record<string, unknown>) => void;
+  confirmingDelete?: boolean;
+  onCancelDelete?: () => void;
 }
 
 export function KnowledgeCard({
@@ -14,6 +16,8 @@ export function KnowledgeCard({
   onDelete,
   onTagClick,
   onEdit,
+  confirmingDelete,
+  onCancelDelete,
 }: KnowledgeCardProps) {
   const { t } = useTranslation();
 
@@ -88,15 +92,40 @@ export function KnowledgeCard({
               {t('actions.edit')}
             </button>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(entry.id as string); }}
-            style={{
-              background: 'none', border: 'none',
-              color: 'var(--error)', cursor: 'pointer', fontSize: 13,
-            }}
-          >
-            {t('actions.delete')}
-          </button>
+          {confirmingDelete ? (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(entry.id as string); }}
+                style={{
+                  background: 'none', border: 'none',
+                  color: '#fff', backgroundColor: 'var(--error)',
+                  cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  padding: '2px 10px', borderRadius: 4,
+                }}
+              >
+                {t('actions.confirm')}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onCancelDelete?.(); }}
+                style={{
+                  background: 'none', border: 'none',
+                  color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12,
+                }}
+              >
+                {t('actions.cancel')}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(entry.id as string); }}
+              style={{
+                background: 'none', border: 'none',
+                color: 'var(--error)', cursor: 'pointer', fontSize: 13,
+              }}
+            >
+              {t('actions.delete')}
+            </button>
+          )}
         </div>
       </div>
 

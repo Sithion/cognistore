@@ -5,6 +5,21 @@ const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
 
+/** Global event target for cross-component communication */
+const updateEvents = new EventTarget();
+
+/** Trigger an update check from anywhere */
+export function triggerUpdateCheck() {
+  updateEvents.dispatchEvent(new Event('check'));
+}
+
+/** Subscribe to update state changes */
+export function onUpdateState(cb: (state: UpdateState) => void) {
+  const handler = (e: Event) => cb((e as CustomEvent).detail);
+  updateEvents.addEventListener('state', handler);
+  return () => updateEvents.removeEventListener('state', handler);
+}
+
 export function UpdateChecker() {
   const [state, setState] = useState<UpdateState>('idle');
   const [version, setVersion] = useState('');
@@ -12,36 +27,42 @@ export function UpdateChecker() {
   const [error, setError] = useState('');
   const [dismissed, setDismissed] = useState(false);
 
+  const broadcastState = useCallback((s: UpdateState) => {
+    setState(s);
+    updateEvents.dispatchEvent(new CustomEvent('state', { detail: s }));
+  }, []);
+
   const checkForUpdate = useCallback(async () => {
     // Only works inside Tauri
     if (!(window as any).__TAURI__) return;
 
     try {
-      setState('checking');
+      broadcastState('checking');
       const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
 
       if (update) {
         setVersion(update.version);
-        setState('available');
+        broadcastState('available');
+        setDismissed(false);
 
         // Store the update object for later download
         (window as any).__pendingUpdate = update;
       } else {
-        setState('idle');
+        broadcastState('idle');
       }
     } catch (err) {
       console.warn('Update check failed:', err);
-      setState('idle'); // Silently fail — don't bother the user
+      broadcastState('idle'); // Silently fail — don't bother the user
     }
-  }, []);
+  }, [broadcastState]);
 
   const downloadAndInstall = useCallback(async () => {
     const update = (window as any).__pendingUpdate;
     if (!update) return;
 
     try {
-      setState('downloading');
+      broadcastState('downloading');
       setProgress(0);
 
       let downloaded = 0;
@@ -60,7 +81,7 @@ export function UpdateChecker() {
         }
       });
 
-      setState('ready');
+      broadcastState('ready');
 
       // Relaunch after a short delay
       setTimeout(async () => {
@@ -73,9 +94,9 @@ export function UpdateChecker() {
       }, 1500);
     } catch (err: any) {
       setError(err?.message || 'Download failed');
-      setState('error');
+      broadcastState('error');
     }
-  }, []);
+  }, [broadcastState]);
 
   // Check on mount + every 30 minutes
   useEffect(() => {
@@ -86,6 +107,13 @@ export function UpdateChecker() {
       clearTimeout(initial);
       clearInterval(interval);
     };
+  }, [checkForUpdate]);
+
+  // Listen for external check triggers
+  useEffect(() => {
+    const handler = () => checkForUpdate();
+    updateEvents.addEventListener('check', handler);
+    return () => updateEvents.removeEventListener('check', handler);
   }, [checkForUpdate]);
 
   // Don't render anything if idle/checking or dismissed
@@ -116,7 +144,7 @@ export function UpdateChecker() {
       {state === 'available' && (
         <>
           <span style={{ color: '#c4b5fd' }}>
-            ✨ Version <strong style={{ color: '#e9d5ff' }}>v{version}</strong> is available
+            Version <strong style={{ color: '#e9d5ff' }}>v{version}</strong> is available
           </span>
           <button
             onClick={downloadAndInstall}
@@ -178,14 +206,14 @@ export function UpdateChecker() {
       )}
 
       {state === 'ready' && (
-        <span style={{ color: '#a3e635' }}>✓ Update installed — restarting...</span>
+        <span style={{ color: '#a3e635' }}>Update installed — restarting...</span>
       )}
 
       {state === 'error' && (
         <>
           <span style={{ color: '#fca5a5' }}>Update failed: {error}</span>
           <button
-            onClick={() => { setState('idle'); setDismissed(true); }}
+            onClick={() => { broadcastState('idle'); setDismissed(true); }}
             style={{
               background: 'none',
               border: 'none',

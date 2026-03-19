@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_SKILL_DIR}/hooks/pre-tool-check.sh",
+            "timeout": 5
+          }
+        ],
+        "matcher": "Edit|Write|Bash|MultiEdit|Agent|NotebookEdit"
+      }
+    ]
+  }
+}

@@ -89,4 +89,9 @@ export const api = {
   }>('/api/metrics'),
 
   getHealth: () => request('/api/health'),
+
+  // Maintenance
+  cleanupDatabase: () => request<{ success: boolean; orphansRemoved: number; vacuumed: boolean; sizeAfter: string }>(
+    '/api/maintenance/cleanup', { method: 'POST' }
+  ),
 };

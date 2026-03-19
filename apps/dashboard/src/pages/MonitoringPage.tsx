@@ -9,7 +9,7 @@ interface Health {
 
 const POLL_INTERVAL = 5000;
 
-export function InfrastructurePage() {
+export function MonitoringPage() {
   const { t } = useTranslation();
   const [health, setHealth] = useState<Health | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -38,7 +38,7 @@ export function InfrastructurePage() {
         <span style={{ fontSize: 16, fontWeight: 600 }}>{title}</span>
       </div>
       <span style={{ color: ok ? 'var(--success)' : 'var(--error)', fontSize: 13 }}>
-        {ok ? t('infra.connected') : t('infra.disconnected')}
+        {ok ? t('monitoring.connected') : t('monitoring.disconnected')}
       </span>
       {detail && <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 4 }}>{detail}</p>}
     </div>
@@ -46,19 +46,19 @@ export function InfrastructurePage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{t('infra.title')}</h1>
-      <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 24 }}>{t('infra.subtitle')}</p>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{t('monitoring.title')}</h1>
+      <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 24 }}>{t('monitoring.subtitle')}</p>
 
       {/* Service Status Cards */}
       {health ? (
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
           <StatusCard
-            title={t('infra.database')}
+            title={t('monitoring.database')}
             ok={health.database.connected}
             detail={health.database.connected ? health.database.path : health.database.error}
           />
           <StatusCard
-            title={t('infra.ollama')}
+            title={t('monitoring.ollama')}
             ok={health.ollama.connected}
             detail={health.ollama.connected ? `${health.ollama.model} @ ${health.ollama.host}` : health.ollama.error}
           />
@@ -75,7 +75,7 @@ export function InfrastructurePage() {
       }}>
         <span style={{ fontSize: 32 }}>{allHealthy ? '✅' : health ? '⚠️' : '⏳'}</span>
         <p style={{ fontSize: 14, fontWeight: 600, marginTop: 8, color: allHealthy ? 'var(--success)' : 'var(--warning)' }}>
-          {allHealthy ? t('infra.allReady') : health ? t('infra.degraded') : t('infra.checking')}
+          {allHealthy ? t('monitoring.allReady') : health ? t('monitoring.degraded') : t('monitoring.checking')}
         </p>
       </div>
 

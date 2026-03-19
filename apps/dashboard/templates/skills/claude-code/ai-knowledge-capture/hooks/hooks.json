@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_SKILL_DIR}/hooks/stop-reminder.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

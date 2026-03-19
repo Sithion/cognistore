@@ -202,6 +202,34 @@ export class KnowledgeSDK {
     };
   }
 
+  /**
+   * Remove orphan embeddings (no matching entry) and run VACUUM.
+   * Returns count of orphans removed and final DB size.
+   */
+  async cleanupDatabase(): Promise<{ orphansRemoved: number; vacuumed: boolean }> {
+    this.ensureInitialized();
+    try {
+      // Delete embeddings whose ID is not in knowledge_entries
+      const orphanIds = this.sqlite!.prepare(
+        `SELECT id FROM knowledge_embeddings_rowids WHERE id NOT IN (SELECT id FROM knowledge_entries)`
+      ).all() as { id: string }[];
+
+      let removed = 0;
+      const deleteStmt = this.sqlite!.prepare(`DELETE FROM knowledge_embeddings WHERE id = ?`);
+      for (const row of orphanIds) {
+        deleteStmt.run(row.id);
+        removed++;
+      }
+
+      // VACUUM to reclaim space
+      this.sqlite!.exec('VACUUM');
+
+      return { orphansRemoved: removed, vacuumed: true };
+    } catch (error) {
+      throw this.wrapError(error, 'Failed to cleanup database');
+    }
+  }
+
   private ensureInitialized(): void {
     if (!this.initialized || !this.service) {
       throw new ConnectionError('SDK not initialized. Call initialize() first.');

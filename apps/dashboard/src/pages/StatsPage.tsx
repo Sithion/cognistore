@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useCallback, type ReactNode, type CSSProperties } from 'react';
 import { api } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import {
@@ -7,7 +7,6 @@ import {
 } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
 import { fetchStats, fetchMetrics, fetchTags, setRefreshInterval, REFRESH_OPTIONS, type RefreshInterval } from '../store/statsSlice.js';
-import { api } from '../api/client.js';
 
 /* ── Constants ── */
 
@@ -20,6 +19,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
+const SCOPE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -313,7 +313,7 @@ function TypeDistribution({ data }: { data: { name: string; value: number }[] })
                   <Cell key={entry.name} fill={TYPE_COLORS[entry.name] || PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+              <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }} />
             </PieChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -350,29 +350,46 @@ function TypeDistribution({ data }: { data: { name: string; value: number }[] })
 
 function ScopeDistribution({ data }: { data: { scope: string; count: number }[] }) {
   const { ref, width } = useContainerWidth();
+  const pieData = data.map(d => ({ name: d.scope, value: d.count }));
   const maxVal = Math.max(...data.map(d => d.count));
 
   return (
     <div ref={ref}>
       {width >= CHART_MIN_WIDTH ? (
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={data} layout="vertical" margin={{ left: 60 }}>
-            <XAxis type="number" hide />
-            <YAxis type="category" dataKey="scope" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} width={80} />
-            <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-            <Bar dataKey="count" fill="#22c55e" radius={[0, 4, 4, 0]} barSize={20} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <ResponsiveContainer width="50%" height={180}>
+            <PieChart>
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
+                {pieData.map((entry, i) => (
+                  <Cell key={entry.name} fill={SCOPE_COLORS[i % SCOPE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {pieData.map((entry, i) => (
+              <div key={entry.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: SCOPE_COLORS[i % SCOPE_COLORS.length] }} />
+                <span style={{ color: 'var(--text-secondary)' }}>{entry.name}</span>
+                <span style={{ fontWeight: 600 }}>{entry.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {data.map((entry) => (
+          {data.map((entry, i) => (
             <div key={entry.scope}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{entry.scope}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: SCOPE_COLORS[i % SCOPE_COLORS.length] }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{entry.scope}</span>
+                </div>
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{entry.count}</span>
               </div>
               <div style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--bg-input)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', borderRadius: 3, width: `${(entry.count / maxVal) * 100}%`, backgroundColor: '#22c55e' }} />
+                <div style={{ height: '100%', borderRadius: 3, width: `${(entry.count / maxVal) * 100}%`, backgroundColor: SCOPE_COLORS[i % SCOPE_COLORS.length] }} />
               </div>
             </div>
           ))}
@@ -393,7 +410,7 @@ function TopTagsChart({ data }: { data: { tag: string; count: number }[] }) {
           <BarChart data={data} layout="vertical" margin={{ left: 60 }}>
             <XAxis type="number" hide />
             <YAxis type="category" dataKey="tag" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={80} />
-            <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+            <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }} />
             <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={16} />
           </BarChart>
         </ResponsiveContainer>
@@ -434,6 +451,8 @@ export function StatsPage() {
   } = useAppSelector((s) => s.stats);
 
   const [topTags, setTopTags] = useState<{ tag: string; count: number }[]>([]);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanResult, setCleanResult] = useState<string | null>(null);
 
   const loadTopTags = useCallback(() => {
     api.getTopTags(10).then(setTopTags).catch(() => {});
@@ -562,7 +581,35 @@ export function StatsPage() {
         <MetricCard label="Total Entries" value={stats?.total ?? 0} />
         <MetricCard label="Last 24h" value={metrics?.activity.last24h ?? 0} sub="new entries" />
         <MetricCard label="Last 7 days" value={metrics?.activity.last7d ?? 0} sub="new entries" />
-        <MetricCard label="Database Size" value={metrics?.database.sizeFormatted ?? '-'} sub={metrics?.database.path} />
+        <div style={{ flex: 1, minWidth: 140, position: 'relative' }}>
+          <MetricCard label="Database Size" value={metrics?.database.sizeFormatted ?? '-'} sub={metrics?.database.path} />
+          <button
+            onClick={async () => {
+              setCleaning(true);
+              setCleanResult(null);
+              try {
+                const result = await api.cleanupDatabase();
+                setCleanResult(result.orphansRemoved > 0 ? `${result.orphansRemoved} cleaned` : t('stats.cacheClean'));
+                refreshAll();
+              } catch { setCleanResult('Error'); }
+              setCleaning(false);
+              setTimeout(() => setCleanResult(null), 3000);
+            }}
+            disabled={cleaning}
+            style={{
+              position: 'absolute', top: 8, right: 8,
+              padding: '3px 8px', fontSize: 10, fontWeight: 600,
+              backgroundColor: cleanResult ? 'var(--success)' : 'var(--bg-input)',
+              color: cleanResult ? '#fff' : 'var(--text-secondary)',
+              border: '1px solid var(--border)', borderRadius: 4,
+              cursor: cleaning ? 'not-allowed' : 'pointer',
+              opacity: cleaning ? 0.5 : 1,
+              transition: 'all 0.2s',
+            }}
+          >
+            {cleaning ? '...' : cleanResult ?? t('stats.cleanCache')}
+          </button>
+        </div>
       </div>
 
       {/* ── Charts Row ── */}
@@ -610,6 +657,7 @@ export function StatsPage() {
                   border: '1px solid var(--border)',
                   borderRadius: 8,
                   fontSize: 12,
+                  color: 'var(--text-primary)',
                 }}
                 labelFormatter={(v) => `Date: ${v}`}
               />

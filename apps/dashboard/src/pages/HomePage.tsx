@@ -107,11 +107,17 @@ export function HomePage() {
     }
   }, [selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const handleDelete = async (id: string) => {
-    if (!confirm(t('delete.message'))) return;
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      return;
+    }
     try {
       await api.deleteEntry(id);
-      setRecentEntries(recentEntries.filter(e => e.id !== id));
+      setRecentEntries(prev => prev.filter(e => e.id !== id));
+      setConfirmDeleteId(null);
     } catch (error) {
       console.error('Delete failed:', error);
     }
@@ -266,6 +272,8 @@ export function HomePage() {
               onDelete={handleDelete}
               onTagClick={handleToggleTag}
               onEdit={handleEdit}
+              confirmingDelete={confirmDeleteId === entry.id}
+              onCancelDelete={() => setConfirmDeleteId(null)}
             />
           ))}
         </div>

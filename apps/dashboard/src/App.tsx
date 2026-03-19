@@ -5,7 +5,7 @@ declare const __APP_VERSION__: string;
 import { Layout } from './components/Layout.js';
 import { HomePage } from './pages/HomePage.js';
 import { StatsPage } from './pages/StatsPage.js';
-import { InfrastructurePage } from './pages/InfrastructurePage.js';
+import { MonitoringPage } from './pages/MonitoringPage.js';
 import { SetupPage } from './pages/SetupPage.js';
 import { api } from './api/client.js';
 import { UpdateChecker } from './components/UpdateChecker.js';
@@ -47,7 +47,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/stats" element={<StatsPage />} />
-          <Route path="/infra" element={<InfrastructurePage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>
