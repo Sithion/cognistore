@@ -9,8 +9,11 @@ import {
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
-const MARKER_BEGIN = '<!-- AI-KNOWLEDGE:BEGIN -->';
-const MARKER_END = '<!-- AI-KNOWLEDGE:END -->';
+const MARKER_BEGIN = '<!-- COGNISTORE:BEGIN -->';
+const MARKER_END = '<!-- COGNISTORE:END -->';
+// Also match old markers for migration
+const OLD_MARKER_BEGIN = '<!-- AI-KNOWLEDGE:BEGIN -->';
+const OLD_MARKER_END = '<!-- AI-KNOWLEDGE:END -->';
 
 export interface InjectResult {
   action: 'created' | 'appended' | 'updated';
@@ -82,8 +85,14 @@ export class ConfigManager {
 
     const content = await readFile(targetPath, 'utf-8');
 
-    if (!content.includes(MARKER_BEGIN)) {
-      // Backup and append
+    // Check for new or old markers (migration support)
+    const hasNewMarkers = content.includes(MARKER_BEGIN);
+    const hasOldMarkers = !hasNewMarkers && content.includes(OLD_MARKER_BEGIN);
+    const activeBegin = hasOldMarkers ? OLD_MARKER_BEGIN : MARKER_BEGIN;
+    const activeEnd = hasOldMarkers ? OLD_MARKER_END : MARKER_END;
+
+    if (!hasNewMarkers && !hasOldMarkers) {
+      // No markers found — backup and append
       await copyFile(
         targetPath,
         `${targetPath}.bak.${Date.now()}`
@@ -92,13 +101,13 @@ export class ConfigManager {
       return { action: 'appended', path: targetPath };
     }
 
-    // Replace between markers
+    // Replace between markers (new template uses new markers automatically)
     await copyFile(
       targetPath,
       `${targetPath}.bak.${Date.now()}`
     );
-    const beginIdx = content.indexOf(MARKER_BEGIN);
-    const endIdx = content.indexOf(MARKER_END);
+    const beginIdx = content.indexOf(activeBegin);
+    const endIdx = content.indexOf(activeEnd);
     if (beginIdx === -1 || endIdx === -1) {
       // Fallback: append
       await writeFile(targetPath, content + '\n' + template, 'utf-8');
@@ -113,7 +122,8 @@ export class ConfigManager {
   }
 
   /**
-   * Remove content between AI-KNOWLEDGE markers from a file.
+   * Remove content between COGNISTORE markers from a file.
+   * Also handles old AI-KNOWLEDGE markers for migration.
    * If the file only contains the marked section (plus whitespace), delete the file.
    */
   async removeConfig(targetPath: string): Promise<RemoveResult> {
@@ -123,24 +133,30 @@ export class ConfigManager {
 
     const content = await readFile(targetPath, 'utf-8');
 
-    if (!content.includes(MARKER_BEGIN)) {
+    const hasNewMarkers = content.includes(MARKER_BEGIN);
+    const hasOldMarkers = !hasNewMarkers && content.includes(OLD_MARKER_BEGIN);
+
+    if (!hasNewMarkers && !hasOldMarkers) {
       return { removed: false, hadMarkers: false, path: targetPath };
     }
+
+    const activeBegin = hasOldMarkers ? OLD_MARKER_BEGIN : MARKER_BEGIN;
+    const activeEnd = hasOldMarkers ? OLD_MARKER_END : MARKER_END;
 
     await copyFile(
       targetPath,
       `${targetPath}.bak.${Date.now()}`
     );
 
-    const beginIdx = content.indexOf(MARKER_BEGIN);
-    const endIdx = content.indexOf(MARKER_END);
+    const beginIdx = content.indexOf(activeBegin);
+    const endIdx = content.indexOf(activeEnd);
 
     if (beginIdx === -1 || endIdx === -1) {
       return { removed: false, hadMarkers: false, path: targetPath };
     }
 
     const before = content.substring(0, beginIdx);
-    const after = content.substring(endIdx + MARKER_END.length);
+    const after = content.substring(endIdx + activeEnd.length);
     const remaining = (before + after).trim();
 
     if (remaining.length === 0) {

@@ -21,9 +21,9 @@ The `@cognistore/config` package manages automatic configuration of AI clients. 
 Instructions and configuration blocks are wrapped in markers:
 
 ```markdown
-<!-- AI-KNOWLEDGE:BEGIN -->
+<!-- COGNISTORE:BEGIN -->
 ... injected content ...
-<!-- AI-KNOWLEDGE:END -->
+<!-- COGNISTORE:END -->
 ```
 
 ### Injection Logic
@@ -158,6 +158,6 @@ During uninstall, backup files matching `*.bak.*` are also cleaned up.
 
 | Function | What It Removes |
 |----------|----------------|
-| `removeMarkers(path)` | Content between `AI-KNOWLEDGE:BEGIN/END` markers |
+| `removeMarkers(path)` | Content between `COGNISTORE:BEGIN/END` markers |
 | `removeMcpEntry(path, 'cognistore')` | `cognistore` key from `mcpServers` object |
 | `removeOpenCodeMcp()` | `cognistore` key from OpenCode `mcp` object |

@@ -1,4 +1,4 @@
-<!-- AI-KNOWLEDGE:BEGIN -->
+<!-- COGNISTORE:BEGIN -->
 ## Knowledge Base Integration (cognistore)
 
 > **BLOCKING REQUIREMENT** — You MUST follow these rules on EVERY task. No exceptions. Non-compliance wastes tokens and loses institutional memory.
@@ -97,4 +97,4 @@ mcp__cognistore__createPlan({
 - **PreToolUse hook**: Fires before Edit, Write, Bash, MultiEdit, Agent, NotebookEdit — reminds you to query first
 - **Stop hook**: Fires at session end — reminds you to capture knowledge before finishing
 - These hooks are non-blocking reminders. If you already queried, proceed normally.
-<!-- AI-KNOWLEDGE:END -->
+<!-- COGNISTORE:END -->

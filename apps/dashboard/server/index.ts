@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync, copyFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -176,12 +176,17 @@ async function start() {
       } catch { /* ignore */ }
     }
 
-    // Check if MCP config exists
+    // Check if MCP config and agent instructions exist
     const configsReady = existsSync(ConfigManager.MCP_CONFIG) &&
       (() => {
         try {
           const content = readFileSync(ConfigManager.MCP_CONFIG, 'utf-8');
-          return content.includes('cognistore');
+          if (!content.includes('cognistore')) return false;
+          // Also check CLAUDE.md has content (not empty)
+          if (!existsSync(ConfigManager.CLAUDE_MD)) return false;
+          const claudeMd = readFileSync(ConfigManager.CLAUDE_MD, 'utf-8');
+          if (claudeMd.trim().length < 10) return false; // Empty or near-empty
+          return true;
         } catch { return false; }
       })();
 
@@ -347,6 +352,17 @@ async function start() {
       const dbPath = resolve(INSTALL_DIR, 'knowledge.db');
       mkdirSync(INSTALL_DIR, { recursive: true });
 
+      // Migration: copy DB from old ~/.ai-knowledge/ if it exists
+      const oldInstallDir = resolve(homedir(), '.ai-knowledge');
+      const oldDbPath = resolve(oldInstallDir, 'knowledge.db');
+      if (existsSync(oldDbPath) && !existsSync(dbPath)) {
+        console.log('[CogniStore] Migrating database from ~/.ai-knowledge/ to ~/.cognistore/');
+        copyFileSync(oldDbPath, dbPath);
+        // Also copy WAL/SHM if they exist
+        if (existsSync(oldDbPath + '-wal')) copyFileSync(oldDbPath + '-wal', dbPath + '-wal');
+        if (existsSync(oldDbPath + '-shm')) copyFileSync(oldDbPath + '-shm', dbPath + '-shm');
+      }
+
       const { sqlite } = createDbClient(dbPath);
       sqlite.exec(`
         CREATE TABLE IF NOT EXISTS knowledge_entries (
@@ -422,24 +438,31 @@ async function start() {
       // Inject agent instructions
       const configTemplateDir = resolve(TEMPLATES_PATH, 'configs');
 
-      try {
-        const claudeTemplate = existsSync(resolve(configTemplateDir, 'claude-code-instructions.md'))
-          ? resolve(configTemplateDir, 'claude-code-instructions.md') : '';
-        await configManager.injectConfig(ConfigManager.CLAUDE_MD, claudeTemplate, 'Claude Code');
-        results.push('Claude Code config injected');
-      } catch { results.push('Claude Code config skipped'); }
+      const claudeTemplatePath = resolve(configTemplateDir, 'claude-code-instructions.md');
+      const copilotTemplatePath = resolve(configTemplateDir, 'copilot-instructions.md');
 
       try {
-        const copilotTemplate = existsSync(resolve(configTemplateDir, 'copilot-instructions.md'))
-          ? resolve(configTemplateDir, 'copilot-instructions.md') : '';
-        await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotTemplate, 'GitHub Copilot');
-        results.push('Copilot config injected');
-      } catch { results.push('Copilot config skipped'); }
+        if (!existsSync(claudeTemplatePath)) {
+          console.warn(`[CogniStore] Claude template not found at: ${claudeTemplatePath}`);
+          results.push(`Claude Code config skipped (template not found: ${claudeTemplatePath})`);
+        } else {
+          await configManager.injectConfig(ConfigManager.CLAUDE_MD, claudeTemplatePath, 'Claude Code');
+          results.push('Claude Code config injected');
+        }
+      } catch (e) { console.warn('[CogniStore] Claude inject error:', e); results.push('Claude Code config error'); }
 
       try {
-        await configManager.injectConfig(ConfigManager.COPILOT_INSTRUCTIONS, '', 'Copilot CLI');
-        results.push('Copilot CLI config injected');
-      } catch { results.push('Copilot CLI config skipped'); }
+        if (!existsSync(copilotTemplatePath)) {
+          console.warn(`[CogniStore] Copilot template not found at: ${copilotTemplatePath}`);
+          results.push(`Copilot config skipped (template not found: ${copilotTemplatePath})`);
+        } else {
+          await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotTemplatePath, 'GitHub Copilot');
+          results.push('Copilot config injected');
+          // Also inject into Copilot CLI path
+          await configManager.injectConfig(ConfigManager.COPILOT_INSTRUCTIONS, copilotTemplatePath, 'Copilot CLI');
+          results.push('Copilot CLI config injected');
+        }
+      } catch (e) { console.warn('[CogniStore] Copilot inject error:', e); results.push('Copilot config error'); }
 
       // Setup MCP configs
       const mcpEntry = {
@@ -556,20 +579,30 @@ async function start() {
 
     // Step 2: Re-inject agent instructions
     const configTemplateDir = resolve(TEMPLATES_PATH, 'configs');
+    const claudeT = resolve(configTemplateDir, 'claude-code-instructions.md');
+    const copilotT = resolve(configTemplateDir, 'copilot-instructions.md');
+
     try {
-      const claudeTemplate = existsSync(resolve(configTemplateDir, 'claude-code-instructions.md'))
-        ? resolve(configTemplateDir, 'claude-code-instructions.md') : '';
-      await configManager.injectConfig(ConfigManager.CLAUDE_MD, claudeTemplate, 'Claude Code');
-      results.push({ step: 'instructions-claude', status: 'success' });
+      if (existsSync(claudeT)) {
+        await configManager.injectConfig(ConfigManager.CLAUDE_MD, claudeT, 'Claude Code');
+        results.push({ step: 'instructions-claude', status: 'success' });
+      } else {
+        console.warn(`[CogniStore] Upgrade: Claude template not found at: ${claudeT}`);
+        results.push({ step: 'instructions-claude', status: 'error', message: `Template not found: ${claudeT}` });
+      }
     } catch (e: any) {
       results.push({ step: 'instructions-claude', status: 'error', message: e.message });
     }
 
     try {
-      const copilotTemplate = existsSync(resolve(configTemplateDir, 'copilot-instructions.md'))
-        ? resolve(configTemplateDir, 'copilot-instructions.md') : '';
-      await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotTemplate, 'GitHub Copilot');
-      results.push({ step: 'instructions-copilot', status: 'success' });
+      if (existsSync(copilotT)) {
+        await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotT, 'GitHub Copilot');
+        await configManager.injectConfig(ConfigManager.COPILOT_INSTRUCTIONS, copilotT, 'Copilot CLI');
+        results.push({ step: 'instructions-copilot', status: 'success' });
+      } else {
+        console.warn(`[CogniStore] Upgrade: Copilot template not found at: ${copilotT}`);
+        results.push({ step: 'instructions-copilot', status: 'error', message: `Template not found: ${copilotT}` });
+      }
     } catch (e: any) {
       results.push({ step: 'instructions-copilot', status: 'error', message: e.message });
     }
@@ -673,7 +706,10 @@ async function start() {
 
     try {
       const copilotTemplate = resolve(configTemplateDir, 'copilot-instructions.md');
-      if (existsSync(copilotTemplate)) await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotTemplate, 'GitHub Copilot');
+      if (existsSync(copilotTemplate)) {
+        await configManager.injectConfig(ConfigManager.COPILOT_MD, copilotTemplate, 'GitHub Copilot');
+        await configManager.injectConfig(ConfigManager.COPILOT_INSTRUCTIONS, copilotTemplate, 'Copilot CLI');
+      }
       results.push({ step: 'instructions-copilot', status: 'success' });
     } catch (e: any) { results.push({ step: 'instructions-copilot', status: 'error', message: e.message }); }
 

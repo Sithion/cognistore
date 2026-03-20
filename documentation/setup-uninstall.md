@@ -108,7 +108,7 @@ The uninstall button requires a 3-step confirmation to prevent accidental data l
 
 | # | Action | Details |
 |---|--------|---------|
-| 1 | Remove instruction markers | Delete `AI-KNOWLEDGE:BEGIN/END` blocks from CLAUDE.md, copilot-instructions.md |
+| 1 | Remove instruction markers | Delete `COGNISTORE:BEGIN/END` blocks from CLAUDE.md, copilot-instructions.md |
 | 2 | Remove MCP entries | Delete `cognistore` from all `mcpServers`/`mcp` configs |
 | 3 | Remove skills | Delete `~/.claude/skills/cognistore-*/` directories (query, capture, plan) and `~/.copilot/skills/cognistore-*.md` files |
 | 4 | Uninstall Ollama model | `ollama rm all-minilm` |

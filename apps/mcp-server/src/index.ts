@@ -8,7 +8,7 @@ async function main() {
   try {
     await sdk.initialize();
   } catch (error) {
-    console.error('Failed to initialize AI Knowledge SDK:', error instanceof Error ? error.message : error);
+    console.error('Failed to initialize CogniStore SDK:', error instanceof Error ? error.message : error);
     process.exit(1);
   }
 

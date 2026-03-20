@@ -1,4 +1,4 @@
-<!-- AI-KNOWLEDGE:BEGIN -->
+<!-- COGNISTORE:BEGIN -->
 ## Knowledge Base Integration (cognistore)
 
 > **BLOCKING REQUIREMENT** — You MUST follow these rules on EVERY task. No exceptions.
@@ -65,4 +65,4 @@ mcp__cognistore__createPlan({
 3. **Update, don't duplicate** — update existing entries when the topic already exists.
 4. **Only store high-value knowledge** — non-obvious insights, not trivial fixes or standard docs.
 5. **Plans go ONLY in the knowledge base** — `createPlan()`, never local files.
-<!-- AI-KNOWLEDGE:END -->
+<!-- COGNISTORE:END -->

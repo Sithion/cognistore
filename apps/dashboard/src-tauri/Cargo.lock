@@ -18,20 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ai-knowledge-dashboard"
-version = "0.9.6"
-dependencies = [
- "dirs",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tokio",
-]
-
-[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,6 +319,20 @@ dependencies = [
  "num-traits",
  "serde",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "cognistore-dashboard"
+version = "0.9.8"
+dependencies = [
+ "dirs",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tokio",
 ]
 
 [[package]]
