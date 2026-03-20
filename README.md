@@ -2,7 +2,7 @@
 
 <img src="assets/logo-banner.png" alt="CogniStore" width="500" />
 
-**Knowledge & Plan Management for AI Agents**
+**v1.0.0 — Knowledge & Plan Management for AI Agents**
 
 Store, search, and retrieve knowledge using local vector embeddings — directly from your AI assistant.
 
@@ -30,9 +30,10 @@ The app acts as an [MCP](https://modelcontextprotocol.io/) server for **Claude C
 - **Local-first** — All data stays on your machine. SQLite database with vector search via `sqlite-vec`.
 - **Semantic search** — Find knowledge by meaning, not just keywords. Powered by Ollama embeddings running natively.
 - **MCP integration** — Works as a plugin for Claude Code, GitHub Copilot, and OpenCode out of the box.
-- **Zero configuration** — The setup wizard handles everything: Ollama, database, model downloads, MCP config injection, and AI skills installation.
-- **Plans** — Create and manage implementation plans with task lists, priority tracking, and relations to knowledge entries.
-- **Desktop dashboard** — Browse, search, filter, and manage your knowledge base and plans through the built-in UI with stats and charts.
+- **Zero configuration** — The setup wizard handles everything: Ollama, database, model downloads, MCP config injection, AI skills installation, and system knowledge seeding.
+- **System knowledge** — Mandatory protocol entries (type `system`) are seeded on setup, injected into agent sessions via hooks, hidden from the dashboard, and protected from deletion. Agents always operate with the correct protocol without manual configuration.
+- **Plans** — Create and manage implementation plans with task lists, priority tracking, relations to knowledge entries, and archive completed plans from the dashboard.
+- **Desktop dashboard** — Browse, search, filter, and manage your knowledge base and plans through the built-in UI with stats and charts. All destructive actions use modal confirmations.
 - **Auto-update** — The app checks for updates every 30 minutes and installs them automatically.
 - **Multi-language** — Dashboard available in English, Spanish, and Portuguese.
 - **Cross-platform** — macOS (`.dmg`) and Linux (`.AppImage`, `.deb`).
@@ -68,7 +69,8 @@ On first launch, the setup wizard will automatically:
 4. Create the local SQLite database at `~/.cognistore/knowledge.db`
 5. Pull the `all-minilm` embedding model
 6. Configure MCP servers and install AI skills for Claude Code, GitHub Copilot, and OpenCode
-7. Mark setup as complete and open the dashboard
+7. Seed system knowledge entries (protocol instructions that agents receive automatically via hooks)
+8. Mark setup as complete and open the dashboard
 
 Once complete, your AI assistant can immediately start storing and querying knowledge.
 
@@ -107,12 +109,12 @@ If you prefer to configure the MCP server manually:
 | `addKnowledge` | Store a knowledge entry with automatic semantic embedding | `title`, `content`, `tags`, `type`, `scope`, `source` |
 | `getKnowledge` | Search across entries using natural language queries | `query`, `tags`, `type`, `scope`, `limit`, `threshold` |
 | `updateKnowledge` | Update an existing entry (re-embeds if tags change) | `id`, `title`, `content`, `tags` |
-| `deleteKnowledge` | Remove an entry by ID | `id` |
+| `deleteKnowledge` | Remove an entry by ID (rejects system entries) | `id` |
 | `listTags` | List all unique tags in the knowledge base | — |
 | `healthCheck` | Verify database and Ollama connectivity | — |
 | `createPlan` | Create a plan with optional tasks and knowledge relations | `title`, `content`, `tags`, `scope`, `source` |
 | `updatePlan` | Update plan title, content, tags, scope, or status | `planId`, `status`, `title`, `content` |
-| `addPlanRelation` | Link a knowledge entry to a plan (input or output) | `planId`, `knowledgeId`, `relationType` |
+| `addPlanRelation` | Link a knowledge entry to a plan (silently skips system entries) | `planId`, `knowledgeId`, `relationType` |
 | `addPlanTask` | Add a task to a plan's todo list | `planId`, `description`, `priority` |
 | `updatePlanTask` | Mark task in_progress/completed, add notes | `taskId`, `status`, `notes` |
 | `listPlanTasks` | List tasks for a plan ordered by position | `planId` |
@@ -128,6 +130,7 @@ Entries are categorized by type for structured retrieval:
 | `fix` | Bug fixes, error resolutions |
 | `constraint` | Tool limitations, version-specific workarounds |
 | `gotcha` | Unexpected behaviors, non-obvious pitfalls |
+| `system` | Mandatory protocol entries seeded on setup (hidden from dashboard, undeletable) |
 
 ### AI Skills
 
@@ -138,6 +141,10 @@ The setup wizard installs skills with lifecycle hooks that enforce knowledge bas
 - **cognistore-plan** — Hooks into `PostToolUse` (ExitPlanMode) to remind agents to save plans to the knowledge base with task management workflow
 
 Hooks are non-blocking (system messages only) and skip automatically when the agent is already using cognistore tools.
+
+### Hook-Based Protocol Injection
+
+In addition to skills, `UserPromptSubmit` hooks read system knowledge entries (`type=system`) from the database and inject them as a `[COGNISTORE-PROTOCOL]` system message at the start of every agent session. This ensures agents always receive the correct protocol instructions without relying on manual CLAUDE.md configuration alone.
 
 ## Dashboard
 
@@ -189,7 +196,8 @@ cognistore/
 │   ├── sdk/                # Public SDK (main entry point for consumers)
 │   └── config/             # Config injection (Claude, Copilot, OpenCode)
 └── scripts/
-    └── bump-version.sh     # Version bump script for all packages
+    ├── bump-version.sh     # Version bump script for all packages
+    └── test-agents.sh      # Agent test battery (builds, spins up Docker Ollama, tests all clients)
 ```
 
 ### Tech Stack
@@ -236,13 +244,32 @@ pnpm dev --filter @cognistore/dashboard
 pnpm tauri:dev --filter @cognistore/dashboard
 ```
 
+### Agent Test Battery
+
+The project includes an end-to-end test script that validates MCP tool behavior across all supported AI clients:
+
+```bash
+scripts/test-agents.sh
+```
+
+The test battery:
+1. Builds all packages locally
+2. Spins up a Docker-based Ollama instance for isolated embedding generation
+3. Creates a temporary local database
+4. Swaps MCP configs to point at the local build
+5. Runs tool-level tests across Claude Code, GitHub Copilot, and OpenCode
+6. Validates similarity scores and response correctness
+7. Restores all original configurations on completion (even on failure)
+
+This ensures that MCP tool changes do not regress across any supported client.
+
 ### Version Bump
 
 To bump the version across all packages at once:
 
 ```bash
 pnpm bump <new-version>
-# Example: pnpm bump 0.8.0
+# Example: pnpm bump 1.0.0
 ```
 
 This updates version in all `package.json` files, `Cargo.toml`, and the `LICENSE`.

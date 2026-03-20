@@ -98,7 +98,7 @@ Required: `title`, `content`, `tags`, `type`, `scope`, `source`
 
 ### PUT /api/knowledge/:id
 
-Update an existing entry. Only include fields to change.
+Update an existing entry. Only include fields to change. Returns `403 Forbidden` if attempting to change `type` or `content` on a system entry (`type=system`).
 
 **Body:**
 ```json
@@ -112,9 +112,17 @@ Update an existing entry. Only include fields to change.
 
 ### DELETE /api/knowledge/:id
 
-Delete an entry and its embedding.
+Delete an entry and its embedding. Returns `403 Forbidden` if the entry has `type=system` (system entries are protected and cannot be deleted).
 
 **Response:** `{ success: true }`
+
+**Error (system entry):**
+```json
+{
+  "error": "System knowledge entries cannot be deleted",
+  "statusCode": 403
+}
+```
 
 ## Statistics & Metrics
 
@@ -244,7 +252,7 @@ Required: `title`, `content`, `tags`, `scope`, `source`
 
 ### PUT /api/plans/:id
 
-Update a plan. Only include fields to change.
+Update a plan. Only include fields to change. The `archived` status can only be set from the dashboard (not via MCP) — agents are restricted to `draft`, `active`, and `completed` transitions.
 
 **Body:**
 ```json
@@ -270,7 +278,7 @@ Get knowledge entries linked to a plan.
 
 ### POST /api/plans/:id/relations
 
-Link a knowledge entry to a plan.
+Link a knowledge entry to a plan. Silently skips system knowledge entries (`type=system`) — returns success but does not create the relation.
 
 **Body:**
 ```json

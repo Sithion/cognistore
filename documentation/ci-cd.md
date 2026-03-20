@@ -96,7 +96,7 @@ Binaries are signed with `TAURI_SIGNING_PRIVATE_KEY` for auto-update verificatio
 Use the version bump script:
 
 ```bash
-pnpm bump 0.8.0
+pnpm bump 1.0.0
 ```
 
 This updates:
@@ -120,6 +120,40 @@ This updates:
 
 Both npm publish and GitHub Release creation check if the version already exists before attempting to create. Re-running the workflow on the same version is safe — it will skip already-published artifacts.
 
+## Agent Test Battery
+
+**File:** `scripts/test-agents.sh`
+
+An end-to-end test script that validates MCP tool behavior across all supported AI clients. This is a local test — not part of CI — used to verify that tool changes work correctly before release.
+
+### What It Does
+
+```
+1. Build all packages locally (pnpm build)
+2. Spin up a Docker-based Ollama instance for isolated embedding generation
+3. Create a temporary local SQLite database
+4. Swap MCP configs for Claude Code, Copilot, and OpenCode to point at the local build
+5. Run tool-level tests (addKnowledge, getKnowledge, updateKnowledge, deleteKnowledge, plans, etc.)
+6. Validate similarity scores and response correctness
+7. Restore all original MCP configurations on completion (cleanup runs even on failure)
+```
+
+### Usage
+
+```bash
+./scripts/test-agents.sh
+```
+
+### Requirements
+
+- Docker (for Ollama container)
+- pnpm and Node.js 20
+- Claude Code, Copilot, or OpenCode CLI installed (tests only the clients found on the system)
+
+### Cleanup
+
+The script traps EXIT and restores original MCP configs from backups, ensuring that even if tests fail, the user's environment is not left in a broken state.
+
 ## Related Files
 
 | File | Purpose |
@@ -129,3 +163,4 @@ Both npm publish and GitHub Release creation check if the version already exists
 | `apps/mcp-server/tsup.config.ts` | MCP server bundler config |
 | `apps/dashboard/scripts/bundle-sidecar.mjs` | Sidecar preparation for Tauri build |
 | `scripts/bump-version.sh` | Cross-package version bump |
+| `scripts/test-agents.sh` | Agent test battery (local, Docker-based) |
