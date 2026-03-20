@@ -106,9 +106,22 @@ All cross-package dependencies use `workspace:*` protocol via pnpm.
 4. UPDATE knowledge_entries + replace embedding if changed
 ```
 
+### System Knowledge
+
+System knowledge entries (`type=system`) are a special class of mandatory entries seeded during setup. They contain protocol instructions that agents must follow (e.g., knowledge-first workflow, plan persistence rules). Key properties:
+
+- **Seeded on setup** — Created by the setup wizard as part of the configure step
+- **Injected via hook** — `UserPromptSubmit` hooks read system entries from the database and inject them as a `[COGNISTORE-PROTOCOL]` system message at the start of every agent session
+- **Hidden from dashboard** — The frontend filters out `type=system` entries from all views (knowledge list, stats, search results)
+- **Undeletable** — The `deleteKnowledge` tool and `DELETE /api/knowledge/:id` endpoint reject requests targeting system entries. The `updateKnowledge` tool also rejects type or content changes to system entries
+- **Excluded from bulk operations** — Import, export, and bulk delete operations skip system entries
+- **Excluded from plan relations** — `addPlanRelation` silently skips system entries to prevent agents from linking protocol instructions to plans
+
 ### Plans (Separate Entity)
 
 Plans are stored in their own `plans` table with a separate `plans_embeddings` virtual table. They are linked to knowledge entries via `plan_relations` and have associated `plan_tasks` for todo tracking. The plan lifecycle is: `draft` -> `active` -> `completed` -> `archived`.
+
+**Plan status lifecycle enforcement:** Agents (via MCP) can transition plans through `draft` -> `active` -> `completed` but cannot set `archived` status. Archiving is a user-only action available from the dashboard on completed plans.
 
 ```
 Write: createPlan(title, content, tags, scope, source, tasks?, relatedKnowledgeIds?)
@@ -131,6 +144,7 @@ Database schema changes are managed through versioned SQL migration files:
 packages/core/src/db/migrations/
 ├── 0.8.0.sql    # Base schema (knowledge_entries, operations_log)
 ├── 0.9.0.sql    # Plans table, plan_tasks, plan_relations, title column
+├── 1.0.0.sql    # System knowledge type support
 └── meta/
     └── _journal.json
 ```
@@ -196,7 +210,8 @@ cognistore/
 │   └── config/                 # Config injection
 │       └── src/config-manager.ts  # Marker-based injection for Claude, Copilot, OpenCode
 ├── scripts/
-│   └── bump-version.sh         # Version bump across all packages + Cargo.toml + LICENSE
+│   ├── bump-version.sh         # Version bump across all packages + Cargo.toml + LICENSE
+│   └── test-agents.sh          # Agent test battery (Docker Ollama, local DB, multi-client tests)
 ├── documentation/              # Technical documentation (this directory)
 └── .github/
     └── workflows/

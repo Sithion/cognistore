@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
 import { triggerUpdateCheck, onUpdateState } from '../components/UpdateChecker.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 
 interface Health {
   database: { connected: boolean; path?: string; error?: string };
@@ -198,7 +199,9 @@ export function SettingsPage() {
         border: '1px solid var(--error)', padding: 20,
         opacity: 0.8,
       }}>
-        {uninstallStep === 0 && (
+        {uninstallStep === 3 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('settings.uninstallingMsg')}</p>
+        ) : (
           <>
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
               {t('settings.uninstallDesc')}
@@ -215,68 +218,39 @@ export function SettingsPage() {
             </button>
           </>
         )}
-
-        {uninstallStep === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ fontSize: 13, color: 'var(--error)', fontWeight: 600 }}>
-              {t('settings.uninstallConfirm1')}
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => setUninstallStep(2)}
-                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--error)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-              >
-                {t('settings.yesContinue')}
-              </button>
-              <button
-                onClick={() => setUninstallStep(0)}
-                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {uninstallStep === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ fontSize: 13, color: 'var(--error)', fontWeight: 600 }}>
-              {t('settings.uninstallConfirm2')}
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={async () => {
-                  setUninstallStep(3);
-                  setActionMessage({ type: 'success', text: t('settings.uninstallingMsg') });
-                  try {
-                    await api.uninstallAll();
-                  } catch {
-                    // Server shuts down during uninstall — expected
-                  }
-                  // Show goodbye message and try to close
-                  setTimeout(() => {
-                    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;background:#0a0a1a;color:#22c55e;font-family:sans-serif"><h2>Uninstall complete</h2><p style="color:#6b7280">You can close this window.</p></div>';
-                    try { window.close(); } catch { /* ignore */ }
-                  }, 2000);
-                }}
-                style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--error)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-              >
-                {t('settings.yesUninstallAll')}
-              </button>
-              <button
-                onClick={() => setUninstallStep(0)}
-                style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {uninstallStep === 3 && (
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('settings.uninstallingMsg')}</p>
-        )}
       </div>
+
+      {/* Uninstall Step 1 — first confirmation modal */}
+      <ConfirmModal
+        isOpen={uninstallStep === 1}
+        onClose={() => setUninstallStep(0)}
+        onConfirm={() => setUninstallStep(2)}
+        title={t('settings.uninstallBtn')}
+        message={t('settings.uninstallConfirm1')}
+        confirmLabel={t('settings.yesContinue')}
+      />
+
+      {/* Uninstall Step 2 — final confirmation modal */}
+      <ConfirmModal
+        isOpen={uninstallStep === 2}
+        onClose={() => setUninstallStep(0)}
+        onConfirm={async () => {
+          setUninstallStep(3);
+          setActionMessage({ type: 'success', text: t('settings.uninstallingMsg') });
+          try {
+            await api.uninstallAll();
+          } catch {
+            // Server shuts down during uninstall — expected
+          }
+          setTimeout(() => {
+            document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;background:#0a0a1a;color:#22c55e;font-family:sans-serif"><h2>Uninstall complete</h2><p style="color:#6b7280">You can close this window.</p></div>';
+            try { window.close(); } catch { /* ignore */ }
+          }, 2000);
+        }}
+        title={t('settings.uninstallBtn')}
+        message={t('settings.uninstallConfirm2')}
+        confirmLabel={t('settings.yesUninstallAll')}
+      />
       </div>
     </div>
   );

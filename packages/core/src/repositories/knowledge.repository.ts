@@ -1,4 +1,4 @@
-import { eq, sql, and, or, isNull } from 'drizzle-orm';
+import { eq, ne, sql, and, or, isNull } from 'drizzle-orm';
 import { type Database, type SQLiteDatabase } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema/knowledge.js';
 import {
@@ -152,6 +152,9 @@ export class KnowledgeRepository {
       conditions.push(eq(knowledgeEntries.type, options.type));
     }
 
+    // Exclude system entries from search results (injected via hook only)
+    conditions.push(ne(knowledgeEntries.type, 'system'));
+
     // Exclude expired entries
     conditions.push(
       or(
@@ -180,40 +183,28 @@ export class KnowledgeRepository {
   }
 
   async listRecent(limit = 20, filters?: { type?: string; scope?: string }) {
-    const conditions: any[] = [];
+    const conditions: any[] = [ne(knowledgeEntries.type, 'system')];
     if (filters?.type) conditions.push(sql`${knowledgeEntries.type} = ${filters.type}`);
     if (filters?.scope) conditions.push(sql`${knowledgeEntries.scope} = ${filters.scope}`);
-
-    if (conditions.length === 0) {
-      return this.db
-        .select()
-        .from(knowledgeEntries)
-        .orderBy(sql`${knowledgeEntries.createdAt} DESC`)
-        .limit(limit);
-    }
-
-    const where = conditions.length === 1
-      ? conditions[0]
-      : sql`${conditions[0]} AND ${conditions[1]}`;
 
     return this.db
       .select()
       .from(knowledgeEntries)
-      .where(where)
+      .where(and(...conditions))
       .orderBy(sql`${knowledgeEntries.createdAt} DESC`)
       .limit(limit);
   }
 
   async listTags() {
     const result = await this.db.all<{ value: string }>(
-      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags)`
+      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system'`
     );
     return result.map((r) => r.value);
   }
 
   async topTags(limit = 10) {
     const result = await this.db.all<{ tag: string; count: number }>(
-      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) GROUP BY value ORDER BY count DESC LIMIT ${limit}`
+      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' GROUP BY value ORDER BY count DESC LIMIT ${limit}`
     );
     return result;
   }
@@ -221,7 +212,8 @@ export class KnowledgeRepository {
   async count() {
     const [result] = await this.db
       .select({ count: sql<number>`count(*)` })
-      .from(knowledgeEntries);
+      .from(knowledgeEntries)
+      .where(ne(knowledgeEntries.type, 'system'));
     return Number(result.count);
   }
 
@@ -239,6 +231,7 @@ export class KnowledgeRepository {
         count: sql<number>`count(*)`,
       })
       .from(knowledgeEntries)
+      .where(ne(knowledgeEntries.type, 'system'))
       .groupBy(knowledgeEntries.type);
     return results.map((r) => ({ type: r.type, count: Number(r.count) }));
   }
@@ -250,6 +243,7 @@ export class KnowledgeRepository {
         count: sql<number>`count(*)`,
       })
       .from(knowledgeEntries)
+      .where(ne(knowledgeEntries.type, 'system'))
       .groupBy(knowledgeEntries.scope);
     return results.map((r) => ({ scope: r.scope, count: Number(r.count) }));
   }
@@ -258,6 +252,7 @@ export class KnowledgeRepository {
     return this.db
       .select()
       .from(knowledgeEntries)
+      .where(ne(knowledgeEntries.type, 'system'))
       .orderBy(sql`${knowledgeEntries.createdAt} DESC`);
   }
 

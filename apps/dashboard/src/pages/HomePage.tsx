@@ -6,6 +6,7 @@ import { KnowledgeCard } from '../components/KnowledgeCard.js';
 import { TagBar } from '../components/TagBar.js';
 import { KnowledgeModal } from '../components/KnowledgeModal.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
@@ -180,6 +181,7 @@ export function HomePage() {
       await api.bulkDeleteKnowledge(Array.from(selectedIds));
       setSelectedIds(new Set());
       setBulkMode(false);
+      setShowBulkDeleteConfirm(false);
       handleSuccess();
     } catch (error) {
       console.error('Bulk delete failed:', error);
@@ -188,19 +190,26 @@ export function HomePage() {
     }
   };
 
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // Delete confirmation modal state
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
-  const handleDelete = async (id: string) => {
-    if (confirmDeleteId !== id) {
-      setConfirmDeleteId(id);
-      return;
-    }
+  const handleDeleteClick = (id: string) => {
+    setDeleteTargetId(id);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId) return;
+    setDeleting(true);
     try {
-      await api.deleteEntry(id);
-      setRecentEntries(prev => prev.filter(e => e.id !== id));
-      setConfirmDeleteId(null);
+      await api.deleteEntry(deleteTargetId);
+      setRecentEntries(prev => prev.filter(e => e.id !== deleteTargetId));
+      setDeleteTargetId(null);
     } catch (error) {
       console.error('Delete failed:', error);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -464,11 +473,9 @@ export function HomePage() {
             <KnowledgeCard
               key={entry.id as string}
               entry={entry}
-              onDelete={handleDelete}
+              onDelete={handleDeleteClick}
               onTagClick={handleToggleTag}
               onEdit={bulkMode ? undefined : handleEdit}
-              confirmingDelete={confirmDeleteId === entry.id}
-              onCancelDelete={() => setConfirmDeleteId(null)}
               selected={selectedIds.has(entry.id as string)}
               onToggleSelect={bulkMode ? toggleSelect : undefined}
             />
@@ -506,15 +513,14 @@ export function HomePage() {
             {t('actions.deselectAll')}
           </button>
           <button
-            onClick={handleBulkDelete}
-            disabled={bulkDeleting}
+            onClick={() => setShowBulkDeleteConfirm(true)}
             style={{
               padding: '6px 16px', borderRadius: 6, border: 'none',
               backgroundColor: 'var(--error)', color: '#fff', cursor: 'pointer',
-              fontSize: 13, fontWeight: 600, opacity: bulkDeleting ? 0.5 : 1,
+              fontSize: 13, fontWeight: 600,
             }}
           >
-            {bulkDeleting ? '...' : t('actions.delete')}
+            {t('actions.delete')}
           </button>
         </div>
       )}
@@ -523,6 +529,26 @@ export function HomePage() {
       <FloatingAddButton onClick={() => { setEditingEntry(null); setShowModal(true); }} />
         </>
       )}
+
+      {/* Single delete confirmation modal */}
+      <ConfirmModal
+        isOpen={deleteTargetId !== null}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={handleConfirmDelete}
+        title={t('delete.title')}
+        message={t('delete.message')}
+        loading={deleting}
+      />
+
+      {/* Bulk delete confirmation modal */}
+      <ConfirmModal
+        isOpen={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        onConfirm={handleBulkDelete}
+        title={t('delete.bulkTitle')}
+        message={t('delete.bulkMessage', { count: selectedIds.size })}
+        loading={bulkDeleting}
+      />
     </div>
   );
 }

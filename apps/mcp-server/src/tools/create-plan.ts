@@ -20,7 +20,6 @@ export const createPlanTool = {
       title: params.title as string,
       content: params.content as string,
       tags: params.tags as string[],
-      type: 'plan' as any,
       scope: params.scope as string,
       source: params.source as string,
       relatedKnowledgeIds: params.relatedKnowledgeIds as string[] | undefined,

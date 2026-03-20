@@ -4,6 +4,7 @@ export enum KnowledgeType {
   FIX = 'fix',
   CONSTRAINT = 'constraint',
   GOTCHA = 'gotcha',
+  SYSTEM = 'system',
 }
 
 export enum KnowledgeStatus {

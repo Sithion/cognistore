@@ -10,7 +10,7 @@ export const addKnowledgeTool = {
       title: { type: 'string', description: 'Short descriptive title for the knowledge entry' },
       content: { type: 'string', description: 'The knowledge content text to store' },
       tags: { type: 'array', items: { type: 'string' }, description: 'Mandatory categorical tags for filtering' },
-      type: { type: 'string', enum: ['decision', 'pattern', 'fix', 'constraint', 'gotcha'], description: 'Type of knowledge entry' },
+      type: { type: 'string', enum: ['decision', 'pattern', 'fix', 'constraint', 'gotcha', 'system'], description: 'Type of knowledge entry' },
       scope: { type: 'string', description: 'Scope: "global" or "workspace:<project-name>"' },
       source: { type: 'string', description: 'Source of the knowledge' },
       confidenceScore: { type: 'number', description: 'Confidence score 0-1' },

@@ -143,6 +143,27 @@ Similar protocol adapted for Copilot's instruction format.
 
 Both Claude Code and Copilot instructions include the rule: **plans must be stored in the knowledge base** using `createPlan`, never as local files. The `cognistore-plan` skill reinforces this with a `PostToolUse` hook on `ExitPlanMode` that reminds agents to persist their plans before leaving plan mode.
 
+## Hook-Based Protocol Injection
+
+In addition to marker-based instruction injection and skills, CogniStore uses `UserPromptSubmit` hooks to dynamically inject protocol instructions at the start of every agent session.
+
+### How It Works
+
+1. During setup, mandatory protocol entries are created as `type=system` knowledge entries in the database
+2. `UserPromptSubmit` hooks (installed as part of the skills) fire when a user submits a prompt to their AI client
+3. The hook reads all system knowledge entries from the local SQLite database
+4. The entries are formatted and injected as a `[COGNISTORE-PROTOCOL]` system message
+5. The agent receives the protocol instructions before processing the user's prompt
+
+### Why Both Markers and Hooks?
+
+| Mechanism | Purpose | Reliability |
+|-----------|---------|-------------|
+| Marker injection (CLAUDE.md, etc.) | Static protocol instructions in agent instruction files | Depends on user not removing markers |
+| Hook injection (UserPromptSubmit) | Dynamic protocol from database, injected every session | Always present as long as skills are installed |
+
+The hook-based approach provides a second layer of protocol delivery. Even if a user modifies or removes the injected CLAUDE.md markers, the hooks still deliver protocol instructions from the database. System entries in the database are protected from deletion and modification.
+
 ## Backup Strategy
 
 Before modifying any file, the config manager creates a timestamped backup:

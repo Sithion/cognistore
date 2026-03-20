@@ -11,7 +11,7 @@ export const updateKnowledgeTool = {
       title: { type: 'string', description: 'New title' },
       content: { type: 'string', description: 'New content text' },
       tags: { type: 'array', items: { type: 'string' }, description: 'New tags' },
-      type: { type: 'string', enum: ['decision', 'pattern', 'fix', 'constraint', 'gotcha'], description: 'New type' },
+      type: { type: 'string', enum: ['decision', 'pattern', 'fix', 'constraint', 'gotcha', 'system'], description: 'New type' },
       scope: { type: 'string', description: 'New scope' },
       source: { type: 'string', description: 'New source' },
       confidenceScore: { type: 'number', description: 'New confidence score' },

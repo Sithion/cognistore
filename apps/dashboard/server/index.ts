@@ -88,7 +88,74 @@ async function start() {
     }
   };
 
+  const SYSTEM_KNOWLEDGE_TITLE = 'CogniStore Agent Workflow';
+  const SYSTEM_KNOWLEDGE_CONTENT = `## MANDATORY PROTOCOL — Follow on every task
+
+### Step 1: Query First
+Run getKnowledge() BEFORE reading files, writing code, or making decisions.
+- Similarity > 0.50 → use directly, skip redundant analysis
+- Similarity 0.30–0.50 → combine with fresh analysis
+- No results → proceed normally
+
+### Step 2: Plan Lifecycle
+All multi-step tasks MUST use createPlan().
+Status transitions are MANDATORY — do NOT skip any:
+1. createPlan() → status: draft (automatic)
+2. IMMEDIATELY before starting first task → updatePlan(planId, { status: "active" }) — DO NOT SKIP THIS
+3. For EACH task: updatePlanTask(status: "in_progress") BEFORE starting, updatePlanTask(status: "completed") AFTER finishing
+4. When ALL tasks done → listPlanTasks() to verify → updatePlan(planId, { status: "completed" })
+- NEVER set status to "archived" — dashboard-only
+- NEVER go from "draft" directly to "completed" — the "active" step is required
+
+### Step 2b: Link Knowledge to Plans
+When executing a plan, ALWAYS link related knowledge:
+- Knowledge consulted during planning → addPlanRelation(planId, knowledgeId, "input")
+- Knowledge created during execution → addPlanRelation(planId, knowledgeId, "output")
+- Pass relatedKnowledgeIds in createPlan() for entries found during Step 1
+
+### Step 3: Capture Knowledge
+BEFORE ending your response, capture high-value discoveries:
+- Bug fixed → type: fix
+- Architecture choice → type: decision
+- Reusable pattern → type: pattern
+- Limitation found → type: constraint
+- Unexpected behavior → type: gotcha
+Update existing entries instead of duplicating.
+
+### Rules
+- All knowledge entries MUST be in English
+- Never skip Step 1 — a single query costs ~30 tokens; missing a cache hit wastes 2,000–8,000
+- Never call createPlan() from subagents
+- Local plan files are temporary — createPlan() is the source of truth`;
+
+  const seedSystemKnowledge = async () => {
+    if (!sdkReady) return;
+    try {
+      // listRecent filters system entries, so use direct sqlite query
+      const existing = (sdk as any).sqlite?.prepare?.(
+        "SELECT id FROM knowledge_entries WHERE type = 'system' AND title = ?"
+      )?.get(SYSTEM_KNOWLEDGE_TITLE) as { id: string } | undefined;
+
+      if (existing) {
+        // Update content in case it changed between versions
+        await sdk.updateKnowledge(existing.id, { content: SYSTEM_KNOWLEDGE_CONTENT });
+      } else {
+        await sdk.addKnowledge({
+          title: SYSTEM_KNOWLEDGE_TITLE,
+          content: SYSTEM_KNOWLEDGE_CONTENT,
+          tags: ['system', 'workflow', 'mandatory'],
+          type: 'system' as any,
+          scope: 'global',
+          source: 'setup',
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to seed system knowledge:', err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const initOk = await tryInitSDK();
+  if (initOk) await seedSystemKnowledge();
   if (!initOk) {
     console.warn(`SDK initialization failed (degraded mode): ${sdkError}`);
     retryInterval = setInterval(async () => {
@@ -552,7 +619,10 @@ async function start() {
         sdkReady = false;
       }
       const ok = await tryInitSDK();
-      if (ok) saveDeployedVersion();
+      if (ok) {
+        saveDeployedVersion();
+        await seedSystemKnowledge();
+      }
       return { success: ok, sdkReady };
     } catch (error) {
       return { success: false, message: error instanceof Error ? error.message : String(error) };
@@ -584,6 +654,7 @@ async function start() {
       if (sdkReady) { await sdk.close(); sdkReady = false; }
       const ok = await tryInitSDK();
       results.push({ step: 'database', status: ok ? 'success' : 'error', message: ok ? 'Schema up to date' : 'SDK init failed' });
+      if (ok) await seedSystemKnowledge();
     } catch (e: any) {
       results.push({ step: 'database', status: 'error', message: e.message });
     }
@@ -1219,7 +1290,9 @@ async function start() {
 
       // Handle JSON import
       if (body.entries && Array.isArray(body.entries)) {
-        const result = await sdk.importKnowledge(body.entries);
+        // Strip system type from imports — system knowledge is seeded internally only
+        const sanitized = body.entries.map((e: any) => e.type === 'system' ? { ...e, type: 'pattern' } : e);
+        const result = await sdk.importKnowledge(sanitized);
         return result;
       }
 
@@ -1239,7 +1312,7 @@ async function start() {
           entries.push({
             title: cols[0] || '', content: cols[1] || '',
             tags: (cols[2] || '').split(';').filter(Boolean),
-            type: cols[3] || 'pattern', scope: cols[4] || 'global',
+            type: (cols[3] === 'system' ? 'pattern' : cols[3]) || 'pattern', scope: cols[4] || 'global',
             source: cols[5] || 'csv-import',
             confidenceScore: cols[6] ? Number(cols[6]) : 1.0,
             agentId: cols[7] || null,

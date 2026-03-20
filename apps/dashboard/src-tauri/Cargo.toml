@@ -1,6 +1,6 @@
 [package]
 name = "cognistore-dashboard"
-version = "0.9.13"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]

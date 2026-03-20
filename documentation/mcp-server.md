@@ -4,6 +4,8 @@
 
 The MCP server (`@cognistore/mcp-server`) is the primary interface for AI coding agents. It exposes 12 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) stdio transport. Published to npm as a standalone package.
 
+**System knowledge guard:** Several tools enforce protection of system entries (`type=system`). System entries are seeded during setup and contain mandatory protocol instructions. They cannot be deleted or modified through MCP tools, and `addPlanRelation` silently skips them.
+
 ## Transport
 
 ```
@@ -23,11 +25,13 @@ Store a new knowledge entry with automatic semantic embedding.
 | `title` | string | Yes | — | Short descriptive title |
 | `content` | string | Yes | — | The knowledge content text |
 | `tags` | string[] | Yes | — | Categorical tags for filtering and embedding |
-| `type` | enum | Yes | — | `decision`, `pattern`, `fix`, `constraint`, or `gotcha` |
+| `type` | enum | Yes | — | `decision`, `pattern`, `fix`, `constraint`, `gotcha`, or `system` |
 | `scope` | string | Yes | — | `global` or `workspace:<project-name>` |
 | `source` | string | Yes | — | Where this knowledge came from |
 | `confidenceScore` | number | No | 1.0 | 0.0–1.0 confidence rating |
 | `agentId` | string | No | — | ID of the creating agent |
+
+> **Note:** The `system` type is reserved for mandatory protocol entries seeded during setup. Agents should not create entries with `type=system` — these are managed exclusively by the setup wizard.
 
 ### getKnowledge
 
@@ -44,7 +48,7 @@ Search knowledge entries using semantic similarity.
 
 ### updateKnowledge
 
-Update an existing entry. Re-embeds if tags change. Auto-increments version.
+Update an existing entry. Re-embeds if tags change. Auto-increments version. Rejects type or content changes to system entries (`type=system`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -59,7 +63,7 @@ Update an existing entry. Re-embeds if tags change. Auto-increments version.
 
 ### deleteKnowledge
 
-Remove an entry and its embedding by ID.
+Remove an entry and its embedding by ID. Returns an error if the entry has `type=system` (system entries are protected and cannot be deleted).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -98,12 +102,12 @@ Update an existing plan's title, content, tags, scope, status, or source.
 | `content` | string | No | New content |
 | `tags` | string[] | No | New tags |
 | `scope` | string | No | New scope |
-| `status` | enum | No | `draft`, `active`, `completed`, or `archived` |
+| `status` | enum | No | `draft`, `active`, or `completed` (agents cannot set `archived` — archiving is a user-only action via the dashboard) |
 | `source` | string | No | New source |
 
 ### addPlanRelation
 
-Link a knowledge entry to a plan as input or output.
+Link a knowledge entry to a plan as input or output. Silently skips system knowledge entries (`type=system`) — no error is returned, but no relation is created.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

@@ -16,7 +16,7 @@ The knowledge base uses **SQLite** with the **sqlite-vec** extension for vector 
 | `title` | TEXT NOT NULL | `''` | Short descriptive title |
 | `content` | TEXT NOT NULL | — | Knowledge content (free text) |
 | `tags` | TEXT NOT NULL | `'[]'` | JSON array of string tags |
-| `type` | TEXT NOT NULL | — | One of: `decision`, `pattern`, `fix`, `constraint`, `gotcha` |
+| `type` | TEXT NOT NULL | — | One of: `decision`, `pattern`, `fix`, `constraint`, `gotcha`, `system` |
 | `scope` | TEXT NOT NULL | — | `global` or `workspace:<project-name>` |
 | `source` | TEXT NOT NULL | — | Origin of the knowledge (file, conversation, etc.) |
 | `version` | INTEGER NOT NULL | `1` | Incremented on each update |
@@ -30,6 +30,14 @@ The knowledge base uses **SQLite** with the **sqlite-vec** extension for vector 
 **Indices:**
 - `idx_type` on `type`
 - `idx_scope` on `scope`
+
+**System entries (`type=system`):** Mandatory protocol entries seeded during setup. These entries are protected at the application layer:
+- `deleteKnowledge` rejects deletion requests for system entries
+- `updateKnowledge` rejects type or content changes to system entries
+- Bulk operations (import, export, bulk delete) skip system entries
+- `addPlanRelation` silently skips system entries (no error, no relation created)
+- The dashboard frontend filters them out of all views and search results
+- `UserPromptSubmit` hooks read system entries and inject them as `[COGNISTORE-PROTOCOL]` system messages
 
 ### knowledge_embeddings (virtual table)
 
@@ -138,6 +146,7 @@ For pre-migration databases (existing databases with no `schema_version` table b
 packages/core/src/db/migrations/
 ├── 0.8.0.sql   # Base schema: knowledge_entries, operations_log
 ├── 0.9.0.sql   # Plans: plans, plan_relations, plan_tasks, title column
+├── 1.0.0.sql   # System knowledge type support
 └── meta/
     └── _journal.json
 ```

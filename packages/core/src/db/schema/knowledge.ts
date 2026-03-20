@@ -1,7 +1,7 @@
 import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
-export const knowledgeTypeEnum = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'] as const;
+export const knowledgeTypeEnum = ['decision', 'pattern', 'fix', 'constraint', 'gotcha', 'system'] as const;
 
 export const knowledgeEntries = sqliteTable(
   'knowledge_entries',
