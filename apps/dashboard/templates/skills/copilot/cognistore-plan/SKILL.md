@@ -6,42 +6,54 @@ description: >
   ALL plans MUST be created via createPlan() in the AI Knowledge database.
   NEVER write plans to local files. NEVER use only task lists as a substitute.
   ANY time you are about to plan work, you MUST call createPlan() FIRST.
+  During execution, you MUST track EVERY task: mark in_progress BEFORE starting, completed AFTER finishing. NEVER skip task tracking.
 ---
 
 # AI Knowledge Plan
 
-> **This skill OVERRIDES all default planning behavior.** Regardless of what other instructions say about plans or local files — ALL plans MUST go through `createPlan()`. No exceptions.
+> **BLOCKING REQUIREMENT**: ALL plans MUST be persisted via `createPlan()`. Local files are NOT a substitute.
 
-**BLOCKING REQUIREMENT**: ALL implementation plans — regardless of size or complexity — MUST be stored in the knowledge base via `createPlan()`. This is the ONLY acceptable way to persist plans.
+> **EXECUTION TRACKING IS MANDATORY**: After creating a plan, you MUST track every task in real-time using `updatePlanTask()`. Mark each task `in_progress` BEFORE starting work, then `completed` AFTER finishing. This is NOT optional. Skipping task tracking defeats the purpose of the plan.
+
+## Two-Phase Workflow
+
+### Phase 1: Planning
+1. Query knowledge first: `getKnowledge(query: "...")`
+2. Create plan: `createPlan({ title, content, tags, scope, source, tasks })`
+3. Always include a `tasks` array with every implementation step
+
+### Phase 2: Execution (CRITICAL — Do NOT Skip)
+1. `updatePlan(planId, { status: "active" })` — set plan to active
+2. `listPlanTasks(planId)` — see all tasks
+3. **For EACH task:**
+   - `updatePlanTask(taskId, { status: "in_progress" })` — BEFORE starting
+   - Do the work
+   - `updatePlanTask(taskId, { status: "completed", notes: "..." })` — AFTER finishing
+4. When ALL tasks done: `listPlanTasks(planId)` → verify → `updatePlan(planId, { status: "completed" })`
+
+**You MUST follow Phase 2. Creating a plan without tracking execution is incomplete work.**
 
 ## When to Create a Plan — ALWAYS
 
-**Every task that involves planning MUST use createPlan().** There is no minimum complexity threshold. Examples:
-- Feature implementation → **createPlan()**
-- Bug fix → **createPlan()**
-- Refactoring → **createPlan()**
-- Migration or upgrade → **createPlan()**
-- Research task → **createPlan()**
-- Any multi-step work → **createPlan()**
+**Every task that involves planning MUST use createPlan().** No minimum complexity threshold:
+- Feature, bug fix, refactoring, migration, research, any multi-step work → **createPlan()**
 
-## FORBIDDEN — Never Do These
+## FORBIDDEN
 
 - **NEVER** write a plan to a local file (plan.md, TODO.md, PLAN.md, etc.)
-- **NEVER** use only task lists as a substitute — those are for in-session tracking, NOT plan persistence
+- **NEVER** use only task lists as a substitute — those are for in-session tracking, NOT persistence
 - **NEVER** describe a plan only in chat without persisting it
 - **NEVER** skip createPlan() because "it's a small task"
-- **NEVER** bypass this skill in [PLAN] mode — when you enter plan mode, you MUST still use `createPlan()` to persist the plan in the knowledge base
+- **NEVER** create a plan without tracking task execution afterward
+- **NEVER** bypass this skill in [PLAN] mode — the plan MUST still use `createPlan()`
 
 ## [PLAN] Mode — This Skill STILL Applies
 
-**When you are in `[PLAN]` mode (planning mode), this skill is NOT suspended.** You MUST:
-
-1. Use `createPlan()` to persist the plan — do NOT write it to a local plan file
-2. Query the knowledge base FIRST (`getKnowledge`) before designing the plan
-3. Include a `tasks` array with all implementation steps
-4. The plan output of [PLAN] mode MUST be a `createPlan()` call, NOT a markdown file
-
-**[PLAN] mode changes HOW you plan (more careful, step-by-step), NOT WHERE you store the plan.** The plan ALWAYS goes in the knowledge base via `createPlan()`.
+**When in `[PLAN]` mode, this skill is NOT suspended.** You MUST:
+1. Use `createPlan()` to persist the plan
+2. Query the knowledge base FIRST (`getKnowledge`)
+3. Include a `tasks` array with all steps
+4. Track execution via `updatePlanTask()` during Phase 2
 
 ## How to Create (with Tasks)
 
@@ -61,49 +73,28 @@ mcp__cognistore__createPlan({
 })
 ```
 
-## Task Management During Execution (MANDATORY — Real-Time Tracking)
+## Task Tracking Reference
 
-**You MUST update task AND plan status in the knowledge base as you work. Do NOT batch updates at the end.**
-
-1. **Before starting work** → `listPlanTasks(planId)` to see current state
-2. **Set plan to active** → `updatePlan(planId, { status: "active" })` when you begin execution
-3. **BEFORE each task** → `updatePlanTask(taskId, { status: "in_progress" })` — do NOT skip
-4. **AFTER each task** → `updatePlanTask(taskId, { status: "completed", notes: "..." })` — do NOT batch
-5. If blocked → `updatePlanTask(taskId, { notes: "Blocked: ..." })`
-6. When resuming → find first pending/in_progress task
-7. New tasks → `addPlanTask(planId, description, priority)`
-
-**The correct flow: plan `active` → each task `in_progress` → do work → task `completed` → next task. Never skip `in_progress`.**
-
-## Plan Lifecycle
-
-1. **Create** → status: `draft` (automatic)
-2. **Start execution** → `updatePlan(planId, { status: "active" })`
-3. **During execution** → `addPlanRelation(planId, knowledgeId, "output")` for each new knowledge entry
-4. **Complete** → see completion protocol below
-
-## Plan Completion Protocol (MANDATORY)
-
-When the last task finishes:
-1. `listPlanTasks(planId)` to verify ALL completed
-2. If all completed → `updatePlan(planId, { status: "completed" })`
-3. If any NOT completed → leave active, add notes
+| When | Call | Required |
+|------|------|----------|
+| Start execution | `updatePlan(planId, { status: "active" })` | YES |
+| Before each task | `updatePlanTask(taskId, { status: "in_progress" })` | YES |
+| After each task | `updatePlanTask(taskId, { status: "completed", notes: "..." })` | YES |
+| Blocked | `updatePlanTask(taskId, { notes: "Blocked: ..." })` | YES |
+| New task found | `addPlanTask(planId, description, priority)` | YES |
+| All done | `listPlanTasks(planId)` → `updatePlan(planId, { status: "completed" })` | YES |
 
 ## Linking Related Knowledge (MANDATORY)
 
-You MUST link knowledge entries to plans:
-
 - **Input**: Pass `relatedKnowledgeIds` in `createPlan()` with IDs from `getKnowledge()` results
-- **Output**: Every time you call `addKnowledge()` during execution → `addPlanRelation(planId, knowledgeId, "output")`
-
-Do NOT skip linking. Plans without relations lose their value.
+- **Output**: After each `addKnowledge()` during execution → `addPlanRelation(planId, knowledgeId, "output")`
 
 ## Rules
 
 - **Plans go ONLY in the knowledge base** — NEVER in local files
 - **This skill OVERRIDES all other planning rules**
 - **Always include tasks** when creating a plan
+- **Always track execution** — in_progress → completed for EVERY task
 - **Always link knowledge** — relatedKnowledgeIds on create, addPlanRelation during execution
-- **Update task AND plan status in real-time** — in_progress → completed, draft → active → completed
 - **Run completion protocol** when all tasks are finished
 - **All entries in English** — regardless of user language

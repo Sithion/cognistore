@@ -49,7 +49,7 @@ mcp__cognistore__createPlan({
 })
 ```
 
-- **NEVER** write plans to local files (plan.md, TODO.md, etc.)
+- If plan mode requires a local file (`.claude/plans/`), write it AND ALSO call `createPlan()` — the local file is temporary, `createPlan()` is the source of truth
 - **NEVER** use only TodoWrite/task lists as a substitute — those are ephemeral, not persistent
 - **NEVER** call createPlan() from subagents (Agent tool) — only the main agent creates plans to avoid duplicates
 - **ALWAYS** include a `tasks` array with every implementation step
@@ -63,7 +63,7 @@ mcp__cognistore__createPlan({
 2. **All knowledge entries MUST be in English** — regardless of conversation language.
 3. **Manage knowledge, don't duplicate** — update existing entries instead of creating new ones when the topic already exists.
 4. **Only store high-value knowledge** — hard-won insights, non-obvious gotchas, project-specific decisions, architectural constraints. NOT trivial fixes or standard docs.
-5. **Plans go ONLY in the knowledge base** — use `createPlan()`. NEVER save plans to local files. NEVER use only task lists as a substitute.
+5. **Plans MUST be in the knowledge base** — use `createPlan()`. If plan mode writes a local file, ALSO call `createPlan()`. NEVER use only task lists as a substitute.
 
 ### Quick Reference
 

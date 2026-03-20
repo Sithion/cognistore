@@ -6,7 +6,7 @@ set -euo pipefail
 
 cat <<'EOF'
 {
-  "systemMessage": "[CogniStore] MANDATORY — PLAN PERSISTENCE REQUIRED:\n\nYou just exited plan mode. You MUST now persist this plan using createPlan().\n\n1. Call mcp__cognistore__createPlan() with:\n   - title: descriptive plan name\n   - content: full plan text\n   - tags: relevant tags\n   - scope: workspace:<project-name>\n   - tasks: array with EVERY implementation step\n\n2. Do NOT write the plan to a local file (plan.md, TODO.md, etc.)\n3. Do NOT skip this step — plans that only exist in chat are LOST between sessions\n4. Do NOT use TodoWrite as a substitute — it does not persist across sessions\n\nThe knowledge base is the ONLY source of truth for plans."
+  "systemMessage": "[CogniStore] Plan approved. Call mcp__cognistore__createPlan() NOW — title, content, tags, scope: \"workspace:<project>\", tasks array with every step. The local plan file is temporary; createPlan() is the persistent source of truth."
 }
 EOF
 
