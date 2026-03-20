@@ -1,16 +1,17 @@
 ---
 name: ai-knowledge-capture
 description: >
-  Store discoveries, decisions, fixes, and patterns in the AI Knowledge
-  semantic database. MANDATORY: Every agent must capture knowledge after
-  completing work — fixes, decisions, patterns, constraints, and gotchas.
+  MANDATORY — automatically triggered after completing ANY task. Store discoveries,
+  decisions, fixes, and patterns in the AI Knowledge semantic database.
+  This skill MUST run as your LAST action before finishing work.
+  Do NOT skip. Do NOT forget. Capture knowledge, then finish.
 user-invocable: true
 argument-hint: <knowledge content to store>
 ---
 
 # AI Knowledge Capture
 
-**MANDATORY**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — capture it in the knowledge base immediately. Every entry builds institutional memory that benefits all future sessions.
+**BLOCKING REQUIREMENT**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — you MUST capture it in the knowledge base immediately. This is NOT optional.
 
 ## When to Capture
 
@@ -81,6 +82,34 @@ mcp__ai-knowledge__addKnowledge({
 - **Never decide without documenting** — future agents need reasoning, not just outcomes
 - **Be concise but complete** — one entry should give full context without re-investigation
 - **All entries in English** — regardless of user language preference
+
+## What NOT to Capture
+
+Not everything deserves a knowledge entry. **Only store knowledge that saves significant time in future sessions.** Do NOT capture:
+
+- **Publicly documented facts** — standard API docs, language syntax, framework basics (easily found via web search)
+- **Trivial fixes** — typos, missing imports, simple syntax errors
+- **Temporary state** — "currently debugging X", work-in-progress notes
+- **Obvious patterns** — standard CRUD operations, boilerplate code, common conventions
+
+**DO capture** things that are:
+- **Hard-won insights** — root causes that took significant investigation to find
+- **Project-specific decisions** — choices and reasoning that aren't documented elsewhere
+- **Non-obvious gotchas** — unexpected behaviors, workarounds, edge cases
+- **Cross-session context** — architectural decisions, constraints, integration details that future agents would waste time rediscovering
+
+**Rule of thumb**: If a web search can answer it in 30 seconds, don't store it. If it took you 5+ minutes of investigation, store it.
+
+## Update Existing Knowledge, Don't Duplicate
+
+**CRITICAL**: Knowledge must be managed, not just accumulated. Before calling `addKnowledge`:
+
+1. **Check if a related entry already exists** — did your initial `getKnowledge` query return something relevant?
+2. If yes → **UPDATE it** with `mcp__ai-knowledge__updateKnowledge(id, { content, tags })` instead of creating a new entry
+3. If the existing entry is wrong or obsolete → **DELETE it** with `mcp__ai-knowledge__deleteKnowledge(id)` and create a fresh one
+4. Only **ADD** when the knowledge is genuinely new — no existing entry covers the topic
+
+Duplicates pollute search results and waste tokens on redundant entries. One well-maintained entry is worth more than three stale duplicates.
 
 ## Scope Guidelines
 

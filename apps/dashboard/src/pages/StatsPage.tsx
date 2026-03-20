@@ -50,8 +50,8 @@ function WidgetCard({
   title,
   state,
   children,
-  emptyText = 'No data yet',
-  errorText = 'Failed to load',
+  emptyText = '',
+  errorText = '',
   style,
 }: {
   title: string;
@@ -160,6 +160,7 @@ function getHeatmapColor(count: number, maxCount: number): string {
 }
 
 function ContributionHeatmap({ data }: { data: { date: string; count: number }[] }) {
+  const { t } = useTranslation();
   const maxCount = Math.max(...data.map((d) => d.count), 1);
 
   const weeks: { date: string; count: number; day: number }[][] = [];
@@ -262,7 +263,7 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, marginLeft: 28 }}>
-        <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginRight: 4 }}>Less</span>
+        <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginRight: 4 }}>{t('stats.less')}</span>
         {[0, 0.25, 0.5, 0.75, 1].map((level, i) => (
           <div
             key={i}
@@ -275,7 +276,7 @@ function ContributionHeatmap({ data }: { data: { date: string; count: number }[]
             }}
           />
         ))}
-        <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 4 }}>More</span>
+        <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 4 }}>{t('stats.more')}</span>
       </div>
     </div>
   );
@@ -518,10 +519,10 @@ export function StatsPage() {
 
       {/* ── Metric Cards Row ── */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <MetricCard label="Total Entries" value={stats?.total ?? 0} />
-        <MetricCard label="Last 24h" value={metrics?.activity.last24h ?? 0} sub="new entries" />
-        <MetricCard label="Last 7 days" value={metrics?.activity.last7d ?? 0} sub="new entries" />
-        <MetricCard label="Database Size" value={metrics?.database.sizeFormatted ?? '-'} sub={metrics?.database.path} />
+        <MetricCard label={t('stats.totalEntries')} value={stats?.total ?? 0} />
+        <MetricCard label={t('stats.last24h')} value={metrics?.activity.last24h ?? 0} sub={t('stats.newEntries')} />
+        <MetricCard label={t('stats.last7d')} value={metrics?.activity.last7d ?? 0} sub={t('stats.newEntries')} />
+        <MetricCard label={t('stats.dbSize')} value={metrics?.database.sizeFormatted ?? '-'} sub={metrics?.database.path} />
       </div>
 
       {/* ── Operations Row ── */}
@@ -535,14 +536,14 @@ export function StatsPage() {
       {/* ── Charts Row ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
         {/* Type Distribution */}
-        <WidgetCard title="Knowledge by Type" state={hasTypeData ? 'loaded' : 'empty'}>
+        <WidgetCard title={t('stats.knowledgeByType')} state={hasTypeData ? 'loaded' : 'empty'}>
           {metrics && metrics.typeDistribution.length > 0 && (
             <TypeDistribution data={metrics.typeDistribution} />
           )}
         </WidgetCard>
 
         {/* Scope Distribution */}
-        <WidgetCard title="Knowledge by Scope" state={hasScopeData ? 'loaded' : 'empty'}>
+        <WidgetCard title={t('stats.knowledgeByScope')} state={hasScopeData ? 'loaded' : 'empty'}>
           {stats && stats.byScope.length > 0 && (
             <ScopeDistribution data={stats.byScope} />
           )}
@@ -551,9 +552,9 @@ export function StatsPage() {
 
       {/* ── Activity Chart ── */}
       <WidgetCard
-        title="Activity (Last 15 Days)"
+        title={t('stats.activity15d')}
         state={hasActivityData ? 'loaded' : 'empty'}
-        emptyText="No activity in the last 15 days"
+        emptyText={t('stats.noActivity15d')}
         style={{ marginBottom: 24 }}
       >
         {metrics && metrics.operationsByDay && metrics.operationsByDay.length > 0 && (() => {
@@ -581,14 +582,14 @@ export function StatsPage() {
                   }}
                   itemStyle={{ color: 'var(--text-primary)' }}
                   labelStyle={{ color: 'var(--text-secondary)' }}
-                  labelFormatter={(v) => `Date: ${v}`}
+                  labelFormatter={(v) => `${t('stats.dateLabel')}: ${v}`}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: 11, color: 'var(--text-secondary)' }}
                 />
-                <Line type="monotone" dataKey="total" name="Total" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="reads" name="Reads" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="writes" name="Writes" stroke="#22c55e" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="total" name={t('stats.totalLine')} stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="reads" name={t('stats.readsLine')} stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="writes" name={t('stats.writesLine')} stroke="#22c55e" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           );
@@ -598,16 +599,16 @@ export function StatsPage() {
       {/* ── Contribution Heatmap + Top Tags ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
         <WidgetCard
-          title="Contributions (Last 90 Days)"
+          title={t('stats.contributions90d')}
           state={hasHeatmap ? 'loaded' : 'empty'}
         >
           {metrics?.heatmap && <ContributionHeatmap data={metrics.heatmap} />}
         </WidgetCard>
 
         <WidgetCard
-          title="Top Tags"
+          title={t('stats.topTags')}
           state={topTags.length > 0 ? 'loaded' : 'empty'}
-          emptyText="No tags yet"
+          emptyText={t('stats.noTags')}
         >
           {topTags.length > 0 && <TopTagsChart data={topTags} />}
         </WidgetCard>
@@ -662,8 +663,8 @@ export function PlanStatsPage() {
     api.getPlanMetrics().then(setData).catch(() => {});
   }, []);
 
-  if (!data) return <div style={{ color: 'var(--text-secondary)' }}>Loading...</div>;
-  if (data.plans.total === 0) return <div style={{ color: 'var(--text-secondary)' }}>No plan data yet.</div>;
+  if (!data) return <div style={{ color: 'var(--text-secondary)' }}>{t('stats.loading')}</div>;
+  if (data.plans.total === 0) return <div style={{ color: 'var(--text-secondary)' }}>{t('stats.noPlanData')}</div>;
 
   const planDistribution = [
     { name: 'Draft', value: data.plans.draft },
@@ -686,17 +687,17 @@ export function PlanStatsPage() {
 
       {/* Plan Metric Cards */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <MetricCard label="Total Plans" value={data.plans.total} />
-        <MetricCard label="Active" value={data.plans.active} />
-        <MetricCard label="Completed" value={data.plans.completed} />
-        <MetricCard label="Avg Tasks/Plan" value={data.tasks.avgPerPlan} />
+        <MetricCard label={t('stats.totalPlans')} value={data.plans.total} />
+        <MetricCard label={t('stats.activePlans')} value={data.plans.active} />
+        <MetricCard label={t('stats.completedPlans')} value={data.plans.completed} />
+        <MetricCard label={t('stats.avgTasksPerPlan')} value={data.tasks.avgPerPlan} />
       </div>
 
       {/* Plan Charts */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
         {/* Plan Status Distribution */}
         {planDistribution.length > 0 && (
-          <WidgetCard title="Plan Status" state="loaded">
+          <WidgetCard title={t('stats.planStatus')} state="loaded">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={planDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
@@ -724,7 +725,7 @@ export function PlanStatsPage() {
 
         {/* Task Completion Rate */}
         {taskDistribution.length > 0 && (
-          <WidgetCard title="Task Status" state="loaded">
+          <WidgetCard title={t('stats.taskStatus')} state="loaded">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={taskDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
@@ -753,7 +754,7 @@ export function PlanStatsPage() {
 
       {/* Plans Activity Chart */}
       {data.plansByDay.some((d) => d.count > 0) && (
-        <WidgetCard title="Plans Activity (15 days)" state="loaded">
+        <WidgetCard title={t('stats.plansActivity15d')} state="loaded">
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={data.plansByDay}>
               <XAxis dataKey="date" tickFormatter={(v) => v.slice(5)} tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} />

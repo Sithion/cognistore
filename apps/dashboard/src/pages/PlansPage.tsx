@@ -131,6 +131,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask }: {
   onToggleNotes: () => void;
   onUpdateTask?: (taskId: string, updates: Record<string, unknown>) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [editingDesc, setEditingDesc] = useState(false);
   const [editDesc, setEditDesc] = useState(task.description);
   const [editingNotes, setEditingNotes] = useState(false);
@@ -245,7 +246,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask }: {
               onClick={(e) => { e.stopPropagation(); onToggleNotes(); }}
               style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 9, marginLeft: 6, padding: 0 }}
             >
-              {expandedNotes ? '▼' : '▶'} notes
+              {expandedNotes ? '▼' : '▶'} {t('plans.notes')}
             </button>
             {expandedNotes && (
               editingNotes && onUpdateTask ? (
@@ -270,7 +271,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask }: {
                     fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic', marginTop: 4,
                     cursor: onUpdateTask ? 'text' : 'default',
                   }}>
-                  {task.notes || (onUpdateTask ? 'Click to add notes...' : '')}
+                  {task.notes || (onUpdateTask ? t('plans.addNotes') : '')}
                 </p>
               )
             )}
@@ -644,7 +645,7 @@ export function PlansPage() {
             cursor: 'pointer', fontSize: 13, padding: 0,
           }}
         >
-          ← Back to plans
+          ← {t('plans.backToPlans')}
         </button>
 
         {/* Header */}
@@ -771,7 +772,7 @@ export function PlansPage() {
             color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13,
           }}
         >
-          ↓ Export
+          ↓ {t('actions.export')}
         </button>
       </div>
 
@@ -848,7 +849,7 @@ export function PlansPage() {
           {error ? (
             <p style={{ color: 'var(--error)', fontSize: 13 }}>{error}</p>
           ) : loading ? (
-            <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
+            <p style={{ color: 'var(--text-secondary)' }}>{t('plans.loading')}</p>
           ) : plans.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)' }}>{t('plans.empty')}</p>
           ) : (

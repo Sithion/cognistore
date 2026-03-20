@@ -1,6 +1,6 @@
 {
   "name": "ai-knowledge",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "private": true,
   "description": "Semantic knowledge management for AI agents",
   "scripts": {

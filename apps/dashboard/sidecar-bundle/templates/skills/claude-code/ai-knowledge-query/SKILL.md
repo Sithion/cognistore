@@ -1,16 +1,17 @@
 ---
 name: ai-knowledge-query
 description: >
-  Query the AI Knowledge semantic database before starting any task.
-  MANDATORY: Every agent must call this before analysis, implementation,
-  or decision-making to avoid redundant work and leverage prior discoveries.
+  MANDATORY — automatically triggered before ANY task. Query the AI Knowledge
+  semantic database before analysis, implementation, or decision-making.
+  This skill MUST run as your FIRST action in every session, every task.
+  Do NOT skip. Do NOT defer. Query first, then work.
 user-invocable: true
 argument-hint: <natural language query describing the task or problem>
 ---
 
 # AI Knowledge Query
 
-**MANDATORY**: Before starting ANY task — analysis, implementation, planning, or decision-making — query the knowledge base first. A single query costs ~30 tokens. A missed cache hit wastes 2,000–8,000 tokens on redundant work.
+**BLOCKING REQUIREMENT**: Before starting ANY task — analysis, implementation, planning, or decision-making — you MUST query the knowledge base first. This is NOT optional. A single query costs ~30 tokens. A missed cache hit wastes 2,000–8,000 tokens on redundant work.
 
 ## When to Query
 
@@ -40,9 +41,9 @@ mcp__ai-knowledge__getKnowledge(query: "React form validation approach")
 
 | Similarity Score | Action |
 |-----------------|--------|
-| > 0.85 | **Use directly** — skip redundant analysis |
-| 0.70–0.85 | **Evaluate** — combine with targeted fresh analysis |
-| < 0.70 or empty | **Proceed** with full analysis, then capture findings |
+| > 0.50 | **Use directly** — skip redundant analysis |
+| 0.30–0.50 | **Evaluate** — combine with targeted fresh analysis |
+| < 0.30 or empty | **Proceed** with full analysis, then capture findings |
 
 ## Rules
 
@@ -50,6 +51,23 @@ mcp__ai-knowledge__getKnowledge(query: "React form validation approach")
 - **All agents must query** — orchestrator, planner, executor, researcher — no exceptions
 - **Capture what you learn** — after completing your task, store new findings using `mcp__ai-knowledge__addKnowledge`
 - **Never skip** — no task is "too simple" or "too obvious" to query first
+
+## What's Worth Storing
+
+After completing work, only capture knowledge that **saves future sessions significant time**:
+- Hard-won root causes, non-obvious gotchas, project-specific decisions, architectural constraints
+- NOT: standard docs, trivial fixes, temporary state, obvious patterns
+- **Rule of thumb**: web search answers it in 30s → don't store. Took 5+ min to figure out → store it.
+
+## Knowledge Management: Update, Don't Duplicate
+
+Knowledge must be **managed**, not just accumulated. When a query returns an existing entry and your work produces updated information about the same topic:
+
+- **UPDATE the existing entry** using `mcp__ai-knowledge__updateKnowledge(id, ...)` — do NOT create a new one
+- **DELETE obsolete entries** using `mcp__ai-knowledge__deleteKnowledge(id)` if the knowledge is no longer valid
+- **Only ADD new entries** when the knowledge is genuinely new (no existing entry covers the topic)
+
+Example: You query and find a `decision` entry about "chose SQLite for storage". During your work, you discover SQLite now also needs WAL mode enabled. **Update** the existing entry with the new detail — don't create a second entry about SQLite storage.
 
 ## Other Available Tools
 

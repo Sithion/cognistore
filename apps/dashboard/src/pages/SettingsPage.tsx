@@ -96,7 +96,7 @@ export function SettingsPage() {
           />
         </div>
       ) : (
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>Loading...</p>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>{t('stats.loading')}</p>
       )}
 
       {/* Overall Status */}
@@ -152,8 +152,8 @@ export function SettingsPage() {
           </button>
           {checkResult === 'upToDate' && <span style={{ fontSize: 13, color: 'var(--success)' }}>{t('update.upToDate')}</span>}
           {checkResult === 'available' && <span style={{ fontSize: 13, color: 'var(--accent)' }}>{t('update.available')}</span>}
-          {checkResult === 'error' && <span style={{ fontSize: 13, color: 'var(--error)' }}>Check failed — try again</span>}
-          {checkResult === 'unavailable' && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Only available in desktop app</span>}
+          {checkResult === 'error' && <span style={{ fontSize: 13, color: 'var(--error)' }}>{t('update.checkFailed')}</span>}
+          {checkResult === 'unavailable' && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('update.desktopOnly')}</span>}
         </div>
       </div>
 
@@ -190,7 +190,7 @@ export function SettingsPage() {
       {/* ── Uninstall Section ── */}
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--error)', marginBottom: 16 }}>
-        Danger Zone
+        {t('settings.dangerZone')}
       </h2>
 
       <div style={{
@@ -201,7 +201,7 @@ export function SettingsPage() {
         {uninstallStep === 0 && (
           <>
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-              Remove all data, configurations, Ollama, and the app itself.
+              {t('settings.uninstallDesc')}
             </p>
             <button
               onClick={() => setUninstallStep(1)}
@@ -211,7 +211,7 @@ export function SettingsPage() {
                 color: 'var(--error)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}
             >
-              Uninstall Everything
+              {t('settings.uninstallBtn')}
             </button>
           </>
         )}
@@ -219,14 +219,14 @@ export function SettingsPage() {
         {uninstallStep === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ fontSize: 13, color: 'var(--error)', fontWeight: 600 }}>
-              This will remove ALL data, configurations, and the app. Continue?
+              {t('settings.uninstallConfirm1')}
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => setUninstallStep(2)}
                 style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--error)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
               >
-                Yes, continue
+                {t('settings.yesContinue')}
               </button>
               <button
                 onClick={() => setUninstallStep(0)}
@@ -241,13 +241,13 @@ export function SettingsPage() {
         {uninstallStep === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ fontSize: 13, color: 'var(--error)', fontWeight: 600 }}>
-              Are you absolutely sure? This cannot be undone.
+              {t('settings.uninstallConfirm2')}
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={async () => {
                   setUninstallStep(3);
-                  setActionMessage({ type: 'success', text: 'Uninstalling... The app will close shortly.' });
+                  setActionMessage({ type: 'success', text: t('settings.uninstallingMsg') });
                   try {
                     await api.uninstallAll();
                   } catch {
@@ -261,7 +261,7 @@ export function SettingsPage() {
                 }}
                 style={{ padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--error)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
               >
-                Yes, uninstall everything
+                {t('settings.yesUninstallAll')}
               </button>
               <button
                 onClick={() => setUninstallStep(0)}
@@ -274,7 +274,7 @@ export function SettingsPage() {
         )}
 
         {uninstallStep === 3 && (
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Uninstalling... The app will close shortly.</p>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('settings.uninstallingMsg')}</p>
         )}
       </div>
       </div>
@@ -283,6 +283,7 @@ export function SettingsPage() {
 }
 
 function MaintenanceSection() {
+  const { t } = useTranslation();
   const [cleaning, setCleaning] = useState(false);
   const [cleanResult, setCleanResult] = useState<string | null>(null);
   const [redeploying, setRedeploying] = useState(false);
@@ -322,7 +323,7 @@ function MaintenanceSection() {
     <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
-        Maintenance
+        {t('settings.maintenance')}
       </h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -343,7 +344,7 @@ function MaintenanceSection() {
             ) : (
               <span style={{ fontSize: 14 }}>🔄</span>
             )}
-            Re-deploy configurations
+            {t('settings.redeploy')}
           </button>
           {redeployResult && (
             <span style={{ fontSize: 12, color: redeployResult.type === 'success' ? 'var(--success)' : 'var(--error)' }}>
@@ -369,7 +370,7 @@ function MaintenanceSection() {
             ) : (
               <span style={{ fontSize: 14 }}>🗑</span>
             )}
-            Remove unused embeddings
+            {t('settings.removeEmbeddings')}
           </button>
           {cleanResult && (
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{cleanResult}</span>
@@ -449,13 +450,13 @@ function DataManagementSection() {
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>{t('settings.exportDesc')}</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => api.exportKnowledge('json')} style={btnStyle}>
-            ↓ Knowledge (JSON)
+            ↓ {t('settings.exportKnowledgeJson')}
           </button>
           <button onClick={() => api.exportKnowledge('csv')} style={btnStyle}>
-            ↓ Knowledge (CSV)
+            ↓ {t('settings.exportKnowledgeCsv')}
           </button>
           <button onClick={() => api.exportPlans()} style={btnStyle}>
-            ↓ Plans (JSON)
+            ↓ {t('settings.exportPlansJson')}
           </button>
         </div>
       </div>
@@ -467,12 +468,12 @@ function DataManagementSection() {
           <button onClick={() => handleFileImport('knowledge')} disabled={importing} style={{ ...btnStyle, opacity: importing ? 0.5 : 1 }}>
             {importing ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
-            ) : '↑'} Import Knowledge
+            ) : '↑'} {t('settings.importKnowledge')}
           </button>
           <button onClick={() => handleFileImport('plans')} disabled={importing} style={{ ...btnStyle, opacity: importing ? 0.5 : 1 }}>
             {importing ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
-            ) : '↑'} Import Plans
+            ) : '↑'} {t('settings.importPlans')}
           </button>
           {importResult && (
             <span style={{ fontSize: 12, color: importResult.type === 'success' ? 'var(--success)' : 'var(--error)' }}>

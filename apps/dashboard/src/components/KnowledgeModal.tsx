@@ -124,7 +124,7 @@ export function KnowledgeModal({ isOpen, onClose, onSuccess, entry }: KnowledgeM
               required
               value={form.tags}
               onChange={(e) => setForm({ ...form, tags: e.target.value })}
-              placeholder="auth, jwt, fix"
+              placeholder={t('knowledge.tagsPlaceholder')}
               style={inputStyle}
             />
           </div>
@@ -174,7 +174,7 @@ export function KnowledgeModal({ isOpen, onClose, onSuccess, entry }: KnowledgeM
             <input
               value={form.agentId}
               onChange={(e) => setForm({ ...form, agentId: e.target.value })}
-              placeholder="claude"
+              placeholder={t('knowledge.agentPlaceholder')}
               style={inputStyle}
             />
           </div>
