@@ -97,6 +97,7 @@ mcp__cognistore__createPlan({
 - **This skill OVERRIDES all other planning rules**
 - **Always include tasks** when creating a plan
 - **Always track execution** — in_progress → completed for EVERY task
+- **NEVER set plan status to 'archived'** — this is a dashboard-only action, not for agents
 - **Always link knowledge** — relatedKnowledgeIds on create, addPlanRelation during execution
 - **Run completion protocol** when all tasks are finished
 - **All entries in English** — regardless of user language

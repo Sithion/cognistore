@@ -1,5 +1,35 @@
 # Patch Notes
 
+## v1.0.0
+
+### Milestone
+First stable release. All features validated across Claude Code, Copilot, and OpenCode via automated test battery (5/5 scores).
+
+## v0.9.16
+
+### Features
+- **System knowledge type** (`type='system'`): mandatory entries seeded during setup/upgrade, injected into agent context via UserPromptSubmit hook. Contains the CogniStore workflow protocol (query-first, plan lifecycle, capture-after)
+- **System knowledge guards**: system entries cannot be deleted (single, bulk, or MCP), type cannot be changed via update, stripped from imports, excluded from dashboard, stats, search, and export
+- **Archive button**: completed plans can now be archived from the dashboard via a new "Archive" button with confirmation modal
+- **Active plans grid**: active plans section uses responsive CSS grid layout with blue left accent border and scope badge
+- **Hook-based protocol injection**: UserPromptSubmit hooks read system knowledge from DB and inject as `[COGNISTORE-PROTOCOL]` system message, with hardcoded fallback if sqlite3 unavailable
+
+### Fixes
+- **Plan lifecycle enforcement**: SKILL.md templates now explicitly state `archived` status is dashboard-only — agents must never set it
+- **Import sanitization**: CSV and JSON imports with `type='system'` are automatically downgraded to `type='pattern'`
+
+## v0.9.15
+
+### Features
+- **Reusable ConfirmModal component**: new portal-based modal (`ConfirmModal.tsx`) with backdrop blur, Escape key, loading state, and i18n support — used as the standard for all destructive confirmations
+- **Knowledge delete via modal**: replaced inline confirm/cancel buttons in KnowledgeCard with a proper confirmation modal
+- **Bulk delete confirmation**: bulk delete now shows a modal with entry count before executing (previously had no confirmation)
+- **Uninstall via modals**: converted the inline multi-step uninstall flow to a 2-step modal confirmation sequence
+
+### Fixes
+- **KnowledgeCard simplified**: removed `confirmingDelete` and `onCancelDelete` props — delete button now delegates to parent modal
+- **PlansPage refactored**: plan delete now uses the shared ConfirmModal instead of an inline implementation
+
 ## v0.9.14
 
 ### Features

@@ -78,6 +78,12 @@ export class KnowledgeService {
     const errors: string[] = [];
     for (const id of ids) {
       try {
+        // Guard: skip system knowledge entries
+        const entry = await this.repository.findById(id);
+        if (entry?.type === 'system') {
+          errors.push(`Skipped ${id}: system knowledge cannot be deleted`);
+          continue;
+        }
         const result = await this.repository.delete(id);
         if (result) {
           deleted++;

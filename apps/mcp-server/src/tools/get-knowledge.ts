@@ -9,7 +9,7 @@ export const getKnowledgeTool = {
     properties: {
       query: { type: 'string', description: 'Natural language query to search for semantically' },
       tags: { type: 'array', items: { type: 'string' }, description: 'Optional tag filters' },
-      type: { type: 'string', enum: ['decision', 'pattern', 'fix', 'constraint', 'gotcha'], description: 'Optional type filter' },
+      type: { type: 'string', enum: ['decision', 'pattern', 'fix', 'constraint', 'gotcha', 'system'], description: 'Optional type filter' },
       scope: { type: 'string', description: 'Optional scope filter (global knowledge is always included)' },
       limit: { type: 'number', description: 'Max results (default: 10)' },
       threshold: { type: 'number', description: 'Minimum similarity threshold 0-1 (default: 0.7)' },

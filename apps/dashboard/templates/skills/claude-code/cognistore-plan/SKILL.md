@@ -97,5 +97,6 @@ mcp__cognistore__createPlan({
 - **Always include tasks** when creating a plan
 - **Always link knowledge** — relatedKnowledgeIds on create, addPlanRelation during execution
 - **Update task AND plan status in real-time** — in_progress → completed, draft → active → completed
+- **NEVER set plan status to 'archived'** — this is a dashboard-only action, not for agents
 - **Run completion protocol** when all tasks are finished
 - **All entries in English** — regardless of user language preference

@@ -1,6 +1,6 @@
 {
   "name": "@cognistore/config",
-  "version": "0.9.14",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "./dist/config-manager.js",

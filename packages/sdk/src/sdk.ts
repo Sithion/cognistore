@@ -126,8 +126,13 @@ export class KnowledgeSDK {
       throw new ValidationError(`Invalid updates: ${parsed.error.message}`);
     }
     try {
+      const existing = await this.service!.getById(id);
+      if (existing?.type === 'system' && updates.type && updates.type !== 'system') {
+        throw new ValidationError('System knowledge type cannot be changed');
+      }
       return await this.service!.update(id, parsed.data as UpdateKnowledgeInput);
     } catch (error) {
+      if (error instanceof ValidationError) throw error;
       throw this.wrapError(error, 'Failed to update knowledge');
     }
   }
@@ -135,8 +140,13 @@ export class KnowledgeSDK {
   async deleteKnowledge(id: string): Promise<boolean> {
     this.ensureInitialized();
     try {
+      const existing = await this.service!.getById(id);
+      if (existing?.type === 'system') {
+        throw new ValidationError('System knowledge cannot be deleted');
+      }
       return await this.service!.delete(id);
     } catch (error) {
+      if (error instanceof ValidationError) throw error;
       throw this.wrapError(error, 'Failed to delete knowledge');
     }
   }
@@ -269,8 +279,13 @@ export class KnowledgeSDK {
     return this.service!.listPlans(limit, status);
   }
 
-  addPlanRelation(planId: string, knowledgeId: string, relationType: 'input' | 'output'): void {
+  async addPlanRelation(planId: string, knowledgeId: string, relationType: 'input' | 'output'): Promise<void> {
     this.ensureInitialized();
+    // Guard: never link system knowledge to plans
+    const entry = await this.service!.getById(knowledgeId);
+    if (entry?.type === 'system') {
+      return; // silently skip — system knowledge should not be linked to plans
+    }
     this.service!.addPlanRelation(planId, knowledgeId, relationType);
   }
 

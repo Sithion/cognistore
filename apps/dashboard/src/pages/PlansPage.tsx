@@ -6,6 +6,7 @@ import { api } from '../api/client.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
 import { ScopeAutocomplete } from '../components/ScopeAutocomplete.js';
 import { PLAN_TEMPLATES, type PlanTemplate } from '../data/planTemplates.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
@@ -519,6 +520,9 @@ export function PlansPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletingPlan, setDeletingPlan] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   // Load all plans
@@ -655,16 +659,30 @@ export function PlansPage() {
             <StatusBadge status={selectedPlan.status} />
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
           </div>
-          <button
-            onClick={() => setConfirmDelete(true)}
-            style={{
-              padding: '6px 12px', borderRadius: 6, fontSize: 12,
-              border: '1px solid var(--error, #ef4444)', backgroundColor: 'transparent',
-              color: 'var(--error, #ef4444)', cursor: 'pointer',
-            }}
-          >
-            {t('plans.delete')}
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {selectedPlan.status === 'completed' && (
+              <button
+                onClick={() => setConfirmArchive(true)}
+                style={{
+                  padding: '6px 12px', borderRadius: 6, fontSize: 12,
+                  border: '1px solid var(--text-secondary)', backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)', cursor: 'pointer',
+                }}
+              >
+                {t('plans.archive')}
+              </button>
+            )}
+            <button
+              onClick={() => setConfirmDelete(true)}
+              style={{
+                padding: '6px 12px', borderRadius: 6, fontSize: 12,
+                border: '1px solid var(--error, #ef4444)', backgroundColor: 'transparent',
+                color: 'var(--error, #ef4444)', cursor: 'pointer',
+              }}
+            >
+              {t('plans.delete')}
+            </button>
+          </div>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{selectedPlan.title}</h1>
 
@@ -730,55 +748,46 @@ export function PlansPage() {
         </div>
 
         {/* Delete Confirm Modal */}
-        {confirmDelete && (
-          <div style={{
-            position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
-            backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-          }} onClick={() => setConfirmDelete(false)}>
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                backgroundColor: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)',
-                padding: 24, maxWidth: 400, width: '90%',
-              }}
-            >
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{t('plans.delete')}</h3>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>{t('plans.confirmDelete')}</p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  style={{
-                    padding: '8px 16px', borderRadius: 6, fontSize: 13,
-                    border: '1px solid var(--border)', backgroundColor: 'transparent',
-                    color: 'var(--text-secondary)', cursor: 'pointer',
-                  }}
-                >
-                  {t('actions.cancel')}
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await api.deletePlan(selectedPlan.id);
-                      setSelectedPlan(null);
-                      setConfirmDelete(false);
-                      setSearchParams({}, { replace: true });
-                      loadPlans();
-                      loadActivePlans();
-                    } catch { /* silent */ }
-                  }}
-                  style={{
-                    padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                    border: 'none', backgroundColor: 'var(--error, #ef4444)',
-                    color: '#fff', cursor: 'pointer',
-                  }}
-                >
-                  {t('actions.confirm')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmModal
+          isOpen={confirmDelete}
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={async () => {
+            setDeletingPlan(true);
+            try {
+              await api.deletePlan(selectedPlan.id);
+              setSelectedPlan(null);
+              setConfirmDelete(false);
+              setSearchParams({}, { replace: true });
+              loadPlans();
+              loadActivePlans();
+            } catch { /* silent */ }
+            setDeletingPlan(false);
+          }}
+          title={t('plans.delete')}
+          message={t('plans.confirmDelete')}
+          loading={deletingPlan}
+        />
+
+        {/* Archive Confirm Modal */}
+        <ConfirmModal
+          isOpen={confirmArchive}
+          onClose={() => setConfirmArchive(false)}
+          onConfirm={async () => {
+            setArchiving(true);
+            try {
+              await api.updatePlan(selectedPlan.id, { status: 'archived' });
+              setSelectedPlan(null);
+              setConfirmArchive(false);
+              setSearchParams({}, { replace: true });
+              loadPlans();
+              loadActivePlans();
+            } catch { /* silent */ }
+            setArchiving(false);
+          }}
+          title={t('plans.archiveTitle')}
+          message={t('plans.confirmArchive')}
+          loading={archiving}
+        />
       </div>
     );
   }
@@ -826,7 +835,7 @@ export function PlansPage() {
           <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
             {t('plans.activePlans')}
           </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: 12 }}>
             {activePlans.map((plan) => {
               const planTasks = activeTasksMap[plan.id] || [];
               const done = planTasks.filter((t) => t.status === 'completed').length;
@@ -836,12 +845,17 @@ export function PlansPage() {
                   onClick={() => selectPlan(plan)}
                   style={{
                     backgroundColor: 'var(--bg-card)', borderRadius: 10,
-                    border: '1px solid #3b82f644', padding: 16, cursor: 'pointer',
+                    borderLeft: '3px solid #3b82f6', border: '1px solid #3b82f644',
+                    borderLeftWidth: 3, borderLeftColor: '#3b82f6',
+                    padding: 16, cursor: 'pointer',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <h3 style={{ fontSize: 14, fontWeight: 600 }}>{plan.title}</h3>
-                    <StatusBadge status="active" />
+                    <h3 style={{ fontSize: 14, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.title}</h3>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{plan.scope}</span>
+                      <StatusBadge status="active" />
+                    </div>
                   </div>
                   {planTasks.length > 0 && (
                     <>
