@@ -1,5 +1,20 @@
 # Patch Notes
 
+## v0.9.14
+
+### Features
+- **Input-based plan detection**: CHECKPOINT 3 now has dual triggers — INPUT (user message contains 3+ action steps) and OUTPUT (agent produced 2+ ordered steps). Previously only OUTPUT was detected, missing multi-step user requests
+- **MCP tool annotations**: Read-only tools marked with `readOnlyHint: true` (getKnowledge, listTags, healthCheck, listPlanTasks). Future-proofing for when clients respect annotations in plan mode
+- **MCP Resource `cognistore://context/{scope}`**: Exposes scope-aware KB context as auto-loaded resource with recent entries, active plans, and tags. Prepares for future resource support in plan mode
+- **Permission config injection**: Read-only CogniStore tools auto-allowed in Claude Code's dontAsk mode via `~/.claude/settings.json` permission rules
+- **Graceful degradation notice**: Agents warn when they cannot save plans to KB (tools blocked in plan mode)
+
+### Fixes
+- **Plan mode persistence**: createPlan() is now called BEFORE ExitPlanMode (not after). Fixes race condition where agent's turn ended before persisting the plan
+- **OpenCode execution tracking**: Full Execution Tracking Protocol added to AGENTS.md (updatePlanTask lifecycle that Claude/Copilot get from SKILL.md Phase 2)
+- **UserPromptSubmit hook**: INPUT detection added to cognistore-query hooks to detect multi-step tasks at the earliest point
+- **Subagent plan leak**: Explicit instruction added to prevent subagents from calling createPlan() — "When launching a subagent, include 'Do NOT call createPlan()' in the prompt"
+
 ## v0.9.13
 
 ### Fixes

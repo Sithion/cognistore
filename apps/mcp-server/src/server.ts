@@ -1,10 +1,15 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { KnowledgeSDK } from '@cognistore/sdk';
 import { KnowledgeType } from '@cognistore/shared';
 
 const knowledgeTypeValues = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'] as const;
 const knowledgeStatusValues = ['draft', 'active', 'completed', 'archived'] as const;
+
+// Tool annotations for MCP clients that support them (readOnlyHint, destructiveHint, etc.)
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false } as const;
+const WRITE = { readOnlyHint: false, destructiveHint: false } as const;
+const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true } as const;
 
 export function createServer(sdk: KnowledgeSDK): McpServer {
   const server = new McpServer({
@@ -26,6 +31,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       confidenceScore: z.number().min(0).max(1).optional().describe('Confidence score 0-1'),
       agentId: z.string().optional().describe('ID of the agent that created this'),
     },
+    WRITE,
     async (params) => {
       const result = await sdk.addKnowledge({
         title: params.title,
@@ -53,6 +59,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       limit: z.number().optional().describe('Max results (default: 10)'),
       threshold: z.number().optional().describe('Min similarity 0-1 (default: 0.3)'),
     },
+    READ_ONLY,
     async (params) => {
       const results = await sdk.getKnowledge(params.query, {
         tags: params.tags,
@@ -79,6 +86,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       source: z.string().optional().describe('New source'),
       confidenceScore: z.number().min(0).max(1).optional().describe('New confidence score'),
     },
+    WRITE,
     async (params) => {
       const { id, ...updates } = params;
       const result = await sdk.updateKnowledge(id, {
@@ -102,6 +110,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     {
       id: z.string().describe('UUID of the knowledge entry to delete'),
     },
+    DESTRUCTIVE,
     async (params) => {
       const deleted = await sdk.deleteKnowledge(params.id);
       return {
@@ -115,6 +124,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     'listTags',
     'List all unique tags across all knowledge entries.',
     {},
+    READ_ONLY,
     async () => {
       const tags = await sdk.listTags();
       return { content: [{ type: 'text' as const, text: JSON.stringify(tags) }] };
@@ -126,6 +136,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     'healthCheck',
     'Check health of the knowledge base infrastructure (database, Ollama).',
     {},
+    READ_ONLY,
     async () => {
       const health = await sdk.healthCheck();
       return { content: [{ type: 'text' as const, text: JSON.stringify(health, null, 2) }] };
@@ -148,6 +159,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
         priority: z.enum(['low', 'medium', 'high']).optional(),
       })).optional().describe('Initial tasks for the plan todo list'),
     },
+    WRITE,
     async (params) => {
       const result = await sdk.createPlan({
         title: params.title,
@@ -175,6 +187,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       status: z.enum(knowledgeStatusValues).optional().describe('New status'),
       source: z.string().optional().describe('New source'),
     },
+    WRITE,
     async (params) => {
       const { planId, ...updates } = params;
       const result = sdk.updatePlan(planId, updates as any);
@@ -192,6 +205,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       knowledgeId: z.string().describe('UUID of the knowledge entry to link'),
       relationType: z.enum(['input', 'output']).describe('"input" = consulted during planning, "output" = created/updated during execution'),
     },
+    WRITE,
     async (params) => {
       sdk.addPlanRelation(params.planId, params.knowledgeId, params.relationType);
       return { content: [{ type: 'text' as const, text: JSON.stringify({ success: true, ...params }) }] };
@@ -208,6 +222,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       priority: z.enum(['low', 'medium', 'high']).optional().describe('Priority (default: medium)'),
       notes: z.string().optional().describe('Optional notes'),
     },
+    WRITE,
     async (params) => {
       const task = sdk.createPlanTask(params);
       return { content: [{ type: 'text' as const, text: JSON.stringify(task, null, 2) }] };
@@ -225,6 +240,7 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
       priority: z.enum(['low', 'medium', 'high']).optional().describe('New priority'),
       notes: z.string().nullable().optional().describe('Notes about progress or blockers'),
     },
+    WRITE,
     async (params) => {
       const { taskId, ...updates } = params;
       const task = sdk.updatePlanTask(taskId, updates);
@@ -240,9 +256,85 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     {
       planId: z.string().describe('UUID of the plan'),
     },
+    READ_ONLY,
     async (params) => {
       const tasks = sdk.listPlanTasks(params.planId);
       return { content: [{ type: 'text' as const, text: JSON.stringify(tasks, null, 2) }] };
+    }
+  );
+
+  // ─── MCP Resources ──────────────────────────────────────────
+
+  // Scope-aware knowledge context resource
+  // Provides auto-loaded KB context for agents — useful when tools can't be called (e.g., plan mode)
+  server.resource(
+    'knowledge-context',
+    new ResourceTemplate('cognistore://context/{scope}', { list: undefined }),
+    { description: 'Workspace-scoped knowledge base context with recent entries and active plans' },
+    async (uri, variables) => {
+      const scope = variables.scope as string || 'global';
+      const scopeFilter = scope === 'global' ? undefined : `workspace:${scope}`;
+
+      // Fetch recent knowledge entries for this scope
+      let knowledgeSection = '';
+      try {
+        const results = await sdk.getKnowledge('*', {
+          scope: scopeFilter,
+          limit: 10,
+          threshold: 0,
+        });
+        if (results.length > 0) {
+          knowledgeSection = '## Recent Knowledge\n\n' + results.map(r =>
+            `- **${r.entry.title}** (${r.entry.type}, ${r.entry.scope})\n  ${r.entry.content.slice(0, 200)}${r.entry.content.length > 200 ? '...' : ''}`
+          ).join('\n\n');
+        } else {
+          knowledgeSection = '## Recent Knowledge\n\nNo entries found for this scope.';
+        }
+      } catch {
+        knowledgeSection = '## Recent Knowledge\n\nUnable to fetch entries.';
+      }
+
+      // Fetch active plans
+      let plansSection = '';
+      try {
+        const plans = sdk.listPlans(10, 'active');
+        const scopedPlans = scopeFilter
+          ? plans.filter(p => p.scope === scopeFilter || p.scope === 'global')
+          : plans;
+        if (scopedPlans.length > 0) {
+          const planEntries = scopedPlans.map(p => {
+            const tasks = sdk.listPlanTasks(p.id);
+            const completed = tasks.filter(t => t.status === 'completed').length;
+            return `- **${p.title}** (${p.status}, ${completed}/${tasks.length} tasks done)\n  ${p.content.slice(0, 150)}${p.content.length > 150 ? '...' : ''}`;
+          });
+          plansSection = '## Active Plans\n\n' + planEntries.join('\n\n');
+        } else {
+          plansSection = '## Active Plans\n\nNo active plans for this scope.';
+        }
+      } catch {
+        plansSection = '## Active Plans\n\nUnable to fetch plans.';
+      }
+
+      // Fetch top tags
+      let tagsSection = '';
+      try {
+        const tags = await sdk.listTags();
+        if (tags.length > 0) {
+          tagsSection = `## Tags\n\n${tags.slice(0, 20).join(', ')}`;
+        }
+      } catch {
+        // skip
+      }
+
+      const content = `# CogniStore Context — ${scope}\n\n${knowledgeSection}\n\n${plansSection}\n\n${tagsSection}`.trim();
+
+      return {
+        contents: [{
+          uri: uri.href,
+          text: content,
+          mimeType: 'text/markdown',
+        }],
+      };
     }
   );
 

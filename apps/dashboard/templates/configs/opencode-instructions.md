@@ -32,9 +32,13 @@ mcp__cognistore__addKnowledge({
 
 If an existing entry covers the topic, **UPDATE it** instead of creating a duplicate.
 
-### CHECKPOINT 3: Plan Detection (output-based — applies in ALL modes)
+### CHECKPOINT 3: Plan Detection (input + output — applies in ALL modes)
 
-**If you produced a multi-step approach, implementation steps, or any structured plan — regardless of mode — call `createPlan()`.**
+**Two triggers — EITHER one activates this checkpoint:**
+
+1. **INPUT trigger**: The user's message contains 3+ distinct action steps, numbered items, or sequential tasks? → Call `createPlan()` BEFORE starting work, using the user's steps as tasks.
+
+2. **OUTPUT trigger**: You produced 2+ ordered steps describing what to implement? → Call `createPlan()` immediately.
 
 ```
 mcp__cognistore__createPlan({
@@ -48,6 +52,21 @@ mcp__cognistore__createPlan({
 - **ALWAYS** include a `tasks` array
 - **ALWAYS** track execution: `updatePlanTask(taskId, {status: 'in_progress'})` BEFORE each task, `updatePlanTask(taskId, {status: 'completed', notes: '...'})` AFTER
 - **ALWAYS** set plan to `active` when starting, `completed` when all tasks done
+- **Graceful degradation**: If you cannot call createPlan() (e.g., tools blocked in current mode), include this notice in your plan output: "Note: Plan not saved to CogniStore KB. Run getKnowledge() before implementing to check for existing decisions and constraints."
+
+### Execution Tracking Protocol (MANDATORY)
+
+After calling `createPlan()`, you MUST track execution in real-time:
+
+1. `updatePlan(planId, { status: "active" })` — set plan to active
+2. `listPlanTasks(planId)` — get all task IDs
+3. **For EACH task:**
+   - `updatePlanTask(taskId, { status: "in_progress" })` — BEFORE starting
+   - Do the work
+   - `updatePlanTask(taskId, { status: "completed", notes: "..." })` — AFTER finishing
+4. When ALL tasks done: `listPlanTasks(planId)` → `updatePlan(planId, { status: "completed" })`
+
+**Flow**: `in_progress` → work → `completed`. Never skip `in_progress`. Never batch updates.
 
 ### Rules
 

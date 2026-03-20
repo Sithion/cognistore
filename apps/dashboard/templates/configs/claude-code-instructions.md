@@ -36,11 +36,16 @@ If a query returned an existing entry on the same topic, **UPDATE it** instead o
 mcp__cognistore__updateKnowledge(id: "<uuid>", content: "...", tags: [...])
 ```
 
-### CHECKPOINT 3: Plan Detection (output-based — applies in ALL modes)
+### CHECKPOINT 3: Plan Detection (input + output — applies in ALL modes)
 
-**Trigger condition: If you produced a multi-step approach, implementation steps, a task list, or any structured plan — regardless of how or why — you MUST call `createPlan()`.** This applies in plan mode, outside plan mode, and in any other workflow. The trigger is the OUTPUT (you wrote a plan), not the intent.
+**Two triggers — EITHER one activates this checkpoint:**
 
-**Detection rule**: Did you write 2+ ordered steps describing what to implement? → call `createPlan()`.
+1. **INPUT trigger**: The user's message contains 3+ distinct action steps, numbered items, or sequential tasks? → Call `createPlan()` BEFORE starting work, using the user's steps as tasks.
+   - "Create 4 files, verify, grep content, delete, verify cleanup" → 5 steps → createPlan() FIRST
+   - "Fix login bug, add tests, update docs" → 3 steps → createPlan() FIRST
+   - "Refactor the API module" → 1 step → no plan (unless YOUR solution needs 2+ steps)
+
+2. **OUTPUT trigger**: You produced 2+ ordered steps describing what to implement? → Call `createPlan()` immediately.
 
 ```
 mcp__cognistore__createPlan({
@@ -51,13 +56,14 @@ mcp__cognistore__createPlan({
 })
 ```
 
-- **Plan mode**: write the local plan file as required, then ALSO call `createPlan()` — the local file is temporary
+- **Plan mode**: write the local plan file, then call `createPlan()` BEFORE ExitPlanMode (MCP tools work in plan mode). The local file is temporary.
 - **Outside plan mode**: call `createPlan()` directly
 - **NEVER** use only TodoWrite/task lists as a substitute — those are ephemeral
-- **NEVER** call createPlan() from subagents (Agent tool) — only the main agent
+- **NEVER** call createPlan() from subagents (Agent tool) — only the main agent. When launching a subagent, include "Do NOT call createPlan() or any cognistore plan tools" in the prompt.
 - **ALWAYS** include a `tasks` array with every implementation step
 - **Execution tracking**: mark each task `in_progress` BEFORE starting, `completed` AFTER finishing — do NOT batch
 - When all tasks done → `listPlanTasks(planId)` → `updatePlan(planId, { status: "completed" })`
+- **Graceful degradation**: If you cannot call createPlan() (e.g., tools blocked in current mode), include this notice in your plan output: "Note: Plan not saved to CogniStore KB. Run getKnowledge() before implementing to check for existing decisions and constraints."
 
 ### Rules (Mandatory)
 

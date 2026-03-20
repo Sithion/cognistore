@@ -6,7 +6,7 @@ set -euo pipefail
 
 cat <<'EOF'
 {
-  "systemMessage": "[CogniStore] If you have a plan: track execution — updatePlanTask(taskId, {status: 'in_progress'}) BEFORE each task, updatePlanTask(taskId, {status: 'completed', notes: '...'}) AFTER. If plan not yet created: call createPlan() NOW with title, content, tags, scope, tasks array."
+  "systemMessage": "[CogniStore] Plan mode ended. If you did NOT call createPlan() before exiting, call it NOW. Then track execution: updatePlanTask(taskId, {status: 'in_progress'}) BEFORE each task, updatePlanTask(taskId, {status: 'completed', notes: '...'}) AFTER."
 }
 EOF
 

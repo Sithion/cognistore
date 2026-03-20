@@ -1,6 +1,6 @@
 {
   "name": "@cognistore/mcp-server",
-  "version": "0.9.13",
+  "version": "0.9.14",
   "private": false,
   "type": "module",
   "description": "MCP server for CogniStore — integrates with Claude Code and GitHub Copilot",

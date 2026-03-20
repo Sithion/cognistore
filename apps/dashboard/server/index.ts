@@ -492,6 +492,9 @@ async function start() {
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, mcpEntry); results.push('Copilot MCP config set'); } catch { /* optional */ }
       try { await configManager.setupOpenCodeMcp(mcpEntry); results.push('OpenCode MCP config set'); } catch { /* optional */ }
 
+      // Inject read-only tool permissions for dontAsk mode
+      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_READ_ONLY_TOOLS); results.push('Claude permissions injected'); } catch { /* optional */ }
+
       // Install skills
       const skillsDir = resolve(TEMPLATES_PATH, 'skills');
       const home = homedir();
@@ -640,6 +643,7 @@ async function start() {
       try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, mcpEntry); } catch { /* optional */ }
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, mcpEntry); } catch { /* optional */ }
       try { await configManager.setupOpenCodeMcp(mcpEntry); } catch { /* optional */ }
+      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_READ_ONLY_TOOLS); } catch { /* optional */ }
       results.push({ step: 'mcp-configs', status: 'success' });
     } catch (e: any) {
       results.push({ step: 'mcp-configs', status: 'error', message: e.message });
@@ -752,6 +756,7 @@ async function start() {
       try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, mcpEntry); } catch { /* optional */ }
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, mcpEntry); } catch { /* optional */ }
       try { await configManager.setupOpenCodeMcp(mcpEntry); } catch { /* optional */ }
+      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_READ_ONLY_TOOLS); } catch { /* optional */ }
       results.push({ step: 'mcp-configs', status: 'success' });
     } catch (e: any) { results.push({ step: 'mcp-configs', status: 'error', message: e.message }); }
 
@@ -821,6 +826,7 @@ async function start() {
       await step('Claude JSON cleaned', () => configManager.removeMcpEntry(ConfigManager.CLAUDE_JSON, 'cognistore'), results, errors);
       await step('Copilot MCP cleaned', () => configManager.removeMcpEntry(ConfigManager.COPILOT_MCP_CONFIG, 'cognistore'), results, errors);
       await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp(), results, errors);
+      await step('Claude permissions cleaned', () => configManager.removePermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_READ_ONLY_TOOLS), results, errors);
 
       // 3. Remove skills
       for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {

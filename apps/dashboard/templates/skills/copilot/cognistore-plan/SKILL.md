@@ -54,6 +54,8 @@ description: >
 2. Query the knowledge base FIRST (`getKnowledge`)
 3. Include a `tasks` array with all steps
 4. Track execution via `updatePlanTask()` during Phase 2
+5. **CRITICAL**: Call `createPlan()` BEFORE exiting plan mode — your turn may end after exit.
+   MCP tools work in plan mode (they don't edit local files).
 
 ## How to Create (with Tasks)
 

@@ -31,6 +31,7 @@ The Tauri app's setup wizard creates resources; the uninstall button must remove
 | Add `cognistore` to `~/.claude.json` | Remove entry via ConfigManager |
 | Add `cognistore` to `~/.copilot/mcp-config.json` | Remove entry via ConfigManager |
 | Add `cognistore` to `~/.config/opencode/opencode.json` | Remove entry via ConfigManager |
+| Inject read-only tool permissions in `~/.claude/settings.json` | Remove permission entries via ConfigManager |
 | Copy Claude skills to `~/.claude/skills/cognistore-*/` | Remove skill directories |
 | Copy Copilot skills to `~/.copilot/skills/cognistore-*/` | Remove skill directories |
 | App installed in /Applications/ (macOS) | Self-delete via rmSync |

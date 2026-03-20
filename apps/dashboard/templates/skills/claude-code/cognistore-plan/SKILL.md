@@ -18,8 +18,11 @@ argument-hint: <plan title and description>
 
 **When plan mode (EnterPlanMode) is active:**
 1. Follow plan mode's workflow normally — write the local plan file as instructed
-2. **After ExitPlanMode**, IMMEDIATELY call `createPlan()` to persist the plan in the knowledge base
-3. The local plan file is ephemeral. `createPlan()` is what makes the plan searchable, trackable, and persistent across sessions
+2. **BEFORE calling ExitPlanMode**, call `createPlan()` to persist the plan.
+   MCP tools (createPlan, getKnowledge) work in plan mode — they don't edit local files.
+3. Then call ExitPlanMode. The local plan file is ephemeral; createPlan() persists across sessions.
+
+> **CRITICAL**: Call createPlan() BEFORE ExitPlanMode, not after. After ExitPlanMode your turn may end before you get a chance to persist the plan.
 
 **When NOT in plan mode:**
 - Call `createPlan()` directly — no local file needed

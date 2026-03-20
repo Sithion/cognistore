@@ -347,6 +347,90 @@ export class ConfigManager {
     return { removed: true, path: configPath };
   }
 
+  // Well-known path for Claude settings
+  static readonly CLAUDE_SETTINGS = join(homedir(), '.claude', 'settings.json');
+
+  // Read-only CogniStore tools that should be auto-allowed
+  static readonly COGNISTORE_READ_ONLY_TOOLS = [
+    'mcp__cognistore__getKnowledge',
+    'mcp__cognistore__listTags',
+    'mcp__cognistore__healthCheck',
+    'mcp__cognistore__listPlanTasks',
+  ];
+
+  /**
+   * Inject permission allow rules for read-only CogniStore tools into a settings.json file.
+   * Merge-only: never overwrites existing rules, never removes user entries.
+   */
+  async injectPermissions(
+    settingsPath: string,
+    allowRules: string[]
+  ): Promise<{ action: 'created' | 'updated' | 'skipped'; path: string }> {
+    await mkdir(dirname(settingsPath), { recursive: true });
+
+    if (!(await this.fileExists(settingsPath))) {
+      const config = { permissions: { allow: allowRules } };
+      await writeFile(settingsPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      return { action: 'created', path: settingsPath };
+    }
+
+    const content = await readFile(settingsPath, 'utf-8');
+    const config = JSON.parse(content);
+
+    if (!config.permissions) {
+      config.permissions = {};
+    }
+    if (!Array.isArray(config.permissions.allow)) {
+      config.permissions.allow = [];
+    }
+
+    const existing = new Set(config.permissions.allow);
+    const toAdd = allowRules.filter(rule => !existing.has(rule));
+
+    if (toAdd.length === 0) {
+      return { action: 'skipped', path: settingsPath };
+    }
+
+    await copyFile(settingsPath, `${settingsPath}.bak.${Date.now()}`);
+    config.permissions.allow.push(...toAdd);
+    await writeFile(settingsPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    return { action: 'updated', path: settingsPath };
+  }
+
+  /**
+   * Remove specific permission allow rules from a settings.json file.
+   * Only removes exact matches for the given rules.
+   */
+  async removePermissions(
+    settingsPath: string,
+    rulesToRemove: string[]
+  ): Promise<{ removed: boolean; path: string }> {
+    if (!(await this.fileExists(settingsPath))) {
+      return { removed: false, path: settingsPath };
+    }
+
+    const content = await readFile(settingsPath, 'utf-8');
+    const config = JSON.parse(content);
+
+    if (!Array.isArray(config.permissions?.allow)) {
+      return { removed: false, path: settingsPath };
+    }
+
+    const removeSet = new Set(rulesToRemove);
+    const before = config.permissions.allow.length;
+    config.permissions.allow = config.permissions.allow.filter(
+      (rule: string) => !removeSet.has(rule)
+    );
+
+    if (config.permissions.allow.length === before) {
+      return { removed: false, path: settingsPath };
+    }
+
+    await copyFile(settingsPath, `${settingsPath}.bak.${Date.now()}`);
+    await writeFile(settingsPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    return { removed: true, path: settingsPath };
+  }
+
   /**
    * Find and remove old 'knowledge' (not 'cognistore') MCP entries from known config files.
    */

@@ -6,7 +6,7 @@ set -euo pipefail
 
 cat <<'EOF'
 {
-  "systemMessage": "[CogniStore] Plan approved. Call mcp__cognistore__createPlan() NOW — title, content, tags, scope: \"workspace:<project>\", tasks array with every step. The local plan file is temporary; createPlan() is the persistent source of truth."
+  "systemMessage": "[CogniStore] Plan mode ended. If you did NOT call createPlan() before ExitPlanMode, call it NOW — title, content, tags, scope, tasks array. Then track execution: updatePlanTask(taskId, {status: 'in_progress'}) BEFORE each task, updatePlanTask(taskId, {status: 'completed'}) AFTER."
 }
 EOF
 
