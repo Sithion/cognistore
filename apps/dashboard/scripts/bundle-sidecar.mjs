@@ -48,7 +48,7 @@ if (runWeb) {
 
   // 1. Build the monorepo (frontend + server deps)
   console.log('[web 1/4] Building monorepo...');
-  execSync('pnpm turbo build --filter=@ai-knowledge/dashboard', {
+  execSync('pnpm turbo build --filter=@cognistore/dashboard', {
     cwd: resolve(dashboardRoot, '..', '..'),
     stdio: 'inherit',
   });
