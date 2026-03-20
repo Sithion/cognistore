@@ -2,14 +2,14 @@
 name: cognistore-capture
 description: >
   MANDATORY — automatically triggered after completing ANY task. Store discoveries,
-  decisions, fixes, and patterns in the AI Knowledge semantic database.
+  decisions, fixes, and patterns in the CogniStore knowledge base.
   This skill MUST run as your LAST action before finishing work.
   Do NOT skip. Do NOT forget. Capture knowledge, then finish.
 user-invocable: true
 argument-hint: <knowledge content to store>
 ---
 
-# AI Knowledge Capture
+# CogniStore Capture
 
 **BLOCKING REQUIREMENT**: After completing ANY task that produces new knowledge — fixing a bug, making a decision, discovering a pattern, finding a constraint — you MUST capture it in the knowledge base immediately. This is NOT optional.
 

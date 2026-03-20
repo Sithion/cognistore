@@ -2,7 +2,7 @@
 name: cognistore-plan
 description: >
   MANDATORY — automatically triggered when planning ANY task, regardless of complexity.
-  ALL plans MUST be persisted via createPlan() in the AI Knowledge database.
+  ALL plans MUST be persisted via createPlan() in the CogniStore knowledge base.
   If plan mode (EnterPlanMode) requires a local plan file, write it AND ALSO call createPlan().
   The local file is temporary — createPlan() is the persistent source of truth.
   ANY time you finish planning, you MUST call createPlan().
@@ -10,7 +10,7 @@ user-invocable: true
 argument-hint: <plan title and description>
 ---
 
-# AI Knowledge Plan
+# CogniStore Plan
 
 > **BLOCKING REQUIREMENT**: ALL plans MUST be persisted via `createPlan()`. This is the persistent source of truth. Local plan files (`.claude/plans/`) are temporary artifacts of plan mode — they do NOT substitute for `createPlan()`.
 
