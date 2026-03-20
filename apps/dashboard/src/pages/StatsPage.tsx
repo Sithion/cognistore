@@ -501,7 +501,7 @@ export function StatsPage() {
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('stats.title')}</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('statsTitle.knowledge')}</h1>
         {isRefreshing && (
           <div
             style={{
@@ -636,8 +636,6 @@ export function StatsPage() {
         )}
       </WidgetCard>
 
-      {/* ── Plan Analytics Section ── */}
-      <PlanAnalyticsSection />
     </div>
   );
 }
@@ -652,7 +650,7 @@ const TASK_STATUS_COLORS: Record<string, string> = {
   Pending: '#6b7280', 'In Progress': '#3b82f6', Completed: '#22c55e',
 };
 
-function PlanAnalyticsSection() {
+export function PlanStatsPage() {
   const { t } = useTranslation();
   const [data, setData] = useState<{
     plans: { total: number; draft: number; active: number; completed: number; archived: number };
@@ -664,7 +662,8 @@ function PlanAnalyticsSection() {
     api.getPlanMetrics().then(setData).catch(() => {});
   }, []);
 
-  if (!data || data.plans.total === 0) return null;
+  if (!data) return <div style={{ color: 'var(--text-secondary)' }}>Loading...</div>;
+  if (data.plans.total === 0) return <div style={{ color: 'var(--text-secondary)' }}>No plan data yet.</div>;
 
   const planDistribution = [
     { name: 'Draft', value: data.plans.draft },
@@ -680,10 +679,10 @@ function PlanAnalyticsSection() {
   ].filter((d) => d.value > 0);
 
   return (
-    <>
-      <h2 style={{ fontSize: 15, fontWeight: 700, marginTop: 32, marginBottom: 16, color: 'var(--text-primary)' }}>
-        Plans
-      </h2>
+    <div>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24 }}>
+        {t('statsTitle.plans')}
+      </h1>
 
       {/* Plan Metric Cards */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
@@ -769,6 +768,6 @@ function PlanAnalyticsSection() {
           </ResponsiveContainer>
         </WidgetCard>
       )}
-    </>
+    </div>
   );
 }

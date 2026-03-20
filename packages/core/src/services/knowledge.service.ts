@@ -264,6 +264,10 @@ export class KnowledgeService {
     return results;
   }
 
+  getPlansForKnowledge(knowledgeId: string) {
+    return this.repository.getPlansForKnowledge(knowledgeId);
+  }
+
   // ─── Plan Tasks ─────────────────────────────────────────────
 
   createPlanTask(input: { planId: string; description: string; status?: string; priority?: string; notes?: string | null; position?: number }): PlanTask {

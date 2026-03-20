@@ -1,19 +1,33 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 declare const __APP_VERSION__: string;
 
-const navItems = [
+interface NavItem {
+  key: string;
+  path: string;
+  icon: string;
+  children?: { key: string; path: string }[];
+}
+
+const navItems: NavItem[] = [
   { key: 'home', path: '/', icon: '🔍' },
   { key: 'plans', path: '/plans', icon: '📋' },
-  { key: 'stats', path: '/stats', icon: '📊' },
+  {
+    key: 'stats', path: '/stats', icon: '📊',
+    children: [
+      { key: 'statsKnowledge', path: '/stats' },
+      { key: 'statsPlans', path: '/stats/plans' },
+    ],
+  },
   { key: 'settings', path: '/settings', icon: '⚙' },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -50,23 +64,72 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <nav style={{ flex: 1 }}>
           {navItems.map((item) => {
+            const isParentActive = item.children
+              ? item.children.some(c => location.pathname === c.path)
+              : location.pathname === item.path;
             const active = location.pathname === item.path;
+
             return (
-              <Link
-                key={item.key}
-                to={item.path}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 12px', marginBottom: 4, borderRadius: 8,
-                  textDecoration: 'none',
-                  backgroundColor: active ? 'var(--accent)' : 'transparent',
-                  color: active ? '#fff' : 'var(--text-secondary)',
-                  fontSize: 14, transition: 'all 0.15s ease',
-                }}
-              >
-                <span>{item.icon}</span>
-                {!collapsed && <span>{t(`nav.${item.key}`)}</span>}
-              </Link>
+              <div key={item.key}>
+                <Link
+                  to={item.children ? item.children[0].path : item.path}
+                  onClick={(e) => {
+                    const targetActive = item.children ? isParentActive && location.pathname === (item.children[0].path) : active;
+                    if (targetActive) {
+                      e.preventDefault();
+                      navigate(item.children ? item.children[0].path : item.path, { replace: true, state: { reset: Date.now() } });
+                    }
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', marginBottom: item.children && isParentActive && !collapsed ? 0 : 4, borderRadius: 8,
+                    textDecoration: 'none',
+                    backgroundColor: isParentActive ? 'var(--accent)' : 'transparent',
+                    color: isParentActive ? '#fff' : 'var(--text-secondary)',
+                    fontSize: 14, transition: 'all 0.15s ease',
+                    borderBottomLeftRadius: item.children && isParentActive && !collapsed ? 0 : 8,
+                    borderBottomRightRadius: item.children && isParentActive && !collapsed ? 0 : 8,
+                  }}
+                >
+                  <span>{item.icon}</span>
+                  {!collapsed && <span>{t(`nav.${item.key}`)}</span>}
+                </Link>
+                {/* Sub-items */}
+                {item.children && isParentActive && !collapsed && (
+                  <div style={{
+                    backgroundColor: 'rgba(99,102,241,0.15)',
+                    borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+                    marginBottom: 4, paddingBottom: 4,
+                  }}>
+                    {item.children.map((child) => {
+                      const childActive = location.pathname === child.path;
+                      return (
+                        <Link
+                          key={child.key}
+                          to={child.path}
+                          onClick={(e) => {
+                            if (childActive) {
+                              e.preventDefault();
+                              navigate(child.path, { replace: true, state: { reset: Date.now() } });
+                            }
+                          }}
+                          style={{
+                            display: 'block',
+                            padding: '6px 12px 6px 36px',
+                            textDecoration: 'none',
+                            fontSize: 12,
+                            color: childActive ? '#fff' : 'rgba(255,255,255,0.7)',
+                            fontWeight: childActive ? 600 : 400,
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {t(`nav.${child.key}`)}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>

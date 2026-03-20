@@ -95,7 +95,7 @@ export function KnowledgeModal({ isOpen, onClose, onSuccess, entry }: KnowledgeM
   };
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--accent)', padding: 24, marginBottom: 24 }}>
+    <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700 }}>
           {isEdit ? t('edit.title') : t('add.title')}

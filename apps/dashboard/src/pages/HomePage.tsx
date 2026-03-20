@@ -1,17 +1,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { KnowledgeCard } from '../components/KnowledgeCard.js';
 import { TagBar } from '../components/TagBar.js';
 import { KnowledgeModal } from '../components/KnowledgeModal.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
 
+const STATUS_COLORS: Record<string, string> = {
+  draft: '#6b7280',
+  active: '#3b82f6',
+  completed: '#22c55e',
+  archived: '#a78bfa',
+};
+
 const POLL_INTERVAL_MS = 5_000;
+
+interface RelatedPlan {
+  planId: string;
+  relationType: string;
+  title: string;
+  status: string;
+}
 
 export function HomePage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
 
   // Search state
   const [query, setQuery] = useState('');
@@ -107,6 +122,44 @@ export function HomePage() {
     }
   }, [selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Related plans for editing entry
+  const [relatedPlans, setRelatedPlans] = useState<RelatedPlan[]>([]);
+
+  // Deep-link: open knowledge from ?edit=knowledgeId
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && !editingEntry) {
+      api.getById(editId).then((entry: any) => {
+        if (entry) { setEditingEntry(entry); setShowModal(true); }
+      }).catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset state when nav link clicked for same route
+  useEffect(() => {
+    if ((location.state as any)?.reset) {
+      setShowModal(false);
+      setEditingEntry(null);
+      setQuery('');
+      setTypeFilter('');
+      setScopeFilter('');
+      setSelectedTags([]);
+      setRelatedPlans([]);
+      setSearchParams({}, { replace: true });
+      window.history.replaceState({}, '');
+      loadRecent();
+    }
+  }, [(location.state as any)?.reset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load related plans when editing entry changes
+  useEffect(() => {
+    if (editingEntry?.id) {
+      api.getKnowledgePlans(editingEntry.id as string).then(setRelatedPlans).catch(() => setRelatedPlans([]));
+    } else {
+      setRelatedPlans([]);
+    }
+  }, [editingEntry?.id]);
+
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
@@ -180,6 +233,10 @@ export function HomePage() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingEntry(null);
+    setRelatedPlans([]);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('edit');
+    setSearchParams(newParams, { replace: true });
   };
 
   // Filter recent entries by tags (client-side) and text query
@@ -231,6 +288,69 @@ export function HomePage() {
             onSuccess={handleSuccess}
             entry={editingEntry}
           />
+          {/* Related Plans Section */}
+          {editingEntry && relatedPlans.length > 0 && (() => {
+            const originPlans = relatedPlans.filter(p => p.relationType === 'output');
+            const usedInPlans = relatedPlans.filter(p => p.relationType === 'input');
+            return (
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 20 }}>
+                <div style={{ flex: 1, minWidth: 250 }}>
+                  <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                    {t('plans.originPlan')}
+                  </h3>
+                  {originPlans.length === 0 ? (
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noPlans')}</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {originPlans.map(p => (
+                        <a key={`${p.planId}-out`} href={`/plans?select=${p.planId}`} style={{
+                          display: 'block', textDecoration: 'none', color: 'inherit',
+                          backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',
+                          padding: 10, fontSize: 12, cursor: 'pointer', transition: 'border-color 0.15s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STATUS_COLORS[p.status] || '#6b7280', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600 }}>{p.title}</span>
+                            <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600, backgroundColor: STATUS_COLORS[p.status] || '#6b7280', color: '#fff' }}>{p.status}</span>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 250 }}>
+                  <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                    {t('plans.consultedBy')}
+                  </h3>
+                  {usedInPlans.length === 0 ? (
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noPlans')}</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {usedInPlans.map(p => (
+                        <a key={`${p.planId}-in`} href={`/plans?select=${p.planId}`} style={{
+                          display: 'block', textDecoration: 'none', color: 'inherit',
+                          backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',
+                          padding: 10, fontSize: 12, cursor: 'pointer', transition: 'border-color 0.15s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STATUS_COLORS[p.status] || '#6b7280', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600 }}>{p.title}</span>
+                            <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600, backgroundColor: STATUS_COLORS[p.status] || '#6b7280', color: '#fff' }}>{p.status}</span>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </>
       ) : (
         <>

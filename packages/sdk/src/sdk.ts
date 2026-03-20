@@ -279,6 +279,11 @@ export class KnowledgeSDK {
     return this.service!.getPlanRelations(planId);
   }
 
+  getPlansForKnowledge(knowledgeId: string) {
+    this.ensureInitialized();
+    return this.service!.getPlansForKnowledge(knowledgeId);
+  }
+
   // ─── Plan Tasks ─────────────────────────────────────────────
 
   createPlanTask(input: { planId: string; description: string; priority?: string; notes?: string | null }): PlanTask {

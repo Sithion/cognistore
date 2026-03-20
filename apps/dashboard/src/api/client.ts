@@ -71,6 +71,9 @@ export const api = {
 
   getById: (id: string) => request(`/api/knowledge/${id}`),
 
+  getKnowledgePlans: (id: string) =>
+    request<{ planId: string; relationType: string; title: string; status: string }[]>(`/api/knowledge/${id}/plans`),
+
   create: (data: Record<string, unknown>) =>
     request('/api/knowledge', { method: 'POST', body: JSON.stringify(data) }),
 

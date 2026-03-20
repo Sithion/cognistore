@@ -1,5 +1,21 @@
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
+import { api } from '../api/client.js';
+
+interface RelatedPlan {
+  planId: string;
+  relationType: string;
+  title: string;
+  status: string;
+}
+
+const PLAN_STATUS_COLORS: Record<string, string> = {
+  draft: '#6b7280',
+  active: '#3b82f6',
+  completed: '#22c55e',
+  archived: '#a78bfa',
+};
 
 export interface KnowledgeCardProps {
   entry: Record<string, unknown>;
@@ -25,6 +41,14 @@ export function KnowledgeCard({
   onToggleSelect,
 }: KnowledgeCardProps) {
   const { t } = useTranslation();
+  const [relatedPlans, setRelatedPlans] = useState<RelatedPlan[]>([]);
+
+  useEffect(() => {
+    const id = entry.id as string;
+    if (id) {
+      api.getKnowledgePlans(id).then(setRelatedPlans).catch(() => setRelatedPlans([]));
+    }
+  }, [entry.id]);
 
   const showSimilarity = similarity !== undefined;
   const simPercent = showSimilarity ? Math.round(similarity * 100) : 0;
@@ -195,6 +219,34 @@ export function KnowledgeCard({
           </button>
         ))}
       </div>
+
+      {relatedPlans.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+          {relatedPlans.map((p) => (
+            <a
+              key={`${p.planId}-${p.relationType}`}
+              href={`/plans?select=${p.planId}`}
+              onClick={(e) => { e.stopPropagation(); }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 8px', borderRadius: 4, fontSize: 10,
+                backgroundColor: 'rgba(99,102,241,0.1)',
+                color: 'var(--accent)', textDecoration: 'none',
+                border: `1px solid ${PLAN_STATUS_COLORS[p.status] || '#6b7280'}44`,
+              }}
+              title={`${p.relationType === 'input' ? t('plans.input') : t('plans.output')} — ${p.title}`}
+            >
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                backgroundColor: PLAN_STATUS_COLORS[p.status] || '#6b7280',
+                flexShrink: 0,
+              }} />
+              {p.title.length > 40 ? p.title.slice(0, 40) + '…' : p.title}
+              <span style={{ opacity: 0.6 }}>({p.relationType === 'input' ? '←' : '→'})</span>
+            </a>
+          ))}
+        </div>
+      )}
 
       <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
         v{entry.version as number} •{' '}

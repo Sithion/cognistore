@@ -5,7 +5,8 @@ const resources = {
   en: {
     translation: {
       app: { title: 'AI Knowledge Base', subtitle: 'Semantic knowledge management for AI agents' },
-      nav: { home: 'Knowledge Base', add: 'Add Knowledge', tags: 'Tags', plans: 'Plans', stats: 'Statistics', settings: 'Settings' },
+      nav: { home: 'Knowledge Base', add: 'Add Knowledge', tags: 'Tags', plans: 'Plans', stats: 'Statistics', statsKnowledge: 'Knowledge', statsPlans: 'Plans', settings: 'Settings' },
+      statsTitle: { knowledge: 'Knowledge Statistics', plans: 'Plan Statistics' },
       search: { placeholder: 'Search knowledge semantically...', button: 'Search', noResults: 'No results found.', resultsCount: '{{count}} result(s) found', recent: 'Recent Knowledge', empty: 'No knowledge entries yet. Add some knowledge to get started.' },
       knowledge: { content: 'Content', tags: 'Tags', type: 'Type', scope: 'Scope', source: 'Source', confidence: 'Confidence', expires: 'Expires', agent: 'Agent', version: 'Version', created: 'Created', updated: 'Updated', relatedIds: 'Related' },
       types: { decision: 'Decision', pattern: 'Pattern', fix: 'Fix', constraint: 'Constraint', gotcha: 'Gotcha' },
@@ -31,7 +32,7 @@ const resources = {
         uninstallConfirm2: 'Are you absolutely sure? This cannot be undone.',
         uninstallSuccess: 'Data removed successfully. This page will stop working shortly.',
       },
-      plans: { title: 'Plans', empty: 'No plans yet.', all: 'All', draft: 'Draft', active: 'Active', completed: 'Completed', archived: 'Archived', input: 'Consulted', output: 'Produced', noRelations: 'No related knowledge entries.', tasks: 'Tasks', activePlans: 'Active Plans', noTasks: 'No tasks yet.', progress: 'completed', newPlan: 'New Plan', planTitle: 'Title', planTitlePlaceholder: 'What is this plan about?', planContent: 'Description', planContentPlaceholder: 'Describe the plan goals, approach, and considerations...', tagsPlaceholder: 'tag1, tag2, tag3', addTask: 'Add Task', taskPlaceholder: 'Task', createDraft: 'Create Draft', template: 'Template' },
+      plans: { title: 'Plans', empty: 'No plans yet.', all: 'All', draft: 'Draft', active: 'Active', completed: 'Completed', archived: 'Archived', input: 'Consulted', output: 'Produced', noRelations: 'No related knowledge entries.', noPlans: 'No related plans.', originPlan: 'Origin Plan', consultedBy: 'Plans That Consulted', tasks: 'Tasks', activePlans: 'Active Plans', noTasks: 'No tasks yet.', progress: 'completed', newPlan: 'New Plan', planTitle: 'Title', planTitlePlaceholder: 'What is this plan about?', planContent: 'Description', planContentPlaceholder: 'Describe the plan goals, approach, and considerations...', tagsPlaceholder: 'tag1, tag2, tag3', addTask: 'Add Task', taskPlaceholder: 'Task', createDraft: 'Create Draft', template: 'Template', delete: 'Delete', confirmDelete: 'Are you sure you want to delete this plan? This action cannot be undone.' },
       update: { section: 'Updates', check: 'Check for updates', checking: 'Checking...', upToDate: 'Up to date', available: 'Update available' },
       settings: { language: 'Language', dataManagement: 'Data Management', exportDesc: 'Export your knowledge and plans for backup or migration.', importDesc: 'Import knowledge or plans from a previous export.' },
       language: { en: 'English', es: 'Spanish', pt: 'Portuguese (BR)' },
@@ -40,7 +41,8 @@ const resources = {
   es: {
     translation: {
       app: { title: 'Base de Conocimiento IA', subtitle: 'Gestión semántica de conocimiento para agentes de IA' },
-      nav: { home: 'Base de Conocimiento', add: 'Agregar Conocimiento', tags: 'Etiquetas', plans: 'Planes', stats: 'Estadísticas', settings: 'Configuración' },
+      nav: { home: 'Base de Conocimiento', add: 'Agregar Conocimiento', tags: 'Etiquetas', plans: 'Planes', stats: 'Estadísticas', statsKnowledge: 'Conocimiento', statsPlans: 'Planes', settings: 'Configuración' },
+      statsTitle: { knowledge: 'Estadísticas de Conocimiento', plans: 'Estadísticas de Planes' },
       search: { placeholder: 'Buscar conocimiento semánticamente...', button: 'Buscar', noResults: 'No se encontraron resultados.', resultsCount: '{{count}} resultado(s) encontrado(s)', recent: 'Conocimiento Reciente', empty: 'Aún no hay entradas. Agrega conocimiento para comenzar.' },
       knowledge: { content: 'Contenido', tags: 'Etiquetas', type: 'Tipo', scope: 'Ámbito', source: 'Fuente', confidence: 'Confianza', expires: 'Expira', agent: 'Agente', version: 'Versión', created: 'Creado', updated: 'Actualizado', relatedIds: 'Relacionados' },
       types: { decision: 'Decisión', pattern: 'Patrón', fix: 'Corrección', constraint: 'Restricción', gotcha: 'Trampa' },
@@ -66,7 +68,7 @@ const resources = {
         uninstallConfirm2: '¿Estás absolutamente seguro? Esto no se puede deshacer.',
         uninstallSuccess: 'Monitoreo eliminado exitosamente. Esta página dejará de funcionar en breve.',
       },
-      plans: { title: 'Planes', empty: 'Aún no hay planes.', all: 'Todos', draft: 'Borrador', active: 'Activo', completed: 'Completado', archived: 'Archivado', input: 'Consultados', output: 'Producidos', noRelations: 'Sin entradas relacionadas.', tasks: 'Tareas', activePlans: 'Planes Activos', noTasks: 'Sin tareas aún.', progress: 'completadas', newPlan: 'Nuevo Plan', planTitle: 'Título', planTitlePlaceholder: '¿De qué trata este plan?', planContent: 'Descripción', planContentPlaceholder: 'Describe los objetivos, enfoque y consideraciones del plan...', tagsPlaceholder: 'tag1, tag2, tag3', addTask: 'Agregar Tarea', taskPlaceholder: 'Tarea', createDraft: 'Crear Borrador', template: 'Plantilla' },
+      plans: { title: 'Planes', empty: 'Aún no hay planes.', all: 'Todos', draft: 'Borrador', active: 'Activo', completed: 'Completado', archived: 'Archivado', input: 'Consultados', output: 'Producidos', noRelations: 'Sin entradas relacionadas.', noPlans: 'Sin planes relacionados.', originPlan: 'Plan de Origen', consultedBy: 'Planes que Consultaron', tasks: 'Tareas', activePlans: 'Planes Activos', noTasks: 'Sin tareas aún.', progress: 'completadas', newPlan: 'Nuevo Plan', planTitle: 'Título', planTitlePlaceholder: '¿De qué trata este plan?', planContent: 'Descripción', planContentPlaceholder: 'Describe los objetivos, enfoque y consideraciones del plan...', tagsPlaceholder: 'tag1, tag2, tag3', addTask: 'Agregar Tarea', taskPlaceholder: 'Tarea', createDraft: 'Crear Borrador', template: 'Plantilla', delete: 'Eliminar', confirmDelete: '¿Estás seguro de que quieres eliminar este plan? Esta acción no se puede deshacer.' },
       update: { section: 'Actualizaciones', check: 'Buscar actualizaciones', checking: 'Buscando...', upToDate: 'Actualizado', available: 'Actualización disponible' },
       settings: { language: 'Idioma', dataManagement: 'Gestión de Datos', exportDesc: 'Exporta tu conocimiento y planes para respaldo o migración.', importDesc: 'Importa conocimiento o planes de una exportación anterior.' },
       language: { en: 'Inglés', es: 'Español', pt: 'Portugués (BR)' },
@@ -75,7 +77,8 @@ const resources = {
   pt: {
     translation: {
       app: { title: 'Base de Conhecimento IA', subtitle: 'Gestão semântica de conhecimento para agentes de IA' },
-      nav: { home: 'Base de Conhecimento', add: 'Adicionar Conhecimento', tags: 'Tags', plans: 'Planos', stats: 'Estatísticas', settings: 'Configurações' },
+      nav: { home: 'Base de Conhecimento', add: 'Adicionar Conhecimento', tags: 'Tags', plans: 'Planos', stats: 'Estatísticas', statsKnowledge: 'Conhecimento', statsPlans: 'Planos', settings: 'Configurações' },
+      statsTitle: { knowledge: 'Estatísticas de Conhecimento', plans: 'Estatísticas de Planos' },
       search: { placeholder: 'Buscar conhecimento semanticamente...', button: 'Buscar', noResults: 'Nenhum resultado encontrado.', resultsCount: '{{count}} resultado(s) encontrado(s)', recent: 'Conhecimento Recente', empty: 'Nenhuma entrada ainda. Adicione conhecimento para começar.' },
       knowledge: { content: 'Conteúdo', tags: 'Tags', type: 'Tipo', scope: 'Escopo', source: 'Fonte', confidence: 'Confiança', expires: 'Expira', agent: 'Agente', version: 'Versão', created: 'Criado', updated: 'Atualizado', relatedIds: 'Relacionados' },
       types: { decision: 'Decisão', pattern: 'Padrão', fix: 'Correção', constraint: 'Restrição', gotcha: 'Pegadinha' },
@@ -101,7 +104,7 @@ const resources = {
         uninstallConfirm2: 'Tem certeza absoluta? Isso não pode ser desfeito.',
         uninstallSuccess: 'Monitoramento removido com sucesso. Esta página vai parar de funcionar em breve.',
       },
-      plans: { title: 'Planos', empty: 'Nenhum plano ainda.', all: 'Todos', draft: 'Rascunho', active: 'Ativo', completed: 'Concluído', archived: 'Arquivado', input: 'Consultados', output: 'Produzidos', noRelations: 'Sem entradas relacionadas.', tasks: 'Tarefas', activePlans: 'Planos Ativos', noTasks: 'Sem tarefas ainda.', progress: 'concluídas', newPlan: 'Novo Plano', planTitle: 'Título', planTitlePlaceholder: 'Sobre o que é este plano?', planContent: 'Descrição', planContentPlaceholder: 'Descreva os objetivos, abordagem e considerações do plano...', tagsPlaceholder: 'tag1, tag2, tag3', addTask: 'Adicionar Tarefa', taskPlaceholder: 'Tarefa', createDraft: 'Criar Rascunho', template: 'Modelo' },
+      plans: { title: 'Planos', empty: 'Nenhum plano ainda.', all: 'Todos', draft: 'Rascunho', active: 'Ativo', completed: 'Concluído', archived: 'Arquivado', input: 'Consultados', output: 'Produzidos', noRelations: 'Sem entradas relacionadas.', noPlans: 'Sem planos relacionados.', originPlan: 'Plano de Origem', consultedBy: 'Planos que Consultaram', tasks: 'Tarefas', activePlans: 'Planos Ativos', noTasks: 'Sem tarefas ainda.', progress: 'concluídas', newPlan: 'Novo Plano', planTitle: 'Título', planTitlePlaceholder: 'Sobre o que é este plano?', planContent: 'Descrição', planContentPlaceholder: 'Descreva os objetivos, abordagem e considerações do plano...', tagsPlaceholder: 'tag1, tag2, tag3', addTask: 'Adicionar Tarefa', taskPlaceholder: 'Tarefa', createDraft: 'Criar Rascunho', template: 'Modelo', delete: 'Excluir', confirmDelete: 'Tem certeza que deseja excluir este plano? Esta ação não pode ser desfeita.' },
       update: { section: 'Atualizações', check: 'Verificar atualizações', checking: 'Verificando...', upToDate: 'Atualizado', available: 'Atualização disponível' },
       settings: { language: 'Idioma', dataManagement: 'Gerenciamento de Dados', exportDesc: 'Exporte seu conhecimento e planos para backup ou migração.', importDesc: 'Importe conhecimento ou planos de uma exportação anterior.' },
       language: { en: 'Inglês', es: 'Espanhol', pt: 'Português (BR)' },

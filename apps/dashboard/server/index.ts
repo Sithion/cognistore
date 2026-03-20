@@ -1246,6 +1246,12 @@ async function start() {
     return sdk.getPlanRelations(request.params.id);
   });
 
+  app.get<{ Params: { id: string } }>('/api/knowledge/:id/plans', async (request, reply) => {
+    const err = ensureReady(reply);
+    if (err) return err;
+    return sdk.getPlansForKnowledge(request.params.id);
+  });
+
   app.post<{ Params: { id: string }; Body: { knowledgeId: string; relationType: 'input' | 'output' } }>('/api/plans/:id/relations', async (request, reply) => {
     const err = ensureReady(reply);
     if (err) return err;

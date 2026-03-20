@@ -350,6 +350,18 @@ export class KnowledgeRepository {
     return this.sqlite.prepare('DELETE FROM plan_relations WHERE plan_id = ?').run(planId).changes;
   }
 
+  getPlansForKnowledge(knowledgeId: string): { planId: string; relationType: string; title: string; status: string }[] {
+    return this.sqlite
+      .prepare(`
+        SELECT pr.plan_id as planId, pr.relation_type as relationType, p.title, p.status
+        FROM plan_relations pr
+        JOIN plans p ON p.id = pr.plan_id
+        WHERE pr.knowledge_id = ?
+        ORDER BY pr.created_at
+      `)
+      .all(knowledgeId) as { planId: string; relationType: string; title: string; status: string }[];
+  }
+
   // ─── Plan Tasks ─────────────────────────────────────────────
 
   createPlanTask(input: { planId: string; description: string; status?: string; priority?: string; notes?: string | null; position?: number }): any {

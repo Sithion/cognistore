@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import { api } from '../api/client.js';
 import { FloatingAddButton } from '../components/FloatingAddButton.js';
@@ -301,7 +302,13 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
   const applyTemplate = (tpl: PlanTemplate) => {
     setSelectedTemplate(tpl.id);
-    if (tpl.id === 'blank') return;
+    if (tpl.id === 'blank') {
+      setTitle('');
+      setContent('');
+      setTagsInput('');
+      setNewTasks([{ description: '', priority: 'medium' }]);
+      return;
+    }
     setTitle(tpl.titlePattern);
     setContent(tpl.contentStructure);
     setTagsInput(tpl.defaultTags.join(', '));
@@ -347,7 +354,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   };
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--accent)', padding: 24, marginBottom: 24 }}>
+    <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h2>
         <button onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
@@ -497,6 +504,8 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
 export function PlansPage() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const [plans, setPlans] = useState<PlanEntry[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<PlanEntry | null>(null);
@@ -544,6 +553,27 @@ export function PlansPage() {
     pollRef.current = setInterval(() => { loadPlans(); loadActivePlans(); }, 5000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadPlans, loadActivePlans]);
+
+  // Deep-link: open plan from ?select=planId
+  useEffect(() => {
+    const selectId = searchParams.get('select');
+    if (selectId && !selectedPlan) {
+      api.getPlan(selectId).then((plan) => {
+        if (plan) selectPlan(plan as PlanEntry);
+      }).catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset state when nav link clicked for same route
+  useEffect(() => {
+    if ((location.state as any)?.reset) {
+      setSelectedPlan(null);
+      setShowCreateForm(false);
+      setStatusFilter('');
+      setSearchParams({}, { replace: true });
+      window.history.replaceState({}, '');
+    }
+  }, [(location.state as any)?.reset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refresh selected plan detail (status, tasks, relations)
   const refreshSelectedPlan = useCallback(async (planId: string) => {
@@ -607,7 +637,7 @@ export function PlansPage() {
     return (
       <div>
         <button
-          onClick={() => setSelectedPlan(null)}
+          onClick={() => { setSelectedPlan(null); setSearchParams({}, { replace: true }); }}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
             background: 'none', border: 'none', color: 'var(--text-secondary)',
@@ -618,9 +648,29 @@ export function PlansPage() {
         </button>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <StatusBadge status={selectedPlan.status} />
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <StatusBadge status={selectedPlan.status} />
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
+          </div>
+          <button
+            onClick={async () => {
+              if (!window.confirm(t('plans.confirmDelete'))) return;
+              try {
+                await api.deletePlan(selectedPlan.id);
+                setSelectedPlan(null);
+                loadPlans();
+                loadActivePlans();
+              } catch { /* silent */ }
+            }}
+            style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 12,
+              border: '1px solid var(--error, #ef4444)', backgroundColor: 'transparent',
+              color: 'var(--error, #ef4444)', cursor: 'pointer',
+            }}
+          >
+            {t('plans.delete')}
+          </button>
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{selectedPlan.title}</h1>
 
@@ -860,10 +910,16 @@ export function PlansPage() {
 function RelationCard({ entry }: { entry: Record<string, unknown> }) {
   const type = entry.type as string;
   return (
-    <div style={{
-      backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',
-      padding: 10, fontSize: 12,
-    }}>
+    <a
+      href={`/?edit=${entry.id as string}`}
+      style={{
+        display: 'block', textDecoration: 'none', color: 'inherit',
+        backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',
+        padding: 10, fontSize: 12, cursor: 'pointer', transition: 'border-color 0.15s',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         <span style={{
           padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
@@ -880,6 +936,6 @@ function RelationCard({ entry }: { entry: Record<string, unknown> }) {
           </span>
         ))}
       </div>
-    </div>
+    </a>
   );
 }
