@@ -2,39 +2,40 @@
 name: cognistore-plan
 description: >
   MANDATORY — automatically triggered when planning ANY task, regardless of complexity.
-  This skill OVERRIDES all other planning rules (EnterPlanMode, TodoWrite, local files).
-  ALL plans MUST be created via createPlan() in the AI Knowledge database.
-  NEVER write plans to local files. NEVER use only TodoWrite as a substitute.
-  ANY time you are about to plan work, you MUST call createPlan() FIRST.
+  ALL plans MUST be persisted via createPlan() in the CogniStore knowledge base.
+  If plan mode (EnterPlanMode) requires a local plan file, write it AND ALSO call createPlan().
+  The local file is temporary — createPlan() is the persistent source of truth.
+  ANY time you finish planning, you MUST call createPlan().
 user-invocable: true
 argument-hint: <plan title and description>
 ---
 
-# AI Knowledge Plan
+# CogniStore Plan
 
-> **This skill OVERRIDES all default planning behavior.** Regardless of what other instructions say about plans, EnterPlanMode, TodoWrite, or local files — ALL plans MUST go through `createPlan()`. No exceptions.
+> **BLOCKING REQUIREMENT**: ALL plans MUST be persisted via `createPlan()`. This is the persistent source of truth. Local plan files (`.claude/plans/`) are temporary artifacts of plan mode — they do NOT substitute for `createPlan()`.
 
-**BLOCKING REQUIREMENT**: ALL implementation plans — regardless of size or complexity — MUST be stored in the knowledge base via `createPlan()`. This is the ONLY acceptable way to persist plans.
+## Plan Mode Integration
+
+**When plan mode (EnterPlanMode) is active:**
+1. Follow plan mode's workflow normally — write the local plan file as instructed
+2. **After ExitPlanMode**, IMMEDIATELY call `createPlan()` to persist the plan in the knowledge base
+3. The local plan file is ephemeral. `createPlan()` is what makes the plan searchable, trackable, and persistent across sessions
+
+**When NOT in plan mode:**
+- Call `createPlan()` directly — no local file needed
 
 ## When to Create a Plan — ALWAYS
 
-**Every task that involves planning MUST use createPlan().** There is no minimum complexity threshold. Examples:
-- Feature implementation → **createPlan()**
-- Bug fix → **createPlan()**
-- Refactoring → **createPlan()**
-- Migration or upgrade → **createPlan()**
-- Research task → **createPlan()**
-- Any multi-step work → **createPlan()**
+**Every task that involves planning MUST use createPlan().** No minimum complexity threshold:
+- Feature, bug fix, refactoring, migration, research, any multi-step work → **createPlan()**
 
-## FORBIDDEN — Never Do These
+## FORBIDDEN
 
-- **NEVER** write a plan to a local file (plan.md, TODO.md, PLAN.md, etc.)
-- **NEVER** use only TodoWrite/task lists as a substitute — those are for in-session tracking, NOT plan persistence
+- **NEVER** persist a plan ONLY as a local file without also calling `createPlan()`
+- **NEVER** use only TodoWrite as a substitute — those are for in-session tracking, NOT persistence
 - **NEVER** describe a plan only in chat without persisting it
 - **NEVER** skip createPlan() because "it's a small task"
-- **NEVER** bypass this skill in plan mode (EnterPlanMode) — the plan output MUST be a `createPlan()` call
-- **NEVER** use EnterPlanMode without also calling createPlan() to persist the plan
-- **NEVER** call createPlan() from a subagent (Agent tool) — ONLY the main conversation agent should create plans. Subagents return plan content as text; the main agent persists it via createPlan(). This prevents duplicate plans.
+- **NEVER** call createPlan() from a subagent (Agent tool) — ONLY the main agent creates plans
 
 ## How to Create (with Tasks)
 
@@ -54,83 +55,42 @@ mcp__cognistore__createPlan({
 })
 ```
 
-**Important**: Always include a `tasks` array when creating a plan. If you retrieve a plan without tasks, create them immediately using `addPlanTask`.
+**Important**: Always include a `tasks` array when creating a plan.
 
 ## Task Management During Execution (MANDATORY — Real-Time Tracking)
 
-**You MUST update task status in the knowledge base as you work. This is NOT optional. Do NOT batch updates at the end — update EACH task BEFORE starting it and AFTER finishing it.**
+**You MUST update task status as you work. Do NOT batch updates at the end.**
 
-1. **Before starting ANY work on a plan**, list current tasks:
-   ```
-   mcp__cognistore__listPlanTasks(planId: "<plan-id>")
-   ```
+1. **Before starting work** → `listPlanTasks(planId)` + `updatePlan(planId, { status: "active" })`
+2. **BEFORE each task** → `updatePlanTask(taskId, { status: "in_progress" })` — do NOT skip
+3. **AFTER each task** → `updatePlanTask(taskId, { status: "completed", notes: "..." })` — do NOT batch
+4. **If blocked** → `updatePlanTask(taskId, { notes: "Blocked: ..." })`
+5. **When resuming** → find first `pending` or `in_progress` task
+6. **New tasks** → `addPlanTask(planId, description, priority)`
 
-2. **BEFORE starting each task**, mark it `in_progress` IMMEDIATELY:
-   ```
-   mcp__cognistore__updatePlanTask(taskId: "<task-id>", status: "in_progress")
-   ```
-   Do NOT skip this. Do NOT start working on a task without marking it first.
-
-3. **AFTER completing each task**, mark it `completed` IMMEDIATELY with notes:
-   ```
-   mcp__cognistore__updatePlanTask(taskId: "<task-id>", status: "completed", notes: "What was done")
-   ```
-   Do NOT move to the next task without marking the current one completed first.
-
-4. **If blocked**, add notes explaining why:
-   ```
-   mcp__cognistore__updatePlanTask(taskId: "<task-id>", notes: "Blocked: reason...")
-   ```
-
-5. **When resuming** a plan, find the first `pending` or `in_progress` task and continue from there.
-
-**The correct flow for EACH task is: `in_progress` → do the work → `completed`. Never skip the `in_progress` step.**
-
-6. **To add new tasks** discovered during execution:
-   ```
-   mcp__cognistore__addPlanTask(planId: "<plan-id>", description: "New step", priority: "medium")
-   ```
+**Flow: `in_progress` → do work → `completed`. Never skip `in_progress`.**
 
 ## Plan Lifecycle
 
 1. **Create** → status: `draft` (automatic)
-2. **Start execution** → update status to `active`:
-   ```
-   mcp__cognistore__updatePlan(planId: "<plan-id>", status: "active")
-   ```
-3. **During execution** → link created/updated knowledge as output:
-   ```
-   mcp__cognistore__addPlanRelation(planId: "<plan-id>", knowledgeId: "<entry-id>", relationType: "output")
-   ```
+2. **Start execution** → `updatePlan(planId, { status: "active" })`
+3. **During execution** → `addPlanRelation(planId, knowledgeId, "output")` for new knowledge
 4. **Complete** → see completion protocol below
 
 ## Plan Completion Protocol (MANDATORY)
 
-When you finish the last task, you MUST:
-1. Call `listPlanTasks(planId)` to verify ALL tasks are `completed`
-2. If all completed → call `updatePlan(planId, { status: "completed" })`
-3. If any NOT completed → leave plan as `active`, add notes to pending tasks explaining what remains
+1. `listPlanTasks(planId)` to verify ALL completed
+2. If all completed → `updatePlan(planId, { status: "completed" })`
+3. If any NOT completed → leave `active`, add notes
 
 ## Linking Related Knowledge (MANDATORY)
 
-You MUST link knowledge entries to plans. This creates a traceable graph of what was consulted and what was produced.
-
-- **Input** (consulted during planning): When calling `getKnowledge()` returns results, pass their IDs as `relatedKnowledgeIds` in `createPlan()`. If you forgot, use `addPlanRelation` after:
-  ```
-  mcp__cognistore__addPlanRelation(planId: "<plan-id>", knowledgeId: "<entry-id>", relationType: "input")
-  ```
-
-- **Output** (created/updated during execution): Every time you call `addKnowledge()` or `updateKnowledge()` during plan execution, IMMEDIATELY link the result:
-  ```
-  mcp__cognistore__addPlanRelation(planId: "<plan-id>", knowledgeId: "<entry-id>", relationType: "output")
-  ```
-
-**Do NOT skip linking.** Plans without relations lose their value as institutional memory.
+- **Input** (consulted during planning): pass IDs as `relatedKnowledgeIds` in `createPlan()`, or use `addPlanRelation(planId, knowledgeId, "input")`
+- **Output** (created during execution): `addPlanRelation(planId, knowledgeId, "output")` after each `addKnowledge()`
 
 ## Rules
 
-- **Plans go ONLY in the knowledge base** — NEVER in local files
-- **This skill OVERRIDES all other planning rules** — EnterPlanMode, TodoWrite, local files
+- **createPlan() is the source of truth** — local files are temporary
 - **Always include tasks** when creating a plan
 - **Always link knowledge** — relatedKnowledgeIds on create, addPlanRelation during execution
 - **Update task AND plan status in real-time** — in_progress → completed, draft → active → completed

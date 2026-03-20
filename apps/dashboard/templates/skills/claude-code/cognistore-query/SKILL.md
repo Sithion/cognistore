@@ -1,7 +1,7 @@
 ---
 name: cognistore-query
 description: >
-  MANDATORY — automatically triggered before ANY task. Query the AI Knowledge
+  MANDATORY — automatically triggered before ANY task. Query the CogniStore
   semantic database before analysis, implementation, or decision-making.
   This skill MUST run as your FIRST action in every session, every task.
   Do NOT skip. Do NOT defer. Query first, then work.
@@ -9,7 +9,7 @@ user-invocable: true
 argument-hint: <natural language query describing the task or problem>
 ---
 
-# AI Knowledge Query
+# CogniStore Query
 
 **BLOCKING REQUIREMENT**: Before starting ANY task — analysis, implementation, planning, or decision-making — you MUST query the knowledge base first. This is NOT optional. A single query costs ~30 tokens. A missed cache hit wastes 2,000–8,000 tokens on redundant work.
 

@@ -1,5 +1,15 @@
 # Patch Notes
 
+## v0.9.11
+
+### Fixes
+- **Claude Code plan mode compatibility**: `pre-plan-file-check.sh` now detects `.claude/plans/` directory paths (plan mode generates random slugs like `sorted-jumping-whistle.md` that the previous filename-only check missed)
+- **Claude Code SKILL.md conflict**: changed approach from "NEVER write local files" to "write local AND ALSO call createPlan()" — works WITH plan mode instead of against it, resolving instruction priority conflict where system-level plan mode instructions overrode skill-level instructions
+- **Claude Code `post-plan-check.sh`**: shortened verbose 8-line message to 1 direct instruction — reduces likelihood of model ignoring the hook after "finishing" planning
+- **Copilot execution tracking**: restructured SKILL.md with Two-Phase Workflow (Planning + Execution) at the top, added execution tracking callout in blockquote, added task tracking reference table
+- **Copilot hook fatigue**: shortened `post-plan-check.sh` and `pre-enter-plan-check.sh` messages (these fire on ALL tool uses without matchers); `post-plan-check` now includes execution tracking reminder instead of only planning reminder
+- **`claude-code-instructions.md` template**: updated to match new "write local AND ALSO createPlan()" language
+
 ## v0.9.5
 
 ### Features
