@@ -1,0 +1,16 @@
+{
+  "cases": {
+    "search.hybrid": 12.5,
+    "listRecent.offset0": 0.3,
+    "listRecent.offset5000": 7.6,
+    "stats.knowledge": 23.3,
+    "tokens.aggregates30d": 287.9,
+    "tokens.aggregates180d": 1781.8,
+    "duplicates.groups": 42387.2,
+    "tokens.scanFull": 1160.1,
+    "tokens.scanIncremental": 31.9
+  },
+  "budget": "max(4 x case, 50 ms); median of 5 runs after 1 warmup, except duplicates.groups and the token scans (single run)",
+  "fixture": { "version": 1, "entries": 10000, "tokenRows": 200000, "opsRows": 50000, "dupRatio": 0.05, "seed": 42, "jsonlUsageLines": 22100 },
+  "measuredOn": { "date": "2026-10-28", "commit": "ea05075", "node": "v24.16.0", "os": "Linux 6.8.0-147-generic", "cpu": "AMD Ryzen 7 5700X 8-Core Processor", "memGb": 62 }
+}
