@@ -32,7 +32,7 @@ playwright-report/
 
 # Stryker mutation-testing leftovers
 .stryker-tmp/
-reports/mutation/
+**/reports/mutation/
 packages/core/packages/
 packages/core/reports/
 
