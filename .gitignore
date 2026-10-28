@@ -30,6 +30,12 @@ coverage/
 test-results/
 playwright-report/
 
+# Stryker mutation-testing leftovers
+.stryker-tmp/
+reports/mutation/
+packages/core/packages/
+packages/core/reports/
+
 # Claude Code — local settings stay private; project skills/agents are shared
 .claude/*
 !.claude/skills/

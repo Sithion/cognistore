@@ -7,6 +7,9 @@
 ### Improvements
 - **The sidecar now measures itself.** Every 5 minutes it logs event-loop delay (p50/p99/max) and a summary of database calls: how many took 100 ms or more, how many of those were writes (usually a lock wait behind another process), how many failed with `SQLITE_BUSY`, and the slowest statements of the interval. Bound values are never logged, only the SQL text. The summary goes to `~/.cognistore/cognistore.log` with asynchronous I/O. This is the baseline for the "app freezes on large databases" work.
 
+### Maintenance
+- Removed leftover Stryker mutation-testing output (`packages/core/packages/`, `packages/core/reports/`) and added it to `.gitignore`.
+
 ### Tests
 - **Performance suite on a realistic large base.** A seeded generator builds a 10,000-entry database (0.5–10 KB contents, real embeddings shape, 5% near-duplicate clusters) with 200,000 token-usage rows and 50,000 operation-log rows, plus Claude Code–style JSONL session logs. The same seed always produces the same file, and it is cached between runs. `pnpm --filter @cognistore/tests test:perf` (on demand, one worker; not part of the default `pnpm test`) times hybrid search, paginated listing, stats, token aggregates, duplicate detection and the token scan against budgets of 4× the recorded baseline (`packages/tests/src/performance/baseline.json`), and prints a `PERF <case> <ms>` line for each. A contention harness runs three agent-session processes and the sidecar's periodic work against one database and records lock waits and `SQLITE_BUSY` errors. Baseline highlights: duplicate detection 41 s and the 180-day token aggregates 1.7 s — the first targets of phases 1–2.
 
