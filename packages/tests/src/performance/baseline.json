@@ -1,0 +1,31 @@
+{
+  "cases": {
+    "search.hybrid": 11.9,
+    "listRecent.offset0": 0.3,
+    "listRecent.offset5000": 6.3,
+    "stats.knowledge": 21.1,
+    "tokens.aggregates30d": 277.5,
+    "tokens.aggregates180d": 1709.6,
+    "duplicates.groups": 40867.5,
+    "tokens.scanFull": 1083.8,
+    "tokens.scanIncremental": 30.5
+  },
+  "budget": "max(4 x case, 50 ms) x PERF_BUDGET_SCALE; median of 5 runs after 1 warmup, except duplicates.groups and the token scans (single run). Measured with `pnpm test:perf` (one worker), warm page cache (the fixture copy was just written).",
+  "fixture": {
+    "version": 1,
+    "entries": 10000,
+    "tokenRows": 200000,
+    "opsRows": 50000,
+    "dupRatio": 0.05,
+    "seed": 42,
+    "jsonlUsageLines": 22100
+  },
+  "measuredOn": {
+    "date": "2026-10-28",
+    "commit": "ea05075",
+    "node": "v24.16.0",
+    "os": "Linux 6.8.0-147-generic",
+    "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+    "memGb": 62
+  }
+}
