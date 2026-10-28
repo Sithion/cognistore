@@ -1,6 +1,6 @@
 {
   "name": "@cognistore/mcp-server",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "private": false,
   "type": "module",
   "description": "MCP server for CogniStore — integrates with Claude Code and GitHub Copilot",
@@ -26,11 +26,11 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "better-sqlite3": "^12.8.0",
     "drizzle-orm": "^0.45.0",
     "sqlite-vec": "^0.1.7",
-    "zod": "^3.23.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@cognistore/sdk": "workspace:*",

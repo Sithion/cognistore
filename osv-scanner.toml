@@ -15,6 +15,8 @@
 id = "GHSA-67mh-4wv8-2f99"
 
 # GHSA-qwww-vcr4-c8h2 — React Router RSC Mode CSRF bypass (CVSS 7.1)
+# 2026-10: the GitHub advisory now lists 7.18.2 as patched and we ship 7.18.5
+# (override in package.json). Kept until OSV's record agrees; remove afterwards.
 # Affects react-router >=7.12.0, fixed in 8.3.0. Not reachable by a version bump:
 # react-router-dom's latest is 7.18.1 and pins react-router at 7.18.1 exactly, so
 # 8.3.0 requires migrating off react-router-dom (v8 merged it into react-router)
@@ -86,3 +88,31 @@ id = "RUSTSEC-2026-0097" # rand — the 0.8.x line is bumped to 0.8.6; a transit
 id = "RUSTSEC-2026-0194" # quick-xml < 0.41 — transitive via plist (Tauri); fix needs an upstream Tauri/plist upgrade
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0195" # quick-xml < 0.41 — transitive via plist (Tauri); fix needs an upstream Tauri/plist upgrade
+
+# zvariant / zvariant_derive / zbus_names (RUSTSEC-2026-0370 / -0372 / -0371):
+# "unmaintained" informational advisories, no patched version — the crates were
+# folded into zbus 6. They come from zbus 4 via secret-service 4, pulled by
+# keyring 3 (`sync-secret-service`, the Linux Secret Service backend for the
+# external-provider secrets). Not a vulnerability; removal needs keyring 4 /
+# zbus 6 (tracked in the v2.6 plan, item L.8).
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370" # zvariant — unmaintained (merged into zbus 6); via keyring 3 → secret-service 4 → zbus 4
+reason = "Unmaintained (merged into zbus 6), no patched version; via keyring 3 -> secret-service 4 -> zbus 4. Removal tracked in v2.6 plan L.8 (keyring 4)."
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371" # zbus_names — unmaintained (merged into zbus 6); same path
+reason = "Unmaintained (merged into zbus 6), no patched version; same path as RUSTSEC-2026-0370."
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372" # zvariant_derive — unmaintained (merged into zbus 6); same path
+reason = "Unmaintained (merged into zbus 6), no patched version; same path as RUSTSEC-2026-0370."
+
+# GHSA-qwgh-2vcv-g2f7 — block-buffer: a panic caught inside the caller's
+# `compress`/`gen_block` callback can leave the buffer cursor corrupted (CVSS 6.3).
+# Fixed only in block-buffer 0.12, which belongs to the digest 0.11 / RustCrypto
+# 0.11 generation; ours is 0.10.4 via digest 0.10 (sha2, hmac), pulled by
+# tauri-codegen (build time) and keyring 3 -> dbus-secret-service. Nothing here
+# wraps hashing in catch_unwind, and the RustCrypto compress functions do not
+# panic, so the corrupting sequence is unreachable. Re-evaluate when Tauri and
+# keyring move to digest 0.11 (v2.6 plan L.8).
+[[IgnoredVulns]]
+id = "GHSA-qwgh-2vcv-g2f7"
+reason = "block-buffer 0.10 via digest 0.10 (tauri-codegen, keyring); fix only in 0.12 (digest 0.11); requires a panic caught inside a hash compress callback, not reachable here."

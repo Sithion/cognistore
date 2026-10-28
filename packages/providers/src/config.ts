@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import type { ISecretStore } from './secrets/secret-store.js';
 import type { ITokenStore } from './secrets/token-store.js';

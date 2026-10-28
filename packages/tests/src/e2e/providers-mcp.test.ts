@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpKnowledgeProvider, EnvSecretStore, ProviderManager } from '@cognistore/providers';

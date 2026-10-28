@@ -1,5 +1,19 @@
 # Patch Notes
 
+## v2.5.3
+
+**Security maintenance release: the weekly dependency scan had been failing since September 7.** New advisories were published against transitive dependencies after v2.5.2 shipped; the scheduled OSV scan caught them every Monday, but a failing scheduled run notifies nobody, so eight weeks went by unnoticed. This release clears them and makes the next one impossible to miss.
+
+### Security
+- **npm:** `fastify` 5.8.5 → 5.12.x, `@fastify/cors`/`@fastify/static` patch bumps, `@modelcontextprotocol/sdk` 1.27.1 → 1.32.x (MCP server, providers, tests), `react-router-dom`/`react-router` → 7.18.5. Transitive fixes via `pnpm.overrides`: `vite` (6.4.4+, still 6.x), `qs`, `body-parser`, `proxy-addr`, `fast-uri`, `hono`, `ip-address`, `brace-expansion`, `shell-quote`, `source-map-js`, `browserslist`, `baseline-browser-mapping`. Includes two critical (`proxy-addr`, `shell-quote`) and the high-severity MCP SDK advisories.
+- **`zod` 3.25 → 4.6.6+ with the v3 API kept.** The MCP SDK validates every JSON-RPC message with `zod/v4`, which in `zod@3.25` ships the array-validation memory-exhaustion bug (GHSA-mrhx-c7xc-m3w5). Our own schemas now import `zod/v3` from the zod 4 package, so their behaviour — and the MCP tools' published input schemas, verified byte-identical — does not change.
+- **Rust (Tauri shell):** `rustls` 0.23.46, `rustls-webpki` 0.103.16, `webpki-root-certs` 1.0.11, `tokio` 1.54 (RUSTSEC-2026-0386), `tauri-plugin-updater` 2.14 (drops `zip` 4.x, RUSTSEC-2026-0367/0368/0369) and `tauri-plugin-process` 2.4, which bring `tauri` to 2.12. `@tauri-apps/*` npm packages bumped to the matching minors.
+- `osv-scanner.toml`: `block-buffer` 0.10 (GHSA-qwgh-2vcv-g2f7, CVSS 6.3) ignored with justification — fixed only in the 0.12 line (digest 0.11), which Tauri and `keyring` don't use yet, and it needs a panic caught inside a hash compression callback, which nothing here does. Also three new "unmaintained" informational advisories (`zvariant`, `zvariant_derive`, `zbus_names`, merged into zbus 6) ignored with justification — they arrive through `keyring` 3's Linux Secret Service backend and have no patched version.
+
+### CI
+- **A failing scheduled scan now opens (or comments on) a GitHub issue** "Weekly dependency scan (OSV) is failing", so it can no longer fail silently.
+- `scripts/bump-version.sh` now works on Linux too (it used BSD-only `sed -i ''` for `Cargo.toml`).
+
 ## v2.5.2
 
 **The sidecar has been crashing on every single launch since 2.5.0, and this release fixes it.** After the readiness handshake moved onto the child process's own stdout pipe in 2.5.0 (see below), the Tauri shell read that pipe only until it saw the ready marker, then dropped the reader — closing the pipe's read end. The sidecar's very next `console.log` (its access logger fires on nearly every request, and startup alone logs several lines) then hit `EPIPE`. Node does not install a signal handler for that on piped, non-TTY stdio, so the write failure surfaces as an unhandled `'error'` event, which is fatal: the process exits with an uncaught exception a few dozen milliseconds after saying it was ready. The window has already been told to navigate to `http://localhost:<port>` by the time this happens, so the visible symptom was a blank white window that never loaded — on some machines the app kept restarting the sidecar in a loop trying to reconnect, which is what a separately investigated freeze after upgrading to 2.5.0 turned out to be riding on top of.
