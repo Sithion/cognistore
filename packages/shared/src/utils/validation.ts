@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { KnowledgeType, KnowledgeStatus, TaskStatus, TaskPriority } from '../types/knowledge.js';
 import { DEFAULT_SIMILARITY_THRESHOLD, DEFAULT_SEARCH_LIMIT } from '../constants/defaults.js';
 

@@ -39,7 +39,9 @@ done
 # Cargo.toml
 CARGO="$ROOT/apps/dashboard/src-tauri/Cargo.toml"
 if [ -f "$CARGO" ]; then
-  sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" "$CARGO"
+  # perl -pi works the same on macOS and Linux (BSD `sed -i ''` fails on GNU sed).
+  # Only the first `version =` line — the [package] version — is rewritten.
+  perl -pi -e 'if (!$done && s/^version = ".*"/version = "'"${VERSION}"'"/) { $done = 1 }' "$CARGO"
   echo "  Updated Cargo.toml"
 fi
 

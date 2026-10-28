@@ -166,6 +166,9 @@ jobs:
   # version-pinned and checksum-verified. This job is a required status check.
   osv-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # only used by the scheduled-failure step below
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Install OSV-Scanner (pinned + checksum-verified)
@@ -182,3 +185,21 @@ jobs:
         # fails the check. --config applies osv-scanner.toml (the ignore list of
         # no-fix/unmaintained advisories) across all lockfiles.
         run: ./osv-scanner --config=osv-scanner.toml -r ./
+      - name: Open or update a tracking issue when the weekly scan fails
+        # A scheduled failure notifies nobody: from Sep 7 to Oct 26 2026 eight
+        # weekly runs failed unnoticed while new advisories piled up. Keep one
+        # open issue and comment on it each week until the scan is green again.
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Weekly dependency scan (OSV) is failing"
+          body="Scheduled OSV-Scanner run failed: ${RUN_URL}"
+          num=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"${title}\" in:title" --json number -q '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
