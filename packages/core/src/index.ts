@@ -29,6 +29,16 @@ export {
   type MergeMember,
 } from './services/cleanup-merge.js';
 
+// Performance instrumentation (slow DB ops, SQLITE_BUSY, event-loop delay)
+export {
+  instrumentDatabase,
+  startEventLoopMonitor,
+  type SlowOpEvent,
+  type DbOpStats,
+  type DbInstrumentation,
+  type EventLoopReport,
+} from './perf/instrumentation.js';
+
 // Token usage
 export { TokenUsageRepository } from './repositories/token-usage.repository.js';
 export { TokenUsageService } from './services/token-usage/service.js';

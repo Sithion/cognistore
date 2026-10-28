@@ -27,6 +27,8 @@ import {
   DEFAULT_EMBEDDING_MODEL,
 } from '@cognistore/shared';
 import { registerAuth, isAllowedOrigin, TOKEN_HEADER, type AuthConfig } from './auth.js';
+import { createPerfMonitor } from './perf-monitor.js';
+import type { SQLiteDatabase } from '@cognistore/core';
 import {
   UNKNOWN_VERSION,
   buildMcpEntry as buildMcpEntryPure,
@@ -229,9 +231,19 @@ async function start() {
   let sdkError: string | null = null;
   let retryInterval: ReturnType<typeof setInterval> | null = null;
 
+  // Event-loop lag + slow DB op / SQLITE_BUSY monitoring (plan v2.6, 0.2).
+  // Re-attached on every (re)init because upgrade paths close and reopen the DB.
+  const perfMonitor = createPerfMonitor({ logFile: LOG_FILE });
+
   const tryInitSDK = async () => {
     try {
       await sdk.initialize();
+      try {
+        const raw = getRawSqlite();
+        if (raw) perfMonitor.attach(raw as unknown as SQLiteDatabase);
+      } catch (e) {
+        log('warn', `Perf instrumentation not attached: ${e instanceof Error ? e.message : String(e)}`);
+      }
       sdkReady = true;
       sdkError = null;
       if (retryInterval) {
@@ -2717,6 +2729,7 @@ Pass an array to addKnowledge to create multiple entries at once.
   })();
 
   const shutdown = async () => {
+    perfMonitor.stop();
     if (sdkReady) await sdk.close();
     await app.close();
     process.exit(0);
