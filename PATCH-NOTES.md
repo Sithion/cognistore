@@ -1,5 +1,12 @@
 # Patch Notes
 
+## v2.6.0 (unreleased)
+
+**Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
+
+### Improvements
+- **The sidecar now measures itself.** Every 5 minutes it logs event-loop delay (p50/p99/max) and a summary of database calls: how many took 100 ms or more, how many of those were writes (usually a lock wait behind another process), how many failed with `SQLITE_BUSY`, and the slowest statements of the interval. Bound values are never logged, only the SQL text. The summary goes to `~/.cognistore/cognistore.log` with asynchronous I/O. This is the baseline for the "app freezes on large databases" work.
+
 ## v2.5.3
 
 **Security maintenance release: the weekly dependency scan had been failing since September 7.** New advisories were published against transitive dependencies after v2.5.2 shipped; the scheduled OSV scan caught them every Monday, but a failing scheduled run notifies nobody, so eight weeks went by unnoticed. This release clears them and makes the next one impossible to miss.
