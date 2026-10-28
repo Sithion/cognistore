@@ -120,6 +120,32 @@ test.describe('@e2e perf instrumentation (0.2)', () => {
     again.uninstall();
   });
 
+  test('a whole transaction is timed as one write op, including its variants', () => {
+    const events: SlowOpEvent[] = [];
+    const instr = instrumentDatabase(sqlite, { slowMs: 20, onEvent: (e) => events.push(e) });
+    const insert = sqlite.prepare("INSERT INTO operations_log(operation, created_at) VALUES ('write', datetime('now'))");
+    const tx = sqlite.transaction(function bulkInsert(n: number) {
+      for (let i = 0; i < n; i++) insert.run();
+      sqlite.prepare('SELECT sleep_ms(30)').get();
+      return n;
+    });
+    expect(tx(5)).toBe(5);
+    expect(tx.immediate(2)).toBe(2);
+    const txEvents = events.filter((e) => e.method === 'tx');
+    expect(txEvents).toHaveLength(2);
+    expect(txEvents[0]).toMatchObject({ kind: 'slow', write: true, sql: 'transaction bulkInsert' });
+    instr.uninstall();
+    expect(typeof sqlite.transaction(() => 1)).toBe('function');
+  });
+
+  test('INSERT … RETURNING is classified as a write', () => {
+    const events: SlowOpEvent[] = [];
+    const instr = instrumentDatabase(sqlite, { slowMs: 20, onEvent: (e) => events.push(e) });
+    sqlite.prepare("INSERT INTO operations_log(operation, created_at) VALUES ('write', datetime('now', '+' || sleep_ms(30) || ' seconds')) RETURNING id").get();
+    expect(events[0]).toMatchObject({ method: 'get', write: true });
+    instr.uninstall();
+  });
+
   test('a throwing listener never breaks the query', () => {
     const instr = instrumentDatabase(sqlite, { slowMs: 1, onEvent: () => { throw new Error('boom'); } });
     expect(sqlite.prepare('SELECT sleep_ms(5) AS s').get()).toEqual({ s: 5 });

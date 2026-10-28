@@ -11,7 +11,8 @@ import type { SQLiteDatabase } from '../db/client.js';
 export interface SlowOpEvent {
   /** 'slow' = took >= slowMs; 'busy' = failed with SQLITE_BUSY / SQLITE_LOCKED. */
   kind: 'slow' | 'busy';
-  method: 'run' | 'get' | 'all' | 'exec';
+  /** 'tx' = a whole sqlite.transaction() call (BEGIN … COMMIT), timed as one op. */
+  method: 'run' | 'get' | 'all' | 'exec' | 'tx';
   ms: number;
   /** true for writes. A slow write on a fast statement usually means a lock wait. */
   write: boolean;
@@ -43,6 +44,8 @@ export interface EventLoopReport {
 }
 
 const SQL_PREVIEW_CHARS = 160;
+const WRITE_SQL = /^\s*(insert|update|delete|replace)\b/i;
+const TX_VARIANTS = ['deferred', 'immediate', 'exclusive'] as const;
 const BUSY_CODES = new Set(['SQLITE_BUSY', 'SQLITE_BUSY_SNAPSHOT', 'SQLITE_BUSY_TIMEOUT', 'SQLITE_LOCKED']);
 const INSTALLED = Symbol.for('cognistore.perf.instrumentation');
 
@@ -103,14 +106,17 @@ export function instrumentDatabase(
 
   const originalPrepare = sqlite.prepare;
   const originalExec = sqlite.exec;
+  const originalTransaction = sqlite.transaction;
   const target = sqlite as unknown as {
     prepare: (sql: string) => any;
     exec: (sql: string) => unknown;
+    transaction: (fn: (...args: any[]) => any) => any;
   };
 
   target.prepare = function instrumentedPrepare(this: unknown, sql: string) {
     const stmt = (originalPrepare as (s: string) => any).call(sqlite, sql);
-    const write = stmt.reader === false;
+    // `reader` is true for INSERT … RETURNING, so also look at the verb.
+    const write = stmt.reader === false || WRITE_SQL.test(sql);
     for (const method of ['run', 'get', 'all'] as const) {
       const original = stmt[method];
       if (typeof original !== 'function') continue;
@@ -125,6 +131,22 @@ export function instrumentDatabase(
     return timed('exec', sql, true, () => (originalExec as (s: string) => unknown).call(sqlite, sql));
   };
 
+  // better-sqlite3 prepares BEGIN/COMMIT on its internal handle, bypassing
+  // prepare(), so a whole transaction (and a COMMIT waiting on the write lock)
+  // is only visible if the transaction function itself is timed.
+  target.transaction = function instrumentedTransaction(this: unknown, fn: (...args: any[]) => any) {
+    const tx = (originalTransaction as (f: typeof fn) => any).call(sqlite, fn);
+    const label = `transaction ${fn.name || '(anonymous)'}`;
+    const wrap = (variant: (...args: any[]) => any) =>
+      function (this: unknown, ...args: unknown[]) {
+        return timed('tx', label, true, () => variant.apply(this, args));
+      };
+    const wrapped: any = wrap(tx);
+    for (const v of TX_VARIANTS) if (typeof tx[v] === 'function') wrapped[v] = wrap(tx[v]);
+    wrapped.default = wrapped;
+    return wrapped;
+  };
+
   const instrumentation: DbInstrumentation = {
     stats: () => ({ ...stats }),
     reset: () => {
@@ -133,6 +155,7 @@ export function instrumentDatabase(
     uninstall: () => {
       target.prepare = originalPrepare as typeof target.prepare;
       target.exec = originalExec as typeof target.exec;
+      target.transaction = originalTransaction as typeof target.transaction;
       delete (sqlite as unknown as Record<symbol, unknown>)[INSTALLED];
     },
   };
