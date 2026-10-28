@@ -1,6 +1,6 @@
 # CogniStore - Agent Rules
 
-## Architecture (v1.0.4 — App-first, Docker-free)
+## Architecture (App-first, Docker-free — current version in `apps/dashboard/package.json`)
 
 - **Entry point**: Tauri desktop app (macOS .dmg, Linux .AppImage/.deb)
 - **Database**: SQLite + sqlite-vec (file at `~/.cognistore/knowledge.db`)
@@ -73,3 +73,19 @@ The Tauri sidecar sets environment variables for the Fastify server:
 - `DASHBOARD_DIST_PATH` — path to bundled frontend assets
 - `TEMPLATES_PATH` — path to bundled skills/config templates
 - `COGNISTORE_MANAGED` — `1` only when the Tauri shell launched the sidecar; gates the startup artifact self-heal so tests (which spawn the sidecar against the real `HOME`) never rewrite the developer's agent configs
+
+## Working in this repo (agents)
+
+- **Skills** (`.claude/skills/`): `cognistore-dev` — map of the codebase, commands, invariants and performance rules; load it before changing code. `cognistore-phase` — executes the next item of a roadmap in `documentation/plans/`.
+- **Subagents** (`.claude/agents/`): `perf-reviewer` (event-loop blocking, full scans, write contention) and `invariants-reviewer` (migrations, patch notes, setup/uninstall symmetry, templates). Run both on a diff before committing.
+- **Active roadmap**: `documentation/plans/2026-11-performance-e-curadoria.md` — performance (the sidecar freezes on large DBs) + automatic knowledge curation with the local LLM. Tick items and append to its execution log as you go.
+- **DB health**: `node scripts/diagnose-db.mjs [path]` — read-only size/row breakdown of the knowledge DB (telemetry vs knowledge, duplicates, cleanup state).
+
+### Performance rules (MANDATORY)
+
+The sidecar is a single Node process and better-sqlite3 is synchronous; the DB file is shared with one MCP server process per agent session.
+- Never load whole tables with `content` (`listAll()`) or loop one query per row in a request handler or timer.
+- Read paths never write synchronously; batch writes in one transaction.
+- Work that can exceed ~50 ms on a 10k-entry base runs as a background job (worker/chunked with yields), never inline.
+- No sync fs calls in timers. New queries on growing tables need an index or a rollup.
+

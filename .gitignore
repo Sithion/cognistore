@@ -30,8 +30,10 @@ coverage/
 test-results/
 playwright-report/
 
-# Claude Code
-.claude/
+# Claude Code — local settings stay private; project skills/agents are shared
+.claude/*
+!.claude/skills/
+!.claude/agents/
 
 # Plans (local development artifacts)
 .plans/
