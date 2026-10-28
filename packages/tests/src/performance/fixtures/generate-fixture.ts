@@ -146,83 +146,86 @@ export function generateFixture(path: string, opts: FixtureOptions = {}): Fixtur
   for (const suffix of ['', '-wal', '-shm']) rmSync(path + suffix, { force: true });
 
   const { sqlite } = createDbClient(path);
-  const insertEntry = sqlite.prepare(
-    `INSERT INTO knowledge_entries
-       (id, title, content, tags, type, scope, source, version, confidence_score, agent_id, platform,
-        created_at, updated_at, last_read_at, read_count)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1.0, ?, ?, ?, ?, ?, ?)`,
-  );
-  const insertFts = sqlite.prepare('INSERT INTO knowledge_fts (id, title, content, tags) VALUES (?, ?, ?, ?)');
-  const insertToken = sqlite.prepare(
-    `INSERT INTO token_usage
-       (id, source, model, project, session_id, message_id, occurred_at,
-        input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, scanned_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  const insertOp = sqlite.prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)');
-
-  const addEntry = (title: string, content: string, tags: string[], vector: number[]) => {
-    const id = uuid(rng);
-    const createdAt = isoInSpan(rng);
-    const read = rng.next() < 0.8;
-    insertEntry.run(
-      id, title, content, JSON.stringify(tags), rng.pick(TYPES), rng.pick(SCOPES), 'perf-fixture',
-      `agent-${rng.int(6)}`, rng.pick(PLATFORMS), createdAt, createdAt,
-      read ? createdAt : null, read ? 1 + rng.int(30) : 0,
-    );
-    insertFts.run(id, title, content, tags.join(' '));
-    insertEmbedding(sqlite, id, vector);
-  };
-
   let duplicateClusters = 0;
   let duplicateMembers = 0;
-  const dupTarget = Math.round(o.entries * o.dupRatio);
+  try {
+    const insertEntry = sqlite.prepare(
+      `INSERT INTO knowledge_entries
+         (id, title, content, tags, type, scope, source, version, confidence_score, agent_id, platform,
+          created_at, updated_at, last_read_at, read_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1.0, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertFts = sqlite.prepare('INSERT INTO knowledge_fts (id, title, content, tags) VALUES (?, ?, ?, ?)');
+    const insertToken = sqlite.prepare(
+      `INSERT INTO token_usage
+         (id, source, model, project, session_id, message_id, occurred_at,
+          input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, scanned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertOp = sqlite.prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)');
 
-  sqlite.transaction(() => {
-    let made = 0;
-    // Near-duplicate clusters first: one base text/vector, members with small edits + noise.
-    while (duplicateMembers < dupTarget && made < o.entries) {
-      const size = Math.min(2 + rng.int(4), o.entries - made, dupTarget - duplicateMembers);
-      if (size < 2) break;
-      const baseTitle = `Cluster ${duplicateClusters}: ${rng.pick(WORDS)} ${rng.pick(WORDS)} ${rng.pick(WORDS)}`;
-      const baseContent = randomContent(rng);
-      const baseVector = randomVector(rng, dims);
-      const tags = randomTags(rng);
-      for (let m = 0; m < size; m++) {
-        const vector = normalize(baseVector.map((x) => x + rng.gauss() * 0.01));
-        addEntry(`${baseTitle} (v${m})`, `${baseContent} Variant ${m}: ${rng.pick(WORDS)}.`, tags, vector);
+    const addEntry = (title: string, content: string, tags: string[], vector: number[]) => {
+      const id = uuid(rng);
+      const createdAt = isoInSpan(rng);
+      const read = rng.next() < 0.8;
+      insertEntry.run(
+        id, title, content, JSON.stringify(tags), rng.pick(TYPES), rng.pick(SCOPES), 'perf-fixture',
+        `agent-${rng.int(6)}`, rng.pick(PLATFORMS), createdAt, createdAt,
+        read ? createdAt : null, read ? 1 + rng.int(30) : 0,
+      );
+      insertFts.run(id, title, content, tags.join(' '));
+      insertEmbedding(sqlite, id, vector);
+    };
+
+    const dupTarget = Math.round(o.entries * o.dupRatio);
+
+    sqlite.transaction(() => {
+      let made = 0;
+      // Near-duplicate clusters first: one base text/vector, members with small edits + noise.
+      while (duplicateMembers < dupTarget && made < o.entries) {
+        const size = Math.min(2 + rng.int(4), o.entries - made, dupTarget - duplicateMembers);
+        if (size < 2) break;
+        const baseTitle = `Cluster ${duplicateClusters}: ${rng.pick(WORDS)} ${rng.pick(WORDS)} ${rng.pick(WORDS)}`;
+        const baseContent = randomContent(rng);
+        const baseVector = randomVector(rng, dims);
+        const tags = randomTags(rng);
+        for (let m = 0; m < size; m++) {
+          const vector = normalize(baseVector.map((x) => x + rng.gauss() * 0.01));
+          addEntry(`${baseTitle} (v${m})`, `${baseContent} Variant ${m}: ${rng.pick(WORDS)}.`, tags, vector);
+        }
+        duplicateClusters++;
+        duplicateMembers += size;
+        made += size;
       }
-      duplicateClusters++;
-      duplicateMembers += size;
-      made += size;
-    }
-    for (let i = made; i < o.entries; i++) {
-      addEntry(
-        `Entry ${i}: ${rng.pick(WORDS)} ${rng.pick(WORDS)} ${rng.pick(WORDS)}`,
-        randomContent(rng), randomTags(rng), randomVector(rng, dims),
-      );
-    }
-  })();
+      for (let i = made; i < o.entries; i++) {
+        addEntry(
+          `Entry ${i}: ${rng.pick(WORDS)} ${rng.pick(WORDS)} ${rng.pick(WORDS)}`,
+          randomContent(rng), randomTags(rng), randomVector(rng, dims),
+        );
+      }
+    })();
 
-  sqlite.transaction(() => {
-    for (let i = 0; i < o.tokenRows; i++) {
-      const occurredAt = isoInSpan(rng);
-      insertToken.run(
-        rng.hex(32), rng.next() < 0.85 ? 'claude-code' : 'copilot-cli', rng.pick(MODELS),
-        `project-${rng.int(15)}`, `sess-${rng.int(3000)}`, `msg-${i}`, occurredAt,
-        rng.int(20_000), rng.int(4_000), rng.int(200_000), rng.int(30_000), occurredAt,
-      );
-    }
-  })();
+    sqlite.transaction(() => {
+      for (let i = 0; i < o.tokenRows; i++) {
+        const occurredAt = isoInSpan(rng);
+        insertToken.run(
+          rng.hex(32), rng.next() < 0.85 ? 'claude-code' : 'copilot-cli', rng.pick(MODELS),
+          `project-${rng.int(15)}`, `sess-${rng.int(3000)}`, `msg-${i}`, occurredAt,
+          rng.int(20_000), rng.int(4_000), rng.int(200_000), rng.int(30_000), occurredAt,
+        );
+      }
+    })();
 
-  sqlite.transaction(() => {
-    for (let i = 0; i < o.opsRows; i++) {
-      insertOp.run(rng.next() < 0.8 ? 'read' : 'write', isoInSpan(rng));
-    }
-  })();
+    sqlite.transaction(() => {
+      for (let i = 0; i < o.opsRows; i++) {
+        insertOp.run(rng.next() < 0.8 ? 'read' : 'write', isoInSpan(rng));
+      }
+    })();
 
-  sqlite.pragma('wal_checkpoint(TRUNCATE)');
-  sqlite.close();
+    sqlite.pragma('wal_checkpoint(TRUNCATE)');
+  } finally {
+    sqlite.close();
+  }
   return {
     entries: o.entries,
     duplicateClusters,
@@ -241,10 +244,16 @@ export function ensureFixture(opts: FixtureOptions = {}): { path: string; cached
   const path = fixturePath(opts);
   if (existsSync(path)) return { path, cached: true };
   const partial = `${path}.${process.pid}.partial`;
-  const stats = generateFixture(partial, opts);
-  renameSync(partial, path);
-  for (const suffix of ['-wal', '-shm']) rmSync(partial + suffix, { force: true });
-  return { path, cached: false, stats };
+  const removePartial = () => { for (const suffix of ['', '-wal', '-shm']) rmSync(partial + suffix, { force: true }); };
+  try {
+    const stats = generateFixture(partial, opts);
+    renameSync(partial, path);
+    removePartial();
+    return { path, cached: false, stats };
+  } catch (err) {
+    removePartial();
+    throw err;
+  }
 }
 
 /** Copy the fixture into `dir` as knowledge.db; returns the copy's path. */

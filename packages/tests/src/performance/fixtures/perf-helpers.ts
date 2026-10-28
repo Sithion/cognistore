@@ -47,9 +47,12 @@ export type PerfCase = (typeof PERF_CASES)[number];
 interface Baseline { cases: Record<PerfCase, number> }
 const baseline: Baseline = JSON.parse(readFileSync(new URL('../baseline.json', import.meta.url), 'utf8'));
 
-/** Budget = max(4 × the recorded baseline, 50 ms). Catches regressions of ~4×, not noise. */
+/** Slower machines than the baseline's set PERF_BUDGET_SCALE (e.g. 2.5 on a 2-vCPU runner). */
+const BUDGET_SCALE = Number(process.env.PERF_BUDGET_SCALE ?? 1) || 1;
+
+/** Budget = max(4 × the recorded baseline, 50 ms) × PERF_BUDGET_SCALE. Catches regressions of ~4×, not noise. */
 export function budgetFor(name: PerfCase): number {
-  return Math.max(BUDGET_FACTOR * baseline.cases[name], BUDGET_FLOOR_MS);
+  return Math.max(BUDGET_FACTOR * baseline.cases[name], BUDGET_FLOOR_MS) * BUDGET_SCALE;
 }
 
 /**

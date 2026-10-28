@@ -35,17 +35,21 @@ interface WorkerResult {
   ops: number; slowOps: number; slowWrites: number; busyErrors: number; maxMs: number;
 }
 
+const children = new Set<ReturnType<typeof spawn>>();
+
 function runWorker(dbPath: string, index: number): Promise<{ code: number | null; result?: WorkerResult; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [WORKER_SCRIPT, dbPath, String(DURATION_MS), String(index)], {
       cwd: fileURLToPath(new URL('.', import.meta.url)),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    children.add(child);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
     child.on('close', (code) => {
+      children.delete(child);
       const line = stdout.trim().split('\n').filter((l) => l.startsWith('{')).pop();
       resolve({ code, result: line ? JSON.parse(line) : undefined, stderr });
     });
@@ -55,6 +59,7 @@ function runWorker(dbPath: string, index: number): Promise<{ code: number | null
 let dir: string;
 
 test.afterAll(() => {
+  for (const child of children) child.kill();
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -86,6 +91,11 @@ test.describe('@perf contention harness (0.5)', () => {
           tokens.getAggregates(window);
           service.reconcileOperationsDaily();
           sidecar.scanInserted += (await tokens.scan()).inserted;
+          // The 6-hourly maintenance, compressed: prune the raw log and checkpoint the WAL.
+          if (sidecar.rounds % 10 === 9) {
+            service.cleanupOldOperations();
+            sqlite.pragma('wal_checkpoint(PASSIVE)');
+          }
         } catch (err) {
           if (String((err as { code?: string }).code).startsWith('SQLITE_BUSY')) sidecar.busyThrown++;
           else throw err;

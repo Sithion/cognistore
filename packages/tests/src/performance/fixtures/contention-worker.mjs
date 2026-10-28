@@ -4,13 +4,16 @@
 // Searches with trackRead (the read path that also writes: logOp + markRead)
 // and adds an entry every 25 iterations, then prints ONE JSON line with its
 // counters on stdout and exits 0. Any thrown error exits 1.
+// `busyThrown` only sees errors that reach the caller: logOp/markRead swallow
+// theirs, so `busyErrors` (from the instrumentation) is the real busy count.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createDbClient, instrumentDatabase, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
+import { DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
 
 const [dbPath, durationArg, indexArg] = process.argv.slice(2);
 const durationMs = Number(durationArg);
 const index = Number(indexArg);
-const DIMS = 256;
+const DIMS = DEFAULT_EMBEDDING_DIMENSIONS;
 
 const embedder = {
   async embed(text) {
