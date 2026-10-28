@@ -81,13 +81,13 @@ Depois do merge do hotfix (decisão do Raphael — o merge em main dispara o Pub
 |---|---|---|
 | 0 | Hotfix v2.5.3 | dependências com advisories + alerta de falha do scan semanal (patch pronto) |
 | 1 | Setup + Fase 0 | Setup, 0.1–0.5 (0.1 depende de rodar o diagnóstico no PC de 70 MB — se não estiver nele, registre como pendente) |
-| 2 | Fase T (backend) | T.1–T.7, T.11–T.13 (`pnpm verify`) |
-| 3 | Fase L (limpeza) | L.1–L.7 |
-| 4 | Fase 1A + 1B | performance rápida + telemetria |
-| 5 | Fase 1C + 1D | JobRunner/worker, duplicatas, FTS external |
+| 2 | Perf rápida | 1A.1–1A.7, 1C.2 (interino, em blocos com yield) + 1C.3, T.10 (perf só relatório no CI), T.10b, T.11 (job Rust), L.7 parcial |
+| 3 | Fase T (backend/compatibilidade) | T.1–T.9, T.12, T.12b, T.13 (`pnpm verify`) |
+| 4 | Fase L (limpeza) | L.1–L.6 |
+| 5 | 1B + 1C.1/1C.4/1C.5 + 1D | telemetria, JobRunner/worker, FTS external |
 | 6 | Fase L.8 | dependências (lote seguro, depois majors um a um) |
 | 7 | Fase U.0.2 + U.1 | spike shadcn/ui no Tauri + sistema de design |
-| 8 | Fase U.2–U.5 + T.8/T.9 | telas, testes de componentes, e2e UI, a11y, regressão visual |
+| 8 | Fase U.2–U.5 + T.8/T.9 | navegação, telas, testes de componentes, e2e UI, a11y, regressão visual |
 | 9 | Fase 2 | motor de curadoria (`suggest`) |
 | 10 | Fase 3 + 4 | curadoria pelo agente + página de Curadoria |
 | 11 | Fase R | betas e release 2.6.0 (só com autorização explícita) |
