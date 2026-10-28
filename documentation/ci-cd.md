@@ -94,11 +94,19 @@ Fetches the still-draft release by id and asserts `latest.json` is **complete** 
 
 Flips the verified draft to a public (`--draft=false`) release, making it the "latest" that the updater endpoint serves.
 
+## npm authentication (trusted publishing)
+
+`publish-mcp` publishes `@cognistore/mcp-server` with **npm trusted publishing (OIDC)** — there is no npm token to store or rotate. The job's `id-token: write` permission lets GitHub mint a short-lived OIDC token for the run, and npm exchanges it for publish rights because the package's Trusted Publisher on npmjs.com is set to `Sithion/cognistore` + workflow `publish.yml` with "npm publish" allowed.
+
+Keep in mind:
+- Renaming `publish.yml`, renaming/transferring the repository, or publishing from another workflow breaks the trust — update the Trusted Publisher on npmjs.com first.
+- It needs npm >= 11.5.1 on a GitHub-hosted runner (the job checks the npm version). `pnpm publish` (pnpm 9) delegates to the npm CLI, so the exchange happens there.
+- Provenance is attached automatically.
+
 ## Secrets
 
 | Secret | Used By | Purpose |
 |--------|---------|---------|
-| `NPM_TOKEN` | publish-mcp | npm publish authentication |
 | `GITHUB_TOKEN` | create-release, publish-tauri | Auto-provided, creates releases |
 | `TAURI_SIGNING_PRIVATE_KEY` | publish-tauri | Sign binaries for auto-update |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | publish-tauri | Key password (empty if unset) |

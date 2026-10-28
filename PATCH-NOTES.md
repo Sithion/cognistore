@@ -13,6 +13,7 @@
 ### CI
 - **A failing scheduled scan now opens (or comments on) a GitHub issue** "Weekly dependency scan (OSV) is failing", so it can no longer fail silently.
 - `scripts/bump-version.sh` now works on Linux too (it used BSD-only `sed -i ''` for `Cargo.toml`).
+- **npm publishing moved to trusted publishing (OIDC).** The first 2.5.3 publish failed with a 404 because the long-lived `NPM_TOKEN` had expired (the same failure as v1.0.10–v1.0.12). `publish-mcp` no longer uses a token at all: GitHub's OIDC identity for `publish.yml` is trusted by npm directly, so there is no secret to expire or leak.
 
 ## v2.5.2
 

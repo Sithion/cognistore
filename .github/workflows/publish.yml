@@ -90,11 +90,20 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Require npm >= 11.5.1 (trusted publishing)
+        # npm authenticates through OIDC trusted publishing (configured on
+        # npmjs.com for Sithion/cognistore + publish.yml): no NPM_TOKEN secret,
+        # nothing to rotate. pnpm v9 hands the publish to the npm CLI, and only
+        # npm >= 11.5.1 can do the OIDC exchange — fail loudly on an older one.
+        if: steps.version-check.outputs.exists == 'false'
+        run: |
+          NPM_VERSION=$(npm --version)
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)" "$NPM_VERSION" \
+            || { echo "::error::npm $NPM_VERSION cannot use trusted publishing (needs >= 11.5.1)"; exit 1; }
+
       - name: Publish to npm
         if: steps.version-check.outputs.exists == 'false'
         run: cd apps/mcp-server && pnpm publish --provenance --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Restore stripped package.json
         if: always()
