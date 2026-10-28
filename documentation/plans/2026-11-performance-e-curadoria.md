@@ -106,11 +106,11 @@ O sidecar Fastify usa **better-sqlite3 (síncrono)**. Toda query longa congela o
 
 Objetivo: medir antes de mexer e ter um banco grande reprodutível para testes.
 
-- [ ] 0.1 Rodar `node scripts/diagnose-db.mjs` na máquina de 70 MB e colar a saída no "Diário de execução".
-- [ ] 0.2 Instrumentar o sidecar: `perf_hooks.monitorEventLoopDelay()` com log a cada 5 min (p50/p99/max) e log de "slow op" para qualquer operação de repositório > 100 ms (wrapper simples em volta de `sqlite.prepare(...).all/get/run` nos pontos P1–P6).
-- [ ] 0.3 Gerador de fixture em `packages/tests/src/performance/fixtures/` : 10k entradas (conteúdo 0,5–10 KB), embeddings aleatórios normalizados, 200k linhas de `token_usage`, 50k de `operations_log`, ~5% de clusters de quase-duplicatas.
-- [ ] 0.4 Testes `@perf` com orçamento: busca, listagem paginada, stats, detecção de duplicatas, scan de tokens. Registrar o baseline (antes das fases 1+).
-- [ ] 0.5 Medir contenção real: com 3 sessões de agente abertas (3 MCP servers) + dashboard, registrar quantas vezes `SQLITE_BUSY`/espera > 100 ms acontece (log no wrapper do 0.2).
+- [ ] 0.1 Rodar `node scripts/diagnose-db.mjs` na máquina de 70 MB e colar a saída no "Diário de execução". — **pendente: rodar no PC de 70 MB** (rodado em `rapha-pc`, 41 MB; saída resumida no diário 2026-10-28).
+- [x] 0.2 Instrumentar o sidecar: `perf_hooks.monitorEventLoopDelay()` com log a cada 5 min (p50/p99/max) e log de "slow op" para qualquer operação de repositório > 100 ms (wrapper simples em volta de `sqlite.prepare(...).all/get/run` nos pontos P1–P6).
+- [x] 0.3 Gerador de fixture em `packages/tests/src/performance/fixtures/` : 10k entradas (conteúdo 0,5–10 KB), embeddings aleatórios normalizados, 200k linhas de `token_usage`, 50k de `operations_log`, ~5% de clusters de quase-duplicatas.
+- [x] 0.4 Testes `@perf` com orçamento: busca, listagem paginada, stats, detecção de duplicatas, scan de tokens. Registrar o baseline (antes das fases 1+).
+- [ ] 0.5 Medir contenção real: com 3 sessões de agente abertas (3 MCP servers) + dashboard, registrar quantas vezes `SQLITE_BUSY`/espera > 100 ms acontece (log no wrapper do 0.2). — **harness pronto (`contention.perf.test.ts`); medição real pendente** com 3 sessões + dashboard no PC de 70 MB (ler as linhas `[perf]` de `~/.cognistore/cognistore.log`).
 
 **Pronto quando:** baseline numérico registrado e fixture rodando no CI (`pnpm --filter @cognistore/tests test:perf`).
 
@@ -393,6 +393,7 @@ O agente que já está usando o CogniStore tem um modelo muito melhor que o loca
 
 > Agentes: anote aqui data, fase/item, PR/commit, números medidos e qualquer desvio do plano.
 
+- 2026-10-28 — **Rodada Setup + Fase 0** (relatório `reports/2026-10-28-fase-0.md`). Setup 31a4756; 0.2 mergeado em ea05075; 0.3–0.5 em 99ac761 (`release/2.6`). 0.1 em `rapha-pc`: 41,09 MB + WAL 4,31 MB, telemetria 54,7% (token_usage 12,63 MB = 30,8%), 1.497 entradas, 62.942 token_usage, 19.737 operations_log, 1.765 scan_state; listAll c/ conteúdo 13 ms, agregado diário de tokens 19 ms. Baseline @perf (fixture 10k/200k/50k, Ryzen 5700X, Node 24, `pnpm test:perf`): busca 11,9 ms; listRecent 0,3 / 6,3 ms (offset 5000); stats 21 ms; agregados de tokens 30d 278 ms / **180d 1.710 ms**; **duplicatas 40,9 s** (abaixo do ponto de parada de 120 s → 10k mantido); scan de tokens completo 1.084 ms / incremental 31 ms. Contenção (3 processos × 15 s + sidecar): ~2.300 buscas, p99 ≤ 46 ms, **0 SQLITE_BUSY, 0 escritas lentas** — não reproduz nesta máquina. Desvio: `@perf` saiu do `pnpm test` padrão (só `test:perf`, 1 worker) por recomendação do perf-reviewer.
 - 2026-10-28 — Plano criado a partir de análise do código (v2.5.2) e do banco de `rapha-pc` (42 MB, 1.476 entradas).
 - 2026-10-28 — PR #107 mergeado (8f36bf3). Publish falhou em publish-mcp (NPM_TOKEN expirado, E404) — 2.5.3 não publicada. Correção: npm Trusted Publishing (OIDC), PR #108 (e1e9516) revisado pelo gerente: `id-token: write` no job, sem NODE_AUTH_TOKEN, guarda npm ≥ 11.5.1. Trusted Publisher precisa de 1 publish até 2026-10-30 18:20 UTC.
 - 2026-10-28 — Pedido do Raphael: revisão completa da navegação na refatoração de UI → U.2 reescrita (nova arquitetura de informação, rotas para tudo, ⌘K, atalhos, seletor de scope, redirects de compatibilidade).
