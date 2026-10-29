@@ -24,8 +24,7 @@
     "date": "2026-10-28",
     "commit": "ea05075",
     "node": "v24.16.0",
-    "os": "Linux 6.8.0-147-generic",
-    "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
-    "memGb": 62
+    "os": "Linux",
+    "cpu": "8-core x86_64 desktop"
   }
 }
