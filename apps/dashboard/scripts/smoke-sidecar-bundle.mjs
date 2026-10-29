@@ -19,6 +19,7 @@
  *      node_modules (better-sqlite3 rebuilt for the runtime's ABI).
  * Exits non-zero, printing the sidecar's output, on the first failure.
  */
+import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -26,6 +27,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const bundleDir = resolve(process.argv[2] ?? join(__dirname, '..', 'sidecar-bundle'));
@@ -39,7 +41,7 @@ if (Number(process.versions.node.split('.')[0]) !== REQUIRED_NODE_MAJOR) {
   process.exit(1);
 }
 
-for (const part of ['dist', 'dist-server/index.js', 'dist-server/jobs/vacuum-worker.js', 'node_modules/better-sqlite3', 'node_modules/sqlite-vec', 'templates']) {
+for (const part of ['dist', 'dist-server/index.js', 'dist-server/jobs/vacuum-worker.js', 'dist-server/jobs/worker.js', 'node_modules/better-sqlite3', 'node_modules/sqlite-vec', 'templates']) {
   if (!existsSync(join(bundleDir, part))) {
     console.error(`bundle incomplete: ${join(bundleDir, part)} is missing — run scripts/bundle-sidecar.mjs first`);
     process.exit(1);
@@ -171,6 +173,38 @@ const hit = hits.find((h) => (h.entry?.id ?? h.id) === id);
 if (!hit) fail(`the new entry was not found by search: ${JSON.stringify(body).slice(0, 500)}`);
 if (!(hit.similarity > 0.6)) fail(`score ${hit.similarity} — no semantic match, vector search did not run`);
 console.log(`ok   sqlite-vec: added entry found by semantic search (score ${hit.similarity.toFixed(3)})`);
+
+// Run the packaged worker from the isolated Resources tree against this same DB.
+const workerPath = join(resources, 'dist-server', 'jobs', 'worker.js');
+const worker = new Worker(workerPath, { workerData: { databasePath: join(home, '.cognistore', 'knowledge.db'), embeddingConfig: { host: `http://127.0.0.1:${ollama.address().port}`, model: 'nomic-embed-text', dimensions: 256 } } });
+let workerClosed = false;
+let workerExited = false;
+const workerResult = await new Promise((resolve, reject) => {
+  const timeout = setTimeout(async () => { await worker.terminate(); reject(new Error('worker health timed out')); }, 15_000);
+  worker.on('message', (m) => {
+    if (m.type === 'done' || m.type === 'error') { clearTimeout(timeout); resolve(m); }
+    if (m.type === 'closed') workerClosed = true;
+    if (m.type === 'progress' && m.id === 'smoke-health') worker.postMessage({ type: 'continue', id: m.id });
+  });
+  worker.once('error', (e) => { clearTimeout(timeout); reject(e); });
+  worker.once('exit', (code) => {
+    workerExited = true;
+    clearTimeout(timeout);
+    if (code !== 0 && !workerClosed) reject(new Error(`worker exited unexpectedly: ${code}`));
+  });
+  worker.postMessage({ type: 'run', id: 'smoke-health', kind: 'health', payload: {} });
+});
+assert.equal(workerResult.type, 'done');
+assert.equal(workerResult.result.database, true);
+assert.equal(workerResult.result.sqliteVec, true);
+assert.ok(workerResult.result.threadId > 0);
+worker.postMessage({ type: 'shutdown' });
+await new Promise((resolve, reject) => {
+  const timeout = setTimeout(async () => { await worker.terminate(); reject(new Error('worker shutdown timed out')); }, 15_000);
+  worker.once('exit', (code) => { clearTimeout(timeout); if (code !== 0) reject(new Error(`worker exited during shutdown: ${code}`)); else resolve(); });
+});
+assert.ok(workerClosed && workerExited);
+console.log('ok   worker job: bundled SQLite and sqlite-vec');
 
 clearTimeout(timer);
 child.removeAllListeners('exit');

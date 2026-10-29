@@ -10,6 +10,18 @@ The system consists of three runtime subsystems:
 2. **MCP Server** — Standalone npm package consumed by AI clients (Claude Code, Copilot, OpenCode) via stdio transport
 3. **Shared Libraries** — Monorepo packages for database, embeddings, SDK, and config management
 
+## Background jobs
+
+`JobRunner` lives in `packages/core/src/jobs/runner.ts`. The SDK owns the worker
+bootstrap in `packages/sdk/src/jobs/worker.ts` and creates the runner lazily.
+The runner processes one job at a time and queues up to 32 additional jobs;
+further calls reject with `QUEUE_FULL`. Three consecutive worker startup
+failures make later calls reject with `WORKER_UNAVAILABLE` until a job succeeds.
+Progress and result payloads are `unknown` and interpreted by job kind. The
+worker opens its own connection with `createDbClient`, which checks migrations
+on startup. Shutdown flushes worker buffers, stops timers, closes resources,
+then acknowledges.
+
 ## High-Level Architecture
 
 ```

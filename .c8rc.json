@@ -15,6 +15,7 @@
   "exclude": [
     "packages/tests/**",
     "**/node_modules/**",
-    "**/db/migrations/**"
+    "**/db/migrations/**",
+    "apps/mcp-server/dist/jobs/**"
   ]
 }
