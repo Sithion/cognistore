@@ -118,9 +118,12 @@ export function registerCleanupRoutes(app: FastifyInstance, deps: CleanupRouteDe
   app.post('/api/cleanup/report/run', async (request, reply) => {
     const err = ensureReady(reply); if (err) return err;
     const settings = readSettings();
+    const controller = new AbortController();
+    request.raw.once('close', () => controller.abort());
     const result = await sdk.generateCleanupReport({
       unreadDays: settings.cleanupUnreadDays,
       dupThreshold: settings.cleanupDupThreshold,
+      signal: controller.signal,
     });
     if (result.created) writeSettings({ lastCleanupReportAt: new Date().toISOString() });
     return { created: result.created, report: result.report };

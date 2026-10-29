@@ -53,7 +53,7 @@ export function normalizeRow(vectors: Float32Array, row: number, dims: number): 
 
 /** Normalize every row to unit length (zero rows stay zero). Synchronous: small sets only. */
 export function normalizeRows(set: PairVectors): void {
-  for (let r = 0; r < set.ids.length; r++) normalizeRow(set.vectors, r, set.dims);
+  for (let r = 0; r < set.ids.length; r++) void normalizeRow(set.vectors, r, set.dims);
 }
 
 const yieldToEventLoop = () => new Promise<void>((r) => setImmediate(r));
@@ -73,18 +73,25 @@ export interface PairSearchResult {
 export async function findPairsInVectors(
   set: PairVectors,
   threshold: number,
-  opts: { queryRows?: number[]; yieldEveryMs?: number; tailNorm?: Float64Array; maxPairs?: number } = {},
+  opts: { queryRows?: number[]; yieldEveryMs?: number; tailNorm?: Float64Array; maxPairs?: number; checkpoint?: (done: number, total: number) => Promise<void> } = {},
 ): Promise<PairSearchResult> {
   const { ids, vectors, dims } = set;
   const n = ids.length;
   const head = Math.min(HEAD, dims);
   const yieldEveryMs = opts.yieldEveryMs ?? 15;
   const maxPairs = opts.maxPairs ?? DUP_PAIR_CAP;
+  const total = opts.queryRows?.length ?? (n * (n - 1)) / 2;
+  let done = 0;
   let sliceStart = performance.now();
+  let lastCheckpoint = sliceStart;
   const maybeYield = async () => {
     if (performance.now() - sliceStart >= yieldEveryMs) {
       await yieldToEventLoop();
       sliceStart = performance.now();
+      if (performance.now() - lastCheckpoint >= 50) {
+        await opts.checkpoint?.(done, total);
+        lastCheckpoint = performance.now();
+      }
     }
   };
 
@@ -113,8 +120,9 @@ export async function findPairsInVectors(
       // Dense clusters make every pair pay the full product: check the clock here too.
       if ((j & 2047) === 0) await maybeYield();
       if (j === i) continue;
-      if (isQuery && isQuery[j] && j < i) continue;
+      if (isQuery?.[j] && j < i) continue;
       const oj = j * dims;
+      done++;
       let dot = 0;
       for (let d = 0; d < head; d++) dot += vectors[oi + d] * vectors[oj + d];
       if (dot + ti * tailNorm[j] < threshold) continue;
@@ -185,8 +193,10 @@ export function groupPairs(pairs: SimilarPair[], meta: Map<string, GroupMember>,
   return Array.from(grouped.entries())
     .map(([root, members]) => {
       members.sort((a, b) => (b.version - a.version) || b.updatedAt.localeCompare(a.updatedAt));
-      const groupId = members.reduce((min, m) => (m.id < min ? m.id : min), members[0].id);
-      return { groupId, maxSimilarity: maxSim.get(root) ?? 0, members };
+      // IDs are strings; keep the canonical group ID in lexicographic order.
+      // biome-ignore lint/complexity/useMathMinMax: Math.min would coerce UUIDs to NaN.
+      const groupId = members.reduce((min, m) => m.id < min ? m.id : min, members[0].id);
+      return { groupId, maxSimilarity: maxSim.get(root) ?? 0, members, memberCount: members.length };
     })
     .sort((x, y) => (y.members.length - x.members.length) || (y.maxSimilarity - x.maxSimilarity))
     .slice(0, limit);

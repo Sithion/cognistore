@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeDb } from './helpers.js';
-import { DUP_SCAN_STATE_KEY, dupScanStateKey, invalidateDuplicateScan, MAX_SCAN_ENTRIES, scanDuplicatePairs } from '../src/services/duplicate-scan.js';
+import { DUP_SCAN_STATE_KEY, duplicateFingerprint, dupScanStateKey, findDuplicateGroupsForJob, findDuplicatePairsForJob, invalidateDuplicateScan, MAX_SCAN_ENTRIES, scanDuplicatePairs } from '../src/services/duplicate-scan.js';
 
 describe('duplicate scan', () => {
   let ctx: ReturnType<typeof makeDb> | undefined;
@@ -18,6 +18,15 @@ describe('duplicate scan', () => {
     expect(result.meta.size).toBe(0);
   });
 
+  it('never includes a system entry with a duplicate vector in job pairs or groups', async () => {
+    ctx = makeDb();
+    await ctx.repository.create({ title: 'normal duplicate', content: 'identical vector', tags: [], type: 'pattern', scope: 'global', source: 'test', embedding: Array(256).fill(0).map((_, i) => i === 0 ? 1 : 0) });
+    await ctx.repository.create({ title: 'system duplicate', content: 'identical vector', tags: [], type: 'system', scope: 'global', source: 'test', embedding: Array(256).fill(0).map((_, i) => i === 0 ? 1 : 0) });
+    expect(await findDuplicatePairsForJob(ctx.sqlite, { threshold: 0.99 })).toEqual([]);
+    expect(await findDuplicateGroupsForJob(ctx.sqlite, { threshold: 0.99 })).toEqual([]);
+  });
+
+
   it('runs full then incremental scans and persists threshold state', async () => {
     ctx = makeDb();
     await add('A', 'shared alpha details', 'pattern'); await add('B', 'shared alpha details', 'decision');
@@ -33,15 +42,17 @@ describe('duplicate scan', () => {
   it('invalidates all duplicate scan cache keys', async () => {
     ctx = makeDb(); await add('A', 'shared text'); await add('B', 'shared text');
     await scanDuplicatePairs(ctx.sqlite, 0.5);
+    const before = duplicateFingerprint(ctx.sqlite, 0.5);
     expect(ctx.sqlite.prepare('SELECT key FROM cleanup_meta WHERE key LIKE ?').all(`${DUP_SCAN_STATE_KEY}%`)).not.toEqual([]);
     invalidateDuplicateScan(ctx.sqlite);
+    expect(duplicateFingerprint(ctx.sqlite, 0.5)).not.toBe(before);
     expect(ctx.sqlite.prepare('SELECT key FROM cleanup_meta WHERE key LIKE ?').all(`${DUP_SCAN_STATE_KEY}%`)).toEqual([]);
     expect(() => invalidateDuplicateScan(ctx.sqlite)).not.toThrow();
   });
 
   it('falls back to a full scan for malformed state and rechecks updated rows', async () => {
     ctx = makeDb();
-    const a = await add('A', 'shared alpha details', 'pattern'); const b = await add('B', 'shared alpha details', 'decision');
+    await add('A', 'shared alpha details', 'pattern'); await add('B', 'shared alpha details', 'decision');
     await scanDuplicatePairs(ctx.sqlite, 0.8);
     ctx.sqlite.prepare('UPDATE cleanup_meta SET value = ? WHERE key = ?').run('{bad', dupScanStateKey(0.8));
     expect((await scanDuplicatePairs(ctx.sqlite, 0.8)).mode).toBe('full');

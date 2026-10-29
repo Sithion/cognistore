@@ -29,8 +29,8 @@ import {
 } from '@cognistore/shared';
 import { registerAuth, isAllowedOrigin, TOKEN_HEADER, type AuthConfig } from './auth.js';
 import { createPerfMonitor } from './perf-monitor.js';
-import { createDuplicatesCache, DUPLICATES_FINGERPRINT_SQL } from './duplicates-cache.js';
-import type { SQLiteDatabase } from '@cognistore/core';
+import { createDuplicatesCache } from './duplicates-cache.js';
+import { duplicateFingerprint, type SQLiteDatabase } from '@cognistore/core';
 import {
   UNKNOWN_VERSION,
   buildMcpEntry as buildMcpEntryPure,
@@ -537,15 +537,12 @@ Pass an array to addKnowledge to create multiple entries at once.
   const getRawSqlite = (): RawSqlite | undefined =>
     ((sdk as any).sqlite ?? (sdk as any).db?.sqlite) as RawSqlite | undefined;
 
-  // Without a raw handle (or mid-upgrade, with the vec table dropped) the
-  // fingerprint is unique per call, i.e. no caching.
-  let fingerprintMiss = 0;
   const duplicatesCache = createDuplicatesCache<Awaited<ReturnType<typeof sdk.findDuplicateGroups>>>(() => {
     try {
-      const row = getRawSqlite()?.prepare(DUPLICATES_FINGERPRINT_SQL).get();
-      if (row) return `${row.maxUpdated}|${row.entries}|${row.embeddings}`;
+      const sqlite = getRawSqlite();
+      if (sqlite) return duplicateFingerprint(sqlite as SQLiteDatabase, 0.9);
     } catch { /* fall through */ }
-    return `nocache-${++fingerprintMiss}`;
+    return 'unavailable';
   });
 
   // ─── Setup endpoints ───────────────────────────────────────────
@@ -2057,7 +2054,7 @@ Pass an array to addKnowledge to create multiple entries at once.
     const opts: { days?: number; minConfidence?: number; limit?: number } = {};
     if (q.days) opts.days = Number(q.days);
     if (q.minConfidence) opts.minConfidence = Number(q.minConfidence);
-    if (q.limit) opts.limit = Number(q.limit);
+    opts.limit = Math.min(500, Math.max(1, Math.floor(Number(q.limit) || 100)));
     return sdk.findStaleEntries(opts);
   });
 
@@ -2071,7 +2068,7 @@ Pass an array to addKnowledge to create multiple entries at once.
     const q = request.query as any;
     const opts: { threshold?: number; limit?: number } = {};
     if (q.threshold) opts.threshold = Number(q.threshold);
-    if (q.limit) opts.limit = Number(q.limit);
+    opts.limit = Math.min(500, Math.max(1, Math.floor(Number(q.limit) || 100)));
     const { value, hit } = await duplicatesCache.get(JSON.stringify(opts), () => sdk.findDuplicateGroups(opts));
     reply.header('x-cognistore-cache', hit ? 'hit' : 'miss');
     return value;

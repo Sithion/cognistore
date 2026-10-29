@@ -256,6 +256,8 @@ Input: query vector (768-dim), options (scope, tags, type, limit, threshold)
 
 `findDuplicateGroups` / `findDuplicatePairs` find every pair of non-system entries whose cosine similarity is at or above the threshold (default 0.9), the exact threshold graph, then group them with union-find. They never load `content` and never run one KNN query per entry:
 
+SDK paths run these scans in the `JobRunner` worker, which owns a SQLite connection, reports time-sliced checkpoints, and accepts cancellation. The cleanup report uses the same worker path. The SDK result cache uses the core duplicate fingerprint, including `dup_scan_generation` so vector-only re-embedding invalidates cached results. Requests clamp group/pair counts to 1–500; each group returns at most 50 members and includes the full `memberCount`.
+
 1. Metadata (`id, title, scope, type, version, updated_at`) in keyset pages of 5,000.
 2. Every vector once, read chunk by chunk (≤1024 vectors) straight from the vec0 shadow tables `knowledge_embeddings_rowids` + `knowledge_embeddings_vector_chunks00` into one preallocated matrix, normalized as it is filled.
 3. Exact pair search with Cauchy–Schwarz pruning (first 64 dimensions + tail norms), yielding to the event loop with `setImmediate` every ~15 ms. No synchronous slice reaches 100 ms on a 10k-entry base.

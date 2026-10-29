@@ -12,10 +12,12 @@ import {
   TokenUsageService,
   runMigrations,
   ClaudeCodeAdapter,
+  invalidateDuplicateScan,
   type SQLiteDatabase,
 } from '@cognistore/core';
 import { copyFixture, ensureFixture, generateTokenJsonlDir, DEFAULT_FIXTURE } from './fixtures/generate-fixture.js';
 import { budgetFor, hashEmbedder, measure, report } from './fixtures/perf-helpers.js';
+import { startSdk, forbidMain } from '../r5-worker-helpers.js';
 
 const __dirname = resolve(fileURLToPath(new URL('.', import.meta.url)));
 
@@ -147,16 +149,28 @@ test.describe('@perf large database (0.4)', () => {
     expect(rows).toBeGreaterThan(0);
   });
 
-  test('duplicate groups (single run, full scan — 1C.3 made it cooperative; see duplicates-eventloop)', async () => {
-    test.setTimeout(Math.max(budgetFor('duplicates.groups') + 60_000, 120_000));
-    const start = performance.now();
-    const groups = await service.findDuplicateGroups();
-    const ms = performance.now() - start;
-    report('duplicates.groups', ms, { groups: groups.length });
-    // The fixture plants ~140 clusters; the call caps the result list.
-    expect(groups.length).toBeGreaterThan(50);
-    expect(groups.every((g) => g.members.length >= 2)).toBe(true);
-    expect(ms).toBeLessThan(budgetFor('duplicates.groups'));
+  test('duplicate groups: SDK worker headline and separately labeled direct core', async () => {
+    test.setTimeout(Math.max(2 * budgetFor('duplicates.groups') + 60_000, 180_000));
+    const started = await startSdk(sqlite.name);
+    try {
+      invalidateDuplicateScan(sqlite);
+      const restore = forbidMain(['findDuplicateGroups']);
+      let groups: Awaited<ReturnType<typeof started.sdk.findDuplicateGroups>>;
+      const start = performance.now();
+      try { groups = await started.sdk.findDuplicateGroups(); }
+      finally { restore(); }
+      const ms = performance.now() - start;
+      report('duplicates.groups', ms, { groups: groups.length });
+      expect(groups.length).toBeGreaterThan(50);
+      expect(groups.every((g) => g.members.length >= 2)).toBe(true);
+      expect(ms).toBeLessThan(budgetFor('duplicates.groups'));
+      invalidateDuplicateScan(sqlite);
+      const coreStart = performance.now();
+      const direct = await service.findDuplicateGroups();
+      report('duplicates.groups.core', performance.now() - coreStart, { groups: direct.length });
+      const canonical = (xs: typeof direct) => xs.map((g) => g.members.map((m) => m.id).sort().join(',')).sort();
+      expect(canonical(direct)).toEqual(canonical(groups));
+    } finally { await started.close(); }
   });
 
   test('token scan, full then incremental', async () => {
