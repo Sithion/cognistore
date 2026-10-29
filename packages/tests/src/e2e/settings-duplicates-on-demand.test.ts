@@ -81,10 +81,13 @@ async function importEntries(entries: { title: string; content: string }[]) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       include: ['knowledge'],
-      knowledge: entries.map((e) => ({ ...e, type: 'pattern', scope: 'global', tags: ['dup-test'] })),
+      knowledge: entries.map((e) => ({ ...e, type: 'pattern', scope: 'global', source: 'e2e', tags: ['dup-test'] })),
     }),
   });
   expect(r.status).toBe(200);
+  const body = await r.json() as { knowledge: { imported: number; errors: string[] } };
+  expect(body.knowledge.errors).toEqual([]);
+  expect(body.knowledge.imported).toBe(entries.length);
 }
 
 test.describe.serial('Settings duplicates on demand (real sidecar + Chromium)', () => {
@@ -125,7 +128,10 @@ test.describe.serial('Settings duplicates on demand (real sidecar + Chromium)', 
   });
 
   test('opening Settings does not call the route; the button does, once', async () => {
-    browser = await chromium.launch();
+    // Full Chromium (new headless) rather than the separate headless-shell
+    // download: `playwright install chromium` provides both, and one binary
+    // keeps local setups simpler.
+    browser = await chromium.launch({ channel: 'chromium' });
     const page = await browser.newPage();
     // The Tauri shell injects the token; a plain browser needs it the same way.
     await page.addInitScript((token) => { (window as any).__COGNISTORE_TOKEN__ = token; }, TEST_TOKEN);
@@ -138,7 +144,14 @@ test.describe.serial('Settings duplicates on demand (real sidecar + Chromium)', 
     const dupRequests: string[] = [];
     page.on('request', (req) => { if (new URL(req.url()).pathname === DUP_ROUTE) dupRequests.push(req.url()); });
 
-    await page.goto(`${baseUrl}/settings`);
+    // Like the Tauri webview: load the SPA shell at `/` (deep links are not static
+    // paths and need the token), then route client-side to Settings.
+    await page.goto(`${baseUrl}/`);
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/settings');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
     const button = page.getByTestId('check-duplicates');
     await expect(button).toBeVisible({ timeout: 20_000 });
     // The health section has finished its mount-time load (stale entries).
