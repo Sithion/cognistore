@@ -30,7 +30,6 @@
     },
     "apps/mcp-server": {
       "ignoreDependencies": [
-        "better-sqlite3",
         "drizzle-orm",
         "sqlite-vec"
       ]
@@ -38,6 +37,9 @@
     "packages/tests": {
       "entry": [
         "scripts/*.mjs"
+      ],
+      "ignoreDependencies": [
+        "tsx"
       ]
     }
   },
