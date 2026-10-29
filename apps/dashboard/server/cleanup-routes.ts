@@ -41,21 +41,23 @@ export async function maybeGenerateReport(
   const read = deps.readSettings ?? readSettings;
   const write = deps.writeSettings ?? writeSettings;
   const settings = read();
-  if (!settings.cleanupEnabled) return { action: 'disabled' };
 
   try {
     // An ignored report would otherwise block the cycle forever: only one report
     // may be open at a time, and the timestamp only advances when one is created.
+    // Runs even with the cycle disabled (plan v2.6, 1A.6): a report left open
+    // before the user turned cleanup off would otherwise stay open forever.
     const latest = deps.sdk.getLatestCleanupReport();
     if (latest?.report?.status === 'open') {
       const ageDays = (Date.now() - Date.parse(latest.report.createdAt)) / 86_400_000;
       if (Number.isFinite(ageDays) && ageDays > settings.cleanupIntervalDays * 2) {
         deps.sdk.closeCleanupReport(latest.report.id, { autoClosed: true });
         deps.log('info', `Cleanup: auto-closed report ${latest.report.id} after ${Math.floor(ageDays)}d`);
-      } else {
+      } else if (settings.cleanupEnabled) {
         return { action: 'open-report', reportId: latest.report.id };
       }
     }
+    if (!settings.cleanupEnabled) return { action: 'disabled' };
 
     const last = settings.lastCleanupReportAt ? Date.parse(settings.lastCleanupReportAt) : NaN;
     const dueMs = settings.cleanupIntervalDays * 86_400_000;

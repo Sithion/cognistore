@@ -21,7 +21,7 @@ export const knowledgeEntries = sqliteTable(
     relatedIds: text('related_ids', { mode: 'json' }).$type<string[] | null>(),
     agentId: text('agent_id'),
     platform: text('platform'),
-    // Retention signal for the cleanup cycle. Written by markRead() only —
+    // Retention signal for the cleanup cycle. Written by markReadBatch() only —
     // never by update(), so it can never be confused with an edit.
     lastReadAt: text('last_read_at'),
     readCount: integer('read_count').notNull().default(0),

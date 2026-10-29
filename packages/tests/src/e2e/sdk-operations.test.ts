@@ -130,6 +130,8 @@ test('operations_daily stays in lock-step with the raw operations_log for the da
   // result count; add logs a write plus an internal dedup read).
   await ctx.service.search('rollup mirror read query');
   await factory.knowledge({ content: 'rollup mirror write entry' });
+  // Counters are buffered (plan v2.6, 1A.2): this test reads the tables directly.
+  ctx.service.flushPendingWrites();
 
   const daily =
     (ctx.sqlite.prepare('SELECT reads, writes FROM operations_daily WHERE date = ?').get(today) as

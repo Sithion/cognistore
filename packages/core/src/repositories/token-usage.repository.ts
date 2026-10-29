@@ -61,6 +61,32 @@ export class TokenUsageRepository {
     return row;
   }
 
+  /** Every scan_state row of one source, keyed by file path (one query per scan, not one per file). */
+  getScanStates(source: string): Map<string, ScanState> {
+    const rows = this.sqlite.prepare(`
+      SELECT source, file_path as filePath, last_offset as lastOffset, last_mtime as lastMtime
+      FROM scan_state WHERE source = ?
+    `).all(source) as ScanState[];
+    return new Map(rows.map((r) => [r.filePath, r]));
+  }
+
+  /** Upsert many scan_state rows in ONE transaction. */
+  upsertScanStates(states: ScanState[]): void {
+    if (states.length === 0) return;
+    const stmt = this.sqlite.prepare(`
+      INSERT INTO scan_state (source, file_path, last_offset, last_mtime, last_scanned_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(source, file_path) DO UPDATE SET
+        last_offset = excluded.last_offset,
+        last_mtime = excluded.last_mtime,
+        last_scanned_at = excluded.last_scanned_at
+    `);
+    const now = new Date().toISOString();
+    this.sqlite.transaction(() => {
+      for (const st of states) stmt.run(st.source, st.filePath, st.lastOffset, st.lastMtime, now);
+    })();
+  }
+
   upsertScanState(state: ScanState): void {
     this.sqlite.prepare(`
       INSERT INTO scan_state (source, file_path, last_offset, last_mtime, last_scanned_at)

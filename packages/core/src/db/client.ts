@@ -33,6 +33,14 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('busy_timeout = 5000');
   sqlite.pragma('foreign_keys = ON');
+  // Per-connection tuning (plan v2.6, 1A.1). NORMAL is durable with WAL: a
+  // power cut can lose the last commits, never corrupt the file. The sidecar
+  // and every MCP server go through here, so all connections match.
+  sqlite.pragma('synchronous = NORMAL');
+  sqlite.pragma('cache_size = -32000'); // 32 MB page cache
+  sqlite.pragma('mmap_size = 268435456'); // 256 MB of memory-mapped reads
+  sqlite.pragma('temp_store = MEMORY');
+  sqlite.pragma('journal_size_limit = 67108864'); // truncate the WAL back to 64 MB after checkpoints
 
   // Load sqlite-vec extension
   sqliteVec.load(sqlite);

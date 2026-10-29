@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { readdir, stat, open } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve, basename } from 'node:path';
 import type { ScannedTokenRecord, TokenSourceAdapter } from '../adapter.js';
@@ -31,9 +31,9 @@ function recordId(sessionId: string | null, messageId: string | null, occurredAt
  *
  * Streaming-by-chunks avoids loading huge JSONL files into memory.
  */
-function* readNewLines(filePath: string, fromOffset: number, fileSize: number): Generator<{ line: string; byteOffsetAfter: number }> {
+async function* readNewLines(filePath: string, fromOffset: number, fileSize: number): AsyncGenerator<{ line: string }> {
   if (fromOffset >= fileSize) return;
-  const fd = openSync(filePath, 'r');
+  const fh = await open(filePath, 'r');
   try {
     const CHUNK = 64 * 1024;
     const buf = Buffer.alloc(CHUNK);
@@ -41,7 +41,7 @@ function* readNewLines(filePath: string, fromOffset: number, fileSize: number): 
     let pending = '';
     while (offset < fileSize) {
       const toRead = Math.min(CHUNK, fileSize - offset);
-      const bytesRead = readSync(fd, buf, 0, toRead, offset);
+      const { bytesRead } = await fh.read(buf, 0, toRead, offset);
       if (bytesRead === 0) break;
       pending += buf.subarray(0, bytesRead).toString('utf8');
       offset += bytesRead;
@@ -50,20 +50,16 @@ function* readNewLines(filePath: string, fromOffset: number, fileSize: number): 
       while ((nl = pending.indexOf('\n', pendingStart)) !== -1) {
         const line = pending.slice(pendingStart, nl);
         pendingStart = nl + 1;
-        if (line.length > 0) {
-          // byteOffsetAfter is the position right after the consumed '\n'.
-          // We track it relative to the original file by counting consumed UTF-8 bytes.
-          yield { line, byteOffsetAfter: -1 };
-        }
+        if (line.length > 0) yield { line };
       }
       pending = pending.slice(pendingStart);
     }
     // We can't trivially produce byte offsets while decoding chunks of
     // arbitrary UTF-8. The caller stores `fileSize` as the new offset once a
     // full read completes — which is correct because we always read to EOF.
-    void pending; // trailing partial line is dropped until next scan
+    // A trailing partial line is dropped until the next scan.
   } finally {
-    closeSync(fd);
+    await fh.close();
   }
 }
 
@@ -110,41 +106,47 @@ export class ClaudeCodeAdapter implements TokenSourceAdapter {
   }
 
   async *scan(getState: (filePath: string) => ScanState | undefined): AsyncIterable<ScannedTokenRecord> {
-    if (!existsSync(this.projectsDir)) return;
+    let folders: string[];
+    try { folders = await readdir(this.projectsDir); } catch { return; }
 
-    for (const folder of readdirSync(this.projectsDir)) {
+    for (const folder of folders) {
       const projectDir = resolve(this.projectsDir, folder);
-      let stat;
-      try { stat = statSync(projectDir); } catch { continue; }
-      if (!stat.isDirectory()) continue;
+      try { if (!(await stat(projectDir)).isDirectory()) continue; } catch { continue; }
 
       const project = decodeProject(basename(folder));
       let files: string[];
-      try { files = readdirSync(projectDir); } catch { continue; }
+      try { files = await readdir(projectDir); } catch { continue; }
 
       for (const fileName of files) {
         if (!fileName.endsWith('.jsonl')) continue;
         const filePath = resolve(projectDir, fileName);
         let fstat;
-        try { fstat = statSync(filePath); } catch { continue; }
+        try { fstat = await stat(filePath); } catch { continue; }
         const fileSize = fstat.size;
         const mtime = fstat.mtime.toISOString();
-        const state = getState(filePath);
-        const fromOffset = state?.lastOffset ?? 0;
+        // Size-based skip BEFORE opening: session logs are append-only.
+        const fromOffset = getState(filePath)?.lastOffset ?? 0;
         if (fromOffset >= fileSize) continue;
 
-        for (const { line } of readNewLines(filePath, fromOffset, fileSize)) {
-          const parsed = parseUsageLine(line);
-          if (!parsed) continue;
-          const record: TokenUsageRecord = {
-            ...parsed,
-            id: recordId(parsed.sessionId, parsed.messageId, parsed.occurredAt),
-            project,
-          };
-          // byteOffset is fileSize for every record yielded from this file;
-          // the scanner uses the highest seen offset, so this is safe.
-          yield { record, filePath, byteOffset: fileSize, mtime };
-        }
+        let emitted = false;
+        try {
+          for await (const { line } of readNewLines(filePath, fromOffset, fileSize)) {
+            const parsed = parseUsageLine(line);
+            if (!parsed) continue;
+            const record: TokenUsageRecord = {
+              ...parsed,
+              id: recordId(parsed.sessionId, parsed.messageId, parsed.occurredAt),
+              project,
+            };
+            emitted = true;
+            // byteOffset is fileSize for every record yielded from this file;
+            // the scanner uses the highest seen offset, so this is safe.
+            yield { record, filePath, byteOffset: fileSize, mtime };
+          }
+        } catch { continue; }
+        // A file with no usage lines (yet) is still "seen at this size", or it
+        // would be re-read from the start on every pass.
+        if (!emitted) yield { record: null, filePath, byteOffset: fileSize, mtime };
       }
     }
   }

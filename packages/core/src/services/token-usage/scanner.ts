@@ -14,7 +14,8 @@ const BATCH_SIZE = 200;
  * Runs every registered adapter once, collects records in small batches, and
  * persists them via INSERT OR IGNORE so re-scans are idempotent. After every
  * file the scan_state is advanced to the file's byte length at the time of
- * scanning, so the next run only reads appended content.
+ * scanning, so the next run only reads appended content. The scan_state is
+ * read once per adapter and written back in one transaction.
  */
 export class TokenUsageScanner {
   constructor(
@@ -40,9 +41,8 @@ export class TokenUsageScanner {
         batch = [];
       };
 
-      for await (const { record, filePath, byteOffset, mtime } of adapter.scan(
-        (fp) => this.repo.getScanState(adapter.name, fp),
-      )) {
+      const states = this.repo.getScanStates(adapter.name);
+      for await (const { record, filePath, byteOffset, mtime } of adapter.scan((fp) => states.get(fp))) {
         // record === null is a "seen this file, nothing to store yet" signal —
         // we still record the offset so we don't reread on the next pass.
         if (record) {
@@ -54,15 +54,12 @@ export class TokenUsageScanner {
       }
       flush();
 
-      // Advance scan_state once per file we read from.
-      for (const [filePath, { offset, mtime }] of offsets) {
-        this.repo.upsertScanState({
-          source: adapter.name,
-          filePath,
-          lastOffset: offset,
-          lastMtime: mtime,
-        });
-      }
+      // Advance scan_state once per file we read from, all in one transaction.
+      this.repo.upsertScanStates(
+        Array.from(offsets, ([filePath, { offset, mtime }]) => ({
+          source: adapter.name, filePath, lastOffset: offset, lastMtime: mtime,
+        })),
+      );
 
       totalInserted += stats.inserted;
       totalScanned += stats.scanned;

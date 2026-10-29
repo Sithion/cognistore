@@ -122,11 +122,75 @@ export class KnowledgeService {
     private embeddingProvider: EmbeddingProvider
   ) {}
 
+  // ─── Buffered telemetry writes (plan v2.6, 1A.2 + 1A.3) ─────────
+  // Every search used to INSERT into operations_log (and bump the daily
+  // rollup) and, with trackRead, UPDATE the hits — synchronous writes on the
+  // read path of a database shared with every agent session. Both are now
+  // counted in memory and written in ONE transaction per flush: operations
+  // every 30 s, read marks every 10 s, on close, and before anything in this
+  // process reads them back. Another process sees them up to one interval late.
+
+  private static readonly OPS_FLUSH_MS = 30_000;
+  private static readonly READS_FLUSH_MS = 10_000;
+  /** Read marks are best-effort: wait this long for the lock, then drop the batch. */
+  private static readonly READS_BUSY_MS = 250;
+  /** `${op}|${ISO second}` → count; one raw row per counted op is still written. */
+  private pendingOps = new Map<string, number>();
+  /** entry id → reads since the last flush, and when the latest one happened. */
+  private pendingReads = new Map<string, { count: number; at: string }>();
+  private opsTimer: ReturnType<typeof setTimeout> | null = null;
+  private readsTimer: ReturnType<typeof setTimeout> | null = null;
+
   private logOp(op: 'read' | 'write', count = 1) {
-    try {
-      if (count <= 1) this.repository.logOperation(op);
-      else this.repository.logOperationBatch(op, count);
-    } catch { /* silent */ }
+    // As before buffering: a call always counts at least once (a search with
+    // no hits is still one read on the Activity chart).
+    const n = Math.max(1, count);
+    const key = `${op}|${new Date().toISOString().slice(0, 19)}.000Z`;
+    this.pendingOps.set(key, (this.pendingOps.get(key) ?? 0) + n);
+    if (!this.opsTimer) {
+      this.opsTimer = setTimeout(() => { this.opsTimer = null; this.flushOperations(); }, KnowledgeService.OPS_FLUSH_MS);
+      this.opsTimer.unref?.();
+    }
+  }
+
+  private bufferReads(ids: string[]) {
+    const at = new Date().toISOString();
+    for (const id of ids) this.pendingReads.set(id, { count: (this.pendingReads.get(id)?.count ?? 0) + 1, at });
+    if (!this.readsTimer) {
+      this.readsTimer = setTimeout(() => { this.readsTimer = null; this.flushReads(); }, KnowledgeService.READS_FLUSH_MS);
+      this.readsTimer.unref?.();
+    }
+  }
+
+  /** Write the buffered operation counters (one transaction). Errors are swallowed, as the per-op insert's were. */
+  flushOperations(): void {
+    if (this.pendingOps.size === 0) return;
+    const batch = Array.from(this.pendingOps, ([key, count]) => {
+      const [operation, createdAt] = key.split('|');
+      return { operation: operation as 'read' | 'write', createdAt, count };
+    });
+    this.pendingOps.clear();
+    try { this.repository.logOperationsBuffered(batch); } catch { /* silent */ }
+  }
+
+  /** Write the buffered read marks (one transaction, short lock wait); a busy database drops them. */
+  flushReads(): void {
+    if (this.pendingReads.size === 0) return;
+    const batch = Array.from(this.pendingReads, ([id, r]) => ({ id, count: r.count, at: r.at }));
+    this.pendingReads.clear();
+    try { this.repository.markReadBatch(batch, KnowledgeService.READS_BUSY_MS); } catch { /* best-effort signal */ }
+  }
+
+  /** Flush both buffers now (close, process exit, tests). */
+  flushPendingWrites(): void {
+    this.flushOperations();
+    this.flushReads();
+  }
+
+  /** Cancel the flush timers (the owner is closing the database). */
+  stopPendingWriteTimers(): void {
+    if (this.opsTimer) { clearTimeout(this.opsTimer); this.opsTimer = null; }
+    if (this.readsTimer) { clearTimeout(this.readsTimer); this.readsTimer = null; }
   }
 
   private buildEmbeddingText(title: string, content: string, tags: string[]): string {
@@ -198,15 +262,12 @@ export class KnowledgeService {
     // search) pass trackRead. Internal scans and browsing must not mark, or
     // nothing would ever qualify as unread.
     //
-    // Deferred off the response path on purpose: better-sqlite3 is synchronous
+    // Buffered off the response path on purpose: better-sqlite3 is synchronous
     // and a contended write (the MCP server and the sidecar share this DB) would
     // otherwise stall the caller for up to busy_timeout. Do NOT "fix" this into
-    // an inline await. Best-effort: a lost mark only delays a cleanup candidate.
+    // an inline write. Best-effort: a lost mark only delays a cleanup candidate.
     if (options?.trackRead && results.length > 0) {
-      const readIds = results.map((r) => r.entry.id);
-      setImmediate(() => {
-        try { this.repository.markRead(readIds); } catch { /* best-effort */ }
-      });
+      this.bufferReads(results.map((r) => r.entry.id));
     }
     const direct: SearchResult[] = results.map((r) => ({
       entry: this.toKnowledgeEntry(r.entry),
@@ -675,6 +736,7 @@ export class KnowledgeService {
    * what could be removed.
    */
   async generateCleanupReport(opts: { unreadDays?: number; dupThreshold?: number } = {}) {
+    this.flushReads(); // unread detection reads last_read_at
     const unreadDays = opts.unreadDays ?? CLEANUP_UNREAD_DAYS;
     const dupThreshold = opts.dupThreshold ?? CLEANUP_DUP_THRESHOLD;
 
@@ -1565,10 +1627,12 @@ export class KnowledgeService {
   // ─── Operations ─────────────────────────────────────────────
 
   getOperationCounts() {
+    this.flushOperations();
     return this.repository.getOperationCounts();
   }
 
   getOperationsByDay(days: number = 15) {
+    this.flushOperations();
     return this.repository.getOperationsByDay(days);
   }
 
@@ -1577,10 +1641,12 @@ export class KnowledgeService {
   }
 
   reconcileOperationsDaily() {
+    this.flushOperations();
     return this.repository.reconcileOperationsDaily();
   }
 
   cleanupOldOperations() {
+    this.flushOperations();
     return this.repository.cleanupOldOperations();
   }
 

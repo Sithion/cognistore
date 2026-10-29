@@ -775,6 +775,33 @@ export class KnowledgeSDK {
     this.sqlite!.pragma('wal_checkpoint(PASSIVE)');
   }
 
+  /**
+   * Instrument this SDK's database handle with a perf monitor (plan v2.6,
+   * 1A.7). Call after `initialize()`; no-op before it.
+   */
+  attachPerfMonitor(monitor: { attach(sqlite: SQLiteDatabase): void }): void {
+    if (this.sqlite) monitor.attach(this.sqlite);
+  }
+
+  /**
+   * `PRAGMA optimize`: refresh query-planner statistics where SQLite thinks they
+   * are stale. Cheap when nothing changed; run on close and by the sidecar's
+   * 6-hour maintenance (plan v2.6, 1A.1).
+   */
+  optimize(): void {
+    this.ensureInitialized();
+    this.sqlite!.pragma('optimize');
+  }
+
+  /**
+   * Write the buffered operation counters and read marks now (plan v2.6,
+   * 1A.2/1A.3). Synchronous, so it is safe in a process 'exit' handler.
+   * No-op when not initialized.
+   */
+  flushPendingWrites(): void {
+    try { this.service?.flushPendingWrites(); } catch { /* best-effort */ }
+  }
+
   private ensureInitialized(): void {
     if (!this.initialized || !this.service) {
       throw new ConnectionError('SDK not initialized. Call initialize() first.');
@@ -783,6 +810,9 @@ export class KnowledgeSDK {
 
   private async cleanup(): Promise<void> {
     if (this.sqlite) {
+      this.flushPendingWrites();
+      this.service?.stopPendingWriteTimers();
+      try { this.sqlite.pragma('optimize'); } catch { /* read-only or busy: skip */ }
       try {
         this.sqlite.close();
       } catch {
