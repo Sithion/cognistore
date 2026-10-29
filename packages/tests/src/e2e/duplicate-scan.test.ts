@@ -1,3 +1,4 @@
+import { KnowledgeType } from '@cognistore/shared';
 import { test, expect } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -92,7 +93,7 @@ test.describe.serial('duplicate scan (1C.2 + 1C.3)', () => {
     const base = sqlite.prepare('SELECT embedding FROM knowledge_embeddings WHERE id = ?').get(loner) as { embedding: Buffer };
     const vec = Array.from(new Float32Array(base.embedding.buffer, base.embedding.byteOffset, base.embedding.byteLength / 4));
     const copy = vec.map((v, i) => v + (i % 7 === 0 ? 0.001 : 0));
-    const added = await repo.create({ title: 'near copy', content: 'near copy', tags: ['dup'], type: 'pattern', scope: 'global', source: 'test', embedding: copy });
+    const added = await repo.create({ title: 'near copy', content: 'near copy', tags: ['dup'], type: KnowledgeType.PATTERN, scope: 'global', source: 'test', embedding: copy });
 
     let inc = await scanDuplicatePairs(sqlite, 0.9);
     expect(inc.mode).toBe('incremental');

@@ -8,7 +8,8 @@
     "test:e2e": "npx playwright test --grep @e2e",
     "test:load": "npx playwright test --grep @load",
     "test:perf": "PERF=1 npx playwright test --project performance --grep @perf --workers=1",
-    "build": "echo 'No build needed for test package'"
+    "build": "echo 'No build needed for test package'",
+    "type-check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@cognistore/core": "workspace:*",

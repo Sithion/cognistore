@@ -162,6 +162,80 @@ jobs:
             exit 1
           fi
 
+  # The Tauri shell (Rust) is otherwise only compiled by publish.yml after a
+  # merge to main: a Rust break surfaced only at release time. cargo check +
+  # cargo test on every PR, with the toolchain pinned in rust-toolchain.toml and
+  # the same Linux deps as publish.yml.
+  rust:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/dashboard/src-tauri
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install Linux deps (same as publish.yml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Install Rust (version from rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: '1.97.0' # keep in sync with apps/dashboard/src-tauri/rust-toolchain.toml
+      - name: Rust cache
+        uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: apps/dashboard/src-tauri
+      - name: Stub the bundled resources build.rs requires
+        # tauri.conf.json lists ../sidecar-bundle/{dist,dist-server,node_modules}
+        # as resources; tauri_build fails when they are missing. The real bundle
+        # is only assembled by publish.yml.
+        run: mkdir -p ../sidecar-bundle/dist ../sidecar-bundle/dist-server ../sidecar-bundle/node_modules
+      - run: rustc --version && cargo --version
+      - run: cargo check --locked
+      - run: cargo test --locked
+
+  # Report-only performance run (plan v2.6, T.10): the @perf suite on the
+  # seeded 10k-entry fixture, budgets scaled for a shared runner. It never
+  # fails the PR; the PERF lines land in the job summary for comparison with
+  # packages/tests/src/performance/baseline.json.
+  perf:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    env:
+      PERF_BUDGET_SCALE: '3'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Cache the perf fixture
+        # The fixture is deterministic per generator version (FIXTURE_VERSION
+        # lives in generate-fixture.ts), so the file's hash is the cache key.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/cognistore-perf-fixture-v*
+          key: perf-fixture-${{ hashFiles('packages/tests/src/performance/fixtures/generate-fixture.ts') }}
+      - name: Run the @perf suite (report only)
+        run: |
+          set -o pipefail
+          cd packages/tests
+          pnpm test:perf --reporter=list 2>&1 | tee "$RUNNER_TEMP/perf.log"
+      - name: PERF lines to the job summary
+        if: always()
+        run: |
+          {
+            echo "### @perf (PERF_BUDGET_SCALE=$PERF_BUDGET_SCALE, report only)"
+            echo '```'
+            grep -oE 'PERF [^ ]+ [0-9.]+ms.*' "$RUNNER_TEMP/perf.log" || echo "(no PERF lines)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Free dependency vulnerability scanning via OSV-Scanner (osv.dev). Covers npm
   # (pnpm-lock.yaml) and Cargo (apps/dashboard/src-tauri/Cargo.lock) in one pass.
   # Runs on every PR/push and the weekly schedule. Self-contained (no third-party

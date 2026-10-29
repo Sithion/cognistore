@@ -1,9 +1,11 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "noEmit": true
+    "noEmit": true,
+    // Tests import sidecar modules from apps/dashboard/server, so the root
+    // must span the repo; DOM types cover page.evaluate bodies and fetch().json().
+    "rootDir": "../..",
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src"]
 }

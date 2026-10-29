@@ -19,6 +19,12 @@
 
 ### Tests
 - **Performance suite on a realistic large base.** A seeded generator builds a 10,000-entry database (0.5–10 KB contents, real embeddings shape, 5% near-duplicate clusters) with 200,000 token-usage rows and 50,000 operation-log rows, plus Claude Code–style JSONL session logs. The same seed always produces the same file, and it is cached between runs. `pnpm --filter @cognistore/tests test:perf` (on demand, one worker; not part of the default `pnpm test`) times hybrid search, paginated listing, stats, token aggregates, duplicate detection and the token scan against budgets of 4× the recorded baseline (`packages/tests/src/performance/baseline.json`), and prints a `PERF <case> <ms>` line for each. A contention harness runs three agent-session processes and the sidecar's periodic work against one database and records lock waits and `SQLITE_BUSY` errors. Baseline highlights: duplicate detection 41 s and the 180-day token aggregates 1.7 s — the first targets of phases 1–2.
+- **The test package is type-checked.** `packages/tests` now has a `type-check` script and runs in `pnpm type-check` (and the CI `type-check` job). Its tsconfig spans the repo (the tests import sidecar modules) and includes DOM types for `page.evaluate` bodies and `fetch().json()`.
+- **The upgrade e2e no longer depends on the real home.** It compared the mtimes of the developer's own `~/.claude.json` & co. before and after, which failed whenever a running Claude Code touched them. It now proves the HOME override held by finding every artifact the upgrade writes under the sandbox HOME.
+
+### CI
+- **New `rust` job:** `cargo check --locked` and `cargo test --locked` for the Tauri shell on every PR (`ubuntu-24.04`, the same Linux deps as the release build). Until now Rust only compiled in `publish.yml`, after a merge to `main`. The toolchain is pinned in `apps/dashboard/src-tauri/rust-toolchain.toml` (1.97.0).
+- **New `perf` job (report only):** runs the `@perf` suite on the cached 10k-entry fixture with budgets ×3 for the shared runner and posts the `PERF` lines to the job summary. It never fails the PR.
 
 ## v2.5.3
 
