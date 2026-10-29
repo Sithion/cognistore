@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { authFetch } from '../sidecar-helpers.js';
+import { authFetch, TEST_TOKEN } from '../sidecar-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -114,11 +114,13 @@ test.beforeAll(async () => {
       // Without this the sidecar resolves settings.json from homedir() and these
       // tests would rewrite the developer's real ~/.cognistore on every run.
       COGNISTORE_HOME: sandboxHome,
+      // The startup token scan reads homedir()/.claude/projects; keep it off the real HOME.
+      HOME: tmpRoot,
       OLLAMA_HOST: `http://127.0.0.1:${mock.port}`,
       OLLAMA_MODEL: model,
       DASHBOARD_PORT: String(port),
       DASHBOARD_DIST_PATH: distDir,
-      SIDECAR_TOKEN: 'test-token',
+      SIDECAR_TOKEN: TEST_TOKEN,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

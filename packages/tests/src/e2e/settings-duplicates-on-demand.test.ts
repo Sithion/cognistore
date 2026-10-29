@@ -103,6 +103,8 @@ test.describe.serial('Settings duplicates on demand (real sidecar + Chromium)', 
     const spawned = spawnSidecar({
       SQLITE_PATH: join(tmpRoot, 'knowledge.db'),
       COGNISTORE_HOME: join(tmpRoot, 'cognistore-home'),
+      // The startup token scan reads homedir()/.claude/projects; keep it off the real HOME.
+      HOME: tmpRoot,
       OLLAMA_HOST: `http://127.0.0.1:${mock.port}`,
       OLLAMA_MODEL: model,
       DASHBOARD_PORT: String(port),
