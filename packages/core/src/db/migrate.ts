@@ -233,6 +233,11 @@ ALTER TABLE plans ADD COLUMN root_plan_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_plans_parent_plan_id ON plans(parent_plan_id);
 CREATE INDEX IF NOT EXISTS idx_plans_root_plan_id ON plans(root_plan_id);
 `,
+  '2.4.2': `
+-- Remove obsolete pre-token_usage telemetry tables.
+DROP TABLE IF EXISTS consumption_samples;
+DROP TABLE IF EXISTS consumption_ingest_state;
+`,
 };
 
 /**
