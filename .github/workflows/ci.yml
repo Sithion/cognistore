@@ -190,6 +190,35 @@ jobs:
             exit 1
           fi
 
+  # The packaged sidecar is otherwise only built by publish.yml after a merge to
+  # main. Build it the way publish.yml does (web + native phases, better-sqlite3
+  # rebuilt for Node 24) and run it like the desktop app: ready marker, health,
+  # and an add + semantic search that needs sqlite-vec from the bundled
+  # node_modules. The AppImage/deb themselves stay in publish.yml (see
+  # documentation/ci-cd.md).
+  sidecar-bundle:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build the sidecar bundle
+        working-directory: apps/dashboard
+        run: node scripts/bundle-sidecar.mjs
+      # The bundle step compiles the per-platform agent instructions from the
+      # base template; the committed copies must match what ships.
+      - name: Compiled agent instructions are up to date
+        run: git diff --exit-code -- apps/dashboard/templates/configs
+      - name: Smoke-test the bundle
+        working-directory: apps/dashboard
+        run: node scripts/smoke-sidecar-bundle.mjs
+
   # The Tauri shell (Rust) is otherwise only compiled by publish.yml after a
   # merge to main: a Rust break surfaced only at release time. cargo check +
   # cargo test on every PR, with the toolchain pinned in rust-toolchain.toml and
@@ -218,7 +247,7 @@ jobs:
       - name: Stub the bundled resources build.rs requires
         # tauri.conf.json lists ../sidecar-bundle/{dist,dist-server,node_modules}
         # as resources; tauri_build fails when they are missing. The real bundle
-        # is only assembled by publish.yml.
+        # is built and smoke-tested by the sidecar-bundle job.
         run: mkdir -p ../sidecar-bundle/dist ../sidecar-bundle/dist-server ../sidecar-bundle/node_modules
       - run: rustc --version && cargo --version
       - run: cargo check --locked
