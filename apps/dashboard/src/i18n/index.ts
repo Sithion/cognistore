@@ -730,4 +730,3 @@ i18n.on('languageChanged', (lng) => {
   localStorage.setItem(LANG_KEY, lng);
 });
 
-export default i18n;

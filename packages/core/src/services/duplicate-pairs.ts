@@ -29,7 +29,7 @@ export interface SimilarPair {
 }
 
 /** Dimensions in the pruning head; the tail norm bounds the rest. */
-export const HEAD = 64;
+const HEAD = 64;
 
 /**
  * Safety cap on collected pairs. m near-identical entries make m(m-1)/2 pairs,

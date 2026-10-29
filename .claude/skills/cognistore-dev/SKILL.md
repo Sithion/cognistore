@@ -76,8 +76,8 @@ Build before running tests after touching `packages/*` — the test package cons
 
 ## Before you say "done"
 
-- [ ] `pnpm build && pnpm test` (or the relevant filtered suites) pass — once Phase T lands, `pnpm verify`
-- [ ] No new `knip` findings (unused files/exports/deps)
+- [ ] `pnpm verify` passes (Biome lint, type-check, build, unit, scripts, integration, knip — what CI's build-and-test runs)
+- [ ] No new `knip` findings (unused files/exports/deps); a real entry knip cannot see goes in `knip.json`, not an `export` kept alive
 - [ ] Migration parity test passes if schema changed
 - [ ] PATCH-NOTES.md updated
 - [ ] Docs in `documentation/` updated if behaviour/schema/API changed (`database.md`, `api-reference.md`, `mcp-server.md`, `architecture.md`)

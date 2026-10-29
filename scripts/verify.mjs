@@ -3,7 +3,7 @@
  * One command for "is this branch good?" (plan v2.6, T.12). CI's build-and-test
  * job and the pre-push hook run exactly this.
  *
- *   pnpm verify                 # lint, type-check, build, unit, integration
+ *   pnpm verify                 # lint, type-check, build, unit, integration, knip
  *   pnpm verify --coverage      # same, under V8 coverage, then the baseline gate
  *   pnpm verify --coverage --markdown <file>   # also write the coverage table
  *
@@ -15,15 +15,14 @@
  *   scripts     node:test for the root tooling scripts (scripts/test/)
  *   integration Playwright projects e2e, load and compat: the API inventory, the
  *               MCP contract and MCP x DB matrix, and the upgrade matrix
- *   knip        only when knip is installed (it is not, yet)
+ *   knip        unused files, exports and dependencies (knip.json)
  *   coverage    with --coverage: scripts/coverage-report.mjs against
  *               coverage-baseline.json. It also runs when unit or integration
  *               failed, so the table shows what was measured; verify still fails.
  * The @perf suite is not part of it; CI runs it in its own job.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,9 +38,8 @@ const steps = [
   ['unit', coverage ? ['pnpm', 'coverage:unit'] : ['pnpm', '--filter', '@cognistore/core', '--filter', '@cognistore/dashboard', 'test']],
   ['scripts', ['pnpm', 'test:scripts']],
   ['integration', coverage ? ['pnpm', 'coverage:integration'] : ['pnpm', '--filter', '@cognistore/tests', 'test']],
+  ['knip', ['pnpm', 'knip']],
 ];
-if (existsSync(join(ROOT, 'node_modules', '.bin', 'knip'))) steps.push(['knip', ['pnpm', 'exec', 'knip']]);
-else console.log('verify: knip is not installed — skipped');
 if (coverage) steps.push(['coverage', ['node', 'scripts/coverage-report.mjs', ...(markdown ? ['--markdown', markdown] : [])]]);
 
 const timings = [];

@@ -14,7 +14,7 @@ import { DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
  *
  * Bump FIXTURE_VERSION whenever the generated content changes.
  */
-export const FIXTURE_VERSION = 1;
+const FIXTURE_VERSION = 1;
 
 export interface FixtureOptions {
   entries?: number;
@@ -129,7 +129,7 @@ function randomTags(rng: Rng): string[] {
   return [...set];
 }
 
-export function fixturePath(opts: FixtureOptions = {}): string {
+function fixturePath(opts: FixtureOptions = {}): string {
   const o = { ...DEFAULT_FIXTURE, ...opts };
   return join(
     tmpdir(),

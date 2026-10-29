@@ -19,16 +19,7 @@ interface Metrics {
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'empty' | 'error';
 
-export type RefreshInterval = 0 | 1 | 10 | 30 | 60 | 300;
-
-export const REFRESH_OPTIONS: { label: string; value: RefreshInterval }[] = [
-  { label: 'Off', value: 0 },
-  { label: '1s', value: 1 },
-  { label: '10s', value: 10 },
-  { label: '30s', value: 30 },
-  { label: '1m', value: 60 },
-  { label: '5m', value: 300 },
-];
+type RefreshInterval = 0 | 1 | 10 | 30 | 60 | 300;
 
 interface StatsState {
   stats: Stats | null;

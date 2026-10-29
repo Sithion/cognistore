@@ -16,7 +16,7 @@ export const hashEmbedder: EmbeddingProvider = {
   },
 };
 
-export function median(values: number[]): number {
+function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
@@ -35,10 +35,10 @@ export async function measure(fn: () => unknown, runs = 5): Promise<number> {
 }
 
 /** Floor so sub-millisecond baselines don't turn into flaky budgets. */
-export const BUDGET_FLOOR_MS = 50;
-export const BUDGET_FACTOR = 4;
+const BUDGET_FLOOR_MS = 50;
+const BUDGET_FACTOR = 4;
 
-export const PERF_CASES = [
+const PERF_CASES = [
   'search.hybrid', 'listRecent.offset0', 'listRecent.offset5000', 'stats.knowledge',
   'tokens.aggregates30d', 'tokens.aggregates180d', 'duplicates.groups', 'tokens.scanFull', 'tokens.scanIncremental',
 ] as const;

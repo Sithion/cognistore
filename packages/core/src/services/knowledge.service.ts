@@ -31,18 +31,18 @@ export interface EmbeddingProvider {
 }
 
 /** Default window for "nobody has retrieved this" (days). */
-export const CLEANUP_UNREAD_DAYS = 180;
+const CLEANUP_UNREAD_DAYS = 180;
 /**
  * Similarity above which two entries are proposed for consolidation. High on
  * purpose: the non-canonical members are deleted, so a false positive costs
  * real knowledge.
  */
-export const CLEANUP_DUP_THRESHOLD = 0.92;
+const CLEANUP_DUP_THRESHOLD = 0.92;
 /**
  * If no read has been recorded in this many days, treat read tracking as not
  * running and suppress unread detection entirely.
  */
-export const CLEANUP_READ_LIVENESS_DAYS = 14;
+const CLEANUP_READ_LIVENESS_DAYS = 14;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

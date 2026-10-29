@@ -63,7 +63,7 @@ The sidecar also self-heals at startup: when `~/.cognistore/.artifacts-version` 
 Every change MUST update `PATCH-NOTES.md` at the project root. Group entries by version and category (features, fixes, improvements). This file is linked from README.md.
 
 ### Testing
-Every new feature should have corresponding tests in `packages/tests/` (integration/e2e, Playwright). Core logic also gets unit tests in `packages/core/test/` (Vitest, real temp SQLite + stub embedder; helpers in `test/helpers.ts`), and the sidecar's pure modules in `apps/dashboard/server/test/`. The test suite runs on CI for every PR and feature branch push. `pnpm verify` runs everything CI's build-and-test job does (lint with Biome, type-check, build, unit, the root scripts' `node:test` suite, integration, knip once installed), and the `pre-push` hook runs it too.
+Every new feature should have corresponding tests in `packages/tests/` (integration/e2e, Playwright). Core logic also gets unit tests in `packages/core/test/` (Vitest, real temp SQLite + stub embedder; helpers in `test/helpers.ts`), and the sidecar's pure modules in `apps/dashboard/server/test/`. The test suite runs on CI for every PR and feature branch push. `pnpm verify` runs everything CI's build-and-test job does (lint with Biome, type-check, build, unit, the root scripts' `node:test` suite, integration, knip), and the `pre-push` hook runs it too.
 
 ## Path Resolution
 

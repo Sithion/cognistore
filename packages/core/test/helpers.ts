@@ -5,7 +5,7 @@ import { createDbClient } from '../src/db/client.js';
 import { KnowledgeRepository } from '../src/repositories/knowledge.repository.js';
 import { KnowledgeService, type EmbeddingProvider } from '../src/services/knowledge.service.js';
 
-export const DIMS = 256;
+const DIMS = 256;
 
 /**
  * Deterministic embedding: a bag of character trigrams hashed into DIMS
@@ -25,7 +25,7 @@ export function stubEmbedding(text: string): number[] {
   return v.map((x) => x / m);
 }
 
-export const stubEmbedder: EmbeddingProvider & { calls: string[] } = {
+const stubEmbedder: EmbeddingProvider & { calls: string[] } = {
   calls: [],
   async embed(text: string) {
     this.calls.push(text);
