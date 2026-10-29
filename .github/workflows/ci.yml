@@ -145,10 +145,36 @@ jobs:
       # The Settings duplicates e2e drives the built dashboard in Chromium.
       - name: Install Chromium for browser e2e
         run: cd packages/tests && npx playwright install --with-deps chromium
-      - name: Run unit tests (Vitest)
-        run: pnpm --filter @cognistore/core --filter @cognistore/dashboard test
-      - name: Run tests
-        run: cd packages/tests && npx playwright test --reporter=list
+      # Both layers run under V8 coverage: Vitest for the unit layer, c8 around
+      # the Playwright suites (it also measures the sidecar and MCP processes
+      # they spawn, which inherit NODE_V8_COVERAGE). See documentation/ci-cd.md.
+      - name: Run unit tests (Vitest, coverage)
+        run: pnpm coverage:unit
+      # No extra argv: pnpm 9 forwards a literal `--`, which Playwright would read
+      # as a file filter (no tests run). The list reporter comes from the config.
+      - name: Run tests (Playwright under c8)
+        run: pnpm coverage:integration
+      # Per-package table in the job summary; fails when a package drops more
+      # than 0.5 pt below coverage-baseline.json.
+      - name: Coverage report and baseline gate
+        if: ${{ !cancelled() }}
+        run: |
+          set +e
+          node scripts/coverage-report.mjs --markdown coverage/summary.md
+          status=$?
+          [ -f coverage/summary.md ] && cat coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: Upload coverage reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: coverage
+          path: |
+            coverage/
+            packages/core/coverage/
+            apps/dashboard/coverage/
+            !coverage/integration/.v8/
+          retention-days: 14
       - name: Dry-run npm publish (fail on warnings)
         run: |
           OUTPUT=$(cd apps/mcp-server && npm publish --dry-run --access public 2>&1)
