@@ -88,7 +88,7 @@ test('the matrix covers every published schema version', () => {
     ['0.8.0', '0.8.0-via-2.1.0', '0.9.0', '1.3.0', '1.3.0-legacy', '2.0.0', '2.1.0', '2.3.5', '2.4.0', '2.4.1', '2.5.4'].sort(),
   );
   const published = ['0.8.0', '0.9.0', '1.3.0', '2.0.0', '2.1.0', '2.3.0', '2.3.2', '2.4.0', '2.4.1'];
-  const unreleased = ['2.4.2'];
+  const unreleased = ['2.4.2', '2.4.3'];
   const shipped = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).map((f) => f.replace('.sql', '')).sort();
   expect([...manifest['2.5.4'].schemaVersions].sort()).toEqual([...published].sort());
   expect(shipped).toEqual([...published, ...unreleased].sort());

@@ -699,6 +699,11 @@ export class KnowledgeSDK {
     return this.tokenService!.scan();
   }
 
+  pruneTokenUsageBefore(cutoff: string, opts?: { signal?: AbortSignal }): Promise<number> {
+    this.ensureInitialized();
+    return this.tokenService!.pruneBefore(cutoff, opts);
+  }
+
   getTokenUsage(filter: TokenUsageFilter): TokenUsageAggregates {
     this.ensureInitialized();
     return this.tokenService!.getAggregates(filter);

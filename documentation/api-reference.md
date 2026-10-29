@@ -4,6 +4,19 @@
 
 The Fastify sidecar server exposes a REST API consumed by the React frontend. It binds `127.0.0.1` on a port in the 3210-3309 range.
 
+## Token usage retention setting
+
+Settings include `tokenUsageRetentionDays`: default 90, integer 0 through 36500;
+zero retains raw usage forever. Maintenance deletes at most 5000 raw rows per
+transaction and yields between batches. Invalid values use 90.
+
+Daily totals remain permanent. Hourly and session detail uses retained raw rows.
+Days follow the stored timestamp's lexical date prefix, including offsets.
+Retained partial-day edges are exact; outside retention a partial-day edge
+uses the whole rollup day and may overcount the requested hours.
+NULL and empty-string projects remain distinct groups.
+Existing token response fields are unchanged.
+
 ## Authentication
 
 **Every route requires the sidecar token** (since v2.5.0). Loopback is not a trust boundary: any other local process, and any page served by any other local HTTP server, sits inside it — and `POST /api/uninstall` takes no body, so a body-less `fetch(..., {mode:'no-cors'})` from an ordinary web page was a CORS-simple request that ran the whole teardown.
