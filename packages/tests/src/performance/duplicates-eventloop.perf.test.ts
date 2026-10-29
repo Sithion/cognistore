@@ -1,3 +1,4 @@
+import { KnowledgeType } from '@cognistore/shared';
 import { test, expect } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -98,7 +99,7 @@ test.describe('@perf duplicate scan without freezing (1C.3)', () => {
     const vec = Array.from(new Float32Array(base.embedding.buffer, base.embedding.byteOffset, base.embedding.byteLength / 4));
     for (let i = 0; i < 3000; i++) {
       await repo.create({
-        title: `runaway copy ${i}`, content: 'runaway import', tags: ['copy'], type: 'pattern', scope: 'global', source: 'perf',
+        title: `runaway copy ${i}`, content: 'runaway import', tags: ['copy'], type: KnowledgeType.PATTERN, scope: 'global', source: 'perf',
         embedding: vec.map((v, d) => v + ((i + d) % 5) * 1e-4),
       });
     }

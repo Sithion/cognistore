@@ -10,17 +10,19 @@ The project uses **GitHub Actions** with two workflows:
 ## CI Workflow
 
 **File:** `.github/workflows/ci.yml`
-**Trigger:** Pull requests to `main`
+**Trigger:** Pull requests to `main`, pushes to `feature/**`, and a weekly schedule (OSV scan only)
 
-```
-Steps:
-1. Setup pnpm (version from packageManager field)
-2. Setup Node.js 24
-3. pnpm install --frozen-lockfile
-4. pnpm build (all workspace packages via Turborepo)
-5. pnpm test
-6. npm publish --dry-run (validate MCP server package)
-```
+| Job | What it does | Gate |
+|---|---|---|
+| `version-check`, `release-version-guard` | Version bumped vs `main`, release sources in sync, tag unpublished | PRs to `main`. Expected red on a WIP release PR that has not been bumped yet |
+| `validate-dependencies` | External URLs (Ollama install script, Releases API) answer 200 | Required |
+| `type-check` | `pnpm type-check`: dashboard frontend + server, MCP server, and the test package (`packages/tests`, since v2.6) | Required |
+| `build-and-test` | `pnpm build`, Chromium for the browser e2e, the Playwright suite, `npm publish --dry-run` | Required |
+| `rust` (v2.6) | `cargo check --locked` + `cargo test --locked` in `apps/dashboard/src-tauri` on `ubuntu-24.04`, toolchain from `rust-toolchain.toml` (1.97.0, also passed to `dtolnay/rust-toolchain` — keep both in sync), the same Linux deps as `publish.yml`. The `sidecar-bundle/{dist,dist-server,node_modules}` resources `tauri_build` requires are empty stubs; the real bundle is only built by `publish.yml` | Required |
+| `perf` (v2.6) | The `@perf` suite on the cached 10k-entry fixture with `PERF_BUDGET_SCALE=3`. Its `PERF` lines go to the job summary for comparison with `packages/tests/src/performance/baseline.json` | Report only (`continue-on-error`) |
+| `osv-scan` | OSV-Scanner over the npm and Cargo lockfiles | Required. Weekly failures open/update a tracking issue |
+
+The perf fixture cache key is the hash of `packages/tests/src/performance/fixtures/generate-fixture.ts`, so a generator change (or a `FIXTURE_VERSION` bump) rebuilds it.
 
 ## Publish Workflow
 
