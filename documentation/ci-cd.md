@@ -29,7 +29,7 @@ All Linux jobs run on `ubuntu-24.04`, pinned rather than `ubuntu-latest`, so a r
 
 `scripts/verify.mjs` is the single gate, used both by CI's `build-and-test` and by the `pre-push` hook (`.husky/pre-push`). The hook skips pushes that send no new commits (branch deletions, tags only); skip any other push with `git push --no-verify`. It runs in order and stops at the first failure:
 
-1. **lint:** `turbo lint`. It is skipped while no workspace defines a `lint` script, which is the case today.
+1. **lint:** `pnpm lint` = Biome over `apps/`, `packages/` and `scripts/` (see *Lint* below). Errors fail; warnings do not.
 2. **type-check**
 3. **build:** the suites spawn the built sidecar and MCP server. `turbo.json` declares `dist-server/**` as a build output, so a cached build restores the sidecar too.
 4. **unit:** Vitest in `packages/core` and the sidecar's `auth.ts`/`settings.ts`.
@@ -39,6 +39,29 @@ All Linux jobs run on `ubuntu-24.04`, pinned rather than `ubuntu-latest`, so a r
 8. **coverage:** with `--coverage`, steps 4 and 6 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
 
 The `@perf` suite is not part of `pnpm verify`; it runs in the `perf` job.
+
+### Lint (v2.6, B.7)
+
+`biome.json` at the root, `@biomejs/biome` pinned to an exact version. Only the linter is on (no formatter, no import sorting), so adopting it changed no code.
+
+**Why Biome and not ESLint + typescript-eslint + react-hooks:** one binary with no plugin tree (a much smaller supply-chain surface for a public repo, and one devDependency to pin and audit), fast enough for the pre-push hook (≈60 ms for the whole repo), and it ships the React hooks rules natively (`useHookAtTopLevel`, `useExhaustiveDependencies`). It does not type-check rules; `pnpm type-check` already covers that.
+
+**Baseline without rewriting the code:** the `recommended` preset, except:
+
+| Rule | Level | Findings at adoption | Why |
+|---|---|---:|---|
+| `a11y/useButtonType` | warn | 89 | Dashboard buttons without `type`; fix with the UI work (Fase U) |
+| `correctness/useExhaustiveDependencies` | warn | 31 | Each needs a behaviour check; fix one by one |
+| `a11y/useKeyWithClickEvents`, `a11y/noStaticElementInteractions` | warn | 28, 27 | Clickable `div`s; Fase U |
+| `a11y/noLabelWithoutControl` | warn | 20 | Fase U |
+| `a11y/noSvgWithoutTitle`, `a11y/noAutofocus` | warn | 6, 2 | Fase U |
+| `suspicious/noArrayIndexKey`, `noImplicitAnyLet`, `useIterableCallbackReturn`, `noAssignInExpressions`, `noControlCharactersInRegex` | warn | 6, 6, 6, 4, 2 | Real but low risk; fix when touching the file |
+| `correctness/noComponentHookFactories` | warn | 1 | Same |
+| `suspicious/noExplicitAny` | off | 297 | Too noisy to be useful as warnings; revisit with stricter types |
+| `style/noNonNullAssertion` | off | 257 | Same |
+| `style/useTemplate`, `complexity/useLiteralKeys` | off | 65, 12 | Style only |
+
+Every other recommended rule is an error, so new code cannot add, for example, a conditional hook (`useHookAtTopLevel`), an unreachable branch or a duplicate key. To tighten the baseline, fix a rule's findings and delete its line from `biome.json`.
 
 ### Coverage
 
