@@ -12,6 +12,10 @@ import {
   type ScanResult,
   type CleanupReport,
   type CleanupCandidate,
+  type JobKind,
+  type JobPayloads,
+  type JobResults,
+  JobRunner,
 } from '@cognistore/core';
 import { OllamaEmbeddingClient, checkOllamaHealth } from '@cognistore/embeddings';
 import {
@@ -19,7 +23,6 @@ import {
   updateKnowledgeSchema,
   searchOptionsSchema,
   createPlanSchema,
-  updatePlanSchema,
   type CreateKnowledgeInput,
   type UpdateKnowledgeInput,
   type SearchOptions,
@@ -34,7 +37,7 @@ import {
   type SDKConfig,
   type FederatedSearchResult,
 } from '@cognistore/shared';
-import { loadProviders, ProviderManager, EnvSecretStore, FileTokenStore, resolveProviderPolicy } from '@cognistore/providers';
+import { loadProviders, type ProviderManager, EnvSecretStore, FileTokenStore, resolveProviderPolicy } from '@cognistore/providers';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { homedir } from 'node:os';
@@ -57,6 +60,21 @@ export class KnowledgeSDK {
   private providerManager: ProviderManager | null = null;
   private alwaysExternal = false;
   private initialized = false;
+  private jobs?: JobRunner;
+
+  private getJobRunner(): JobRunner {
+    if (this.jobs) return this.jobs;
+    this.jobs = new JobRunner({
+      workerUrl: new URL('./jobs/worker.js', import.meta.url),
+      databasePath: this.getDatabasePath(),
+      embeddingConfig: { host: this.config.ollama.host, model: this.config.ollama.model, dimensions: this.config.ollama.dimensions },
+    });
+    return this.jobs;
+  }
+
+  run<K extends JobKind>(kind: K, payload: JobPayloads[K], options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<JobResults[K]> {
+    return this.getJobRunner().run(kind, payload, options);
+  }
 
   constructor(config?: Partial<SDKConfig>) {
     this.config = resolveConfig(config);
@@ -155,6 +173,7 @@ export class KnowledgeSDK {
   }
 
   async close(): Promise<void> {
+    await this.jobs?.close();
     await this.cleanup();
     this.initialized = false;
   }

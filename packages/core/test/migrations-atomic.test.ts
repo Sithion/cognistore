@@ -61,6 +61,19 @@ it('repairs the stamped base and keeps disk/embedded opens idempotent', () => {
   expect(ctx.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
 });
 
+it('repairs a missing base index on a stamped database', () => {
+  ctx = makeDb();
+  const migrations = new URL('../src/db/migrations', import.meta.url).pathname;
+  ctx.sqlite.exec('DROP INDEX idx_ops_operation');
+
+  runMigrations(ctx.sqlite, migrations);
+
+  expect(ctx.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_ops_operation'").get())
+    .toEqual({ name: 'idx_ops_operation' });
+  expect(ctx.sqlite.prepare("SELECT count(*) AS n FROM schema_version WHERE version='0.8.0'").get())
+    .toEqual({ n: 1 });
+});
+
 it('an up-to-date open takes no write lock', () => {
   ctx = makeDb();
   const a = new BetterSqlite3(ctx.sqlite.name);
@@ -75,6 +88,20 @@ it('an up-to-date open takes no write lock', () => {
     if (a.inTransaction) a.exec('ROLLBACK');
     a.close();
     b.close();
+  }
+});
+
+it('opens an up-to-date WAL database while another connection holds a read transaction', () => {
+  ctx = makeDb();
+  const reader = new BetterSqlite3(ctx.sqlite.name);
+  try {
+    reader.pragma('journal_mode = WAL');
+    reader.exec('BEGIN');
+    reader.prepare('SELECT count(*) FROM knowledge_entries').get();
+    expect(() => runMigrations(ctx!.sqlite, new URL('../src/db/migrations', import.meta.url).pathname)).not.toThrow();
+  } finally {
+    if (reader.inTransaction) reader.exec('ROLLBACK');
+    reader.close();
   }
 });
 
