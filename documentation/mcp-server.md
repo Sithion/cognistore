@@ -269,6 +269,10 @@ Tools are annotated with hints for MCP clients:
 | `destructiveHint: true` | `deleteKnowledge`, `deletePlanTask` | Signals the tool permanently removes data |
 
 
+## Version compatibility
+
+`packages/tests/src/compat/mcp-matrix.test.ts` runs the published 2.5.3 and 2.5.4 servers through real `npx` (sandboxed npm cache, HOME and cwd) against databases written by this checkout, and the reverse, plus the app and old servers writing to one database at once. Add a version to `NPM_VERSIONS` there when you publish one that agents may keep running.
+
 ## Frozen contract
 
 The tool surface is a public contract: agents, injected skills and older npm builds on other machines call these tools by name. `packages/tests/src/contract/mcp-contract.test.ts` boots the bundled server (`dist/index.js`) over stdio and checks it against `mcp-contract.snapshot.json`:
