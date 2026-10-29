@@ -87,6 +87,26 @@ test.describe('@e2e 1A.2 buffered operation counters', () => {
     expect(ctx.service.getOperationsByDay(1).find((d) => d.date === today)).toEqual(daily);
   });
 
+  test('a busy database keeps the operation counts for the next flush, without the 5 s wait', async () => {
+    await seed(ctx, 'Held');
+    const before = count(ctx, 'SELECT COUNT(*) AS n FROM operations_log');
+    const other = new BetterSqlite3(ctx.dbPath);
+    other.exec('BEGIN IMMEDIATE'); // holds the write lock, like an agent's write
+    try {
+      const start = performance.now();
+      ctx.service.flushOperations();
+      expect(performance.now() - start).toBeLessThan(2000); // 250 ms lock wait
+    } finally {
+      other.exec('ROLLBACK');
+      other.close();
+    }
+    expect(ctx.sqlite.pragma('busy_timeout', { simple: true })).toBe(5000);
+    expect(count(ctx, 'SELECT COUNT(*) AS n FROM operations_log')).toBe(before); // not written…
+    await seed(ctx, 'Later'); // …and not lost: merged with what came after
+    ctx.service.flushOperations();
+    expect(count(ctx, 'SELECT COUNT(*) AS n FROM operations_log')).toBe(before + 2);
+  });
+
   test('flushPendingWrites writes the buffer in one go', async () => {
     await seed(ctx, 'One');
     const before = count(ctx, 'SELECT COUNT(*) AS n FROM operations_log');

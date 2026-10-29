@@ -28,7 +28,7 @@ Lines go to **stderr** prefixed with `[mcp pid=<pid>]`, never to stdout, which c
 
 ## Buffered telemetry writes
 
-Operation counters (`operations_log` / `operations_daily`) and `trackRead` read marks are counted in memory and written in one transaction per flush: counters every 30 s, read marks every 10 s with a 250 ms lock wait (a busy database drops that batch), on `close()`, and on process `exit`. The dashboard therefore sees an agent session's activity up to 30 s late.
+Operation counters (`operations_log` / `operations_daily`) and `trackRead` read marks are counted in memory and written in one transaction per flush: counters every 30 s, read marks every 10 s, on `close()`, and on process `exit`. Every flush waits at most 250 ms for the write lock instead of the connection's 5 s `busy_timeout`: a busy database keeps the counters for the next flush (bounded to 10,000 per-second keys) and drops that batch of read marks (a best-effort signal). The dashboard therefore sees an agent session's activity up to 30 s late.
 
 ## Tools
 

@@ -48,9 +48,9 @@ export class TokenUsageScanner {
         if (record) {
           batch.push(record);
           if (batch.length >= BATCH_SIZE) flush();
+          stats.scanned++;
         }
         offsets.set(filePath, { offset: byteOffset, mtime });
-        stats.scanned++;
       }
       flush();
 

@@ -128,7 +128,6 @@ export class ClaudeCodeAdapter implements TokenSourceAdapter {
         const fromOffset = getState(filePath)?.lastOffset ?? 0;
         if (fromOffset >= fileSize) continue;
 
-        let emitted = false;
         try {
           for await (const { line } of readNewLines(filePath, fromOffset, fileSize)) {
             const parsed = parseUsageLine(line);
@@ -138,15 +137,15 @@ export class ClaudeCodeAdapter implements TokenSourceAdapter {
               id: recordId(parsed.sessionId, parsed.messageId, parsed.occurredAt),
               project,
             };
-            emitted = true;
-            // byteOffset is fileSize for every record yielded from this file;
-            // the scanner uses the highest seen offset, so this is safe.
-            yield { record, filePath, byteOffset: fileSize, mtime };
+            // Records keep the old offset: a read error mid-file must not
+            // advance scan_state past lines never read. Re-reading them on the
+            // next pass is harmless (deterministic ids, INSERT OR IGNORE).
+            yield { record, filePath, byteOffset: fromOffset, mtime };
           }
         } catch { continue; }
-        // A file with no usage lines (yet) is still "seen at this size", or it
-        // would be re-read from the start on every pass.
-        if (!emitted) yield { record: null, filePath, byteOffset: fileSize, mtime };
+        // Read to EOF: the file is now "seen at this size" — including a file
+        // with no usage lines yet, which would otherwise be re-read every pass.
+        yield { record: null, filePath, byteOffset: fileSize, mtime };
       }
     }
   }

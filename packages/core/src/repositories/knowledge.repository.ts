@@ -144,15 +144,22 @@ export class KnowledgeRepository {
    */
   markReadBatch(batch: { id: string; count: number; at: string }[], busyTimeoutMs: number): void {
     if (batch.length === 0) return;
-    const previous = this.sqlite.pragma('busy_timeout', { simple: true }) as number;
     const stmt = this.sqlite.prepare(
       'UPDATE knowledge_entries SET last_read_at = ?, read_count = read_count + ? WHERE id = ?'
     );
-    try {
-      this.sqlite.pragma(`busy_timeout = ${busyTimeoutMs}`);
+    this.withBusyTimeout(busyTimeoutMs, () => {
       this.sqlite.transaction(() => {
         for (const r of batch) stmt.run(r.at, r.count, r.id);
       })();
+    });
+  }
+
+  /** Run `fn` with a temporary lock wait, restoring the connection's own afterwards. */
+  private withBusyTimeout(busyTimeoutMs: number, fn: () => void): void {
+    const previous = this.sqlite.pragma('busy_timeout', { simple: true }) as number;
+    try {
+      this.sqlite.pragma(`busy_timeout = ${busyTimeoutMs}`);
+      fn();
     } finally {
       try { this.sqlite.pragma(`busy_timeout = ${previous}`); } catch { /* closed */ }
     }
@@ -1173,15 +1180,20 @@ export class KnowledgeRepository {
    * operation (same rows the per-call path wrote, timestamped to the second)
    * plus the daily rollup bump, so every stats view reads the same numbers.
    */
-  logOperationsBuffered(batch: { operation: 'read' | 'write'; createdAt: string; count: number }[]): void {
+  logOperationsBuffered(
+    batch: { operation: 'read' | 'write'; createdAt: string; count: number }[],
+    busyTimeoutMs: number,
+  ): void {
     if (batch.length === 0) return;
     const stmt = this.sqlite.prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)');
-    this.sqlite.transaction(() => {
-      for (const b of batch) {
-        for (let i = 0; i < b.count; i++) stmt.run(b.operation, b.createdAt);
-        this.bumpOperationsDaily(b.operation, b.createdAt, b.count);
-      }
-    })();
+    this.withBusyTimeout(busyTimeoutMs, () => {
+      this.sqlite.transaction(() => {
+        for (const b of batch) {
+          for (let i = 0; i < b.count; i++) stmt.run(b.operation, b.createdAt);
+          this.bumpOperationsDaily(b.operation, b.createdAt, b.count);
+        }
+      })();
+    });
   }
 
   getOperationCounts(): {

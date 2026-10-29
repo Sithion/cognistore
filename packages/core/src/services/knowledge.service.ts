@@ -132,8 +132,10 @@ export class KnowledgeService {
 
   private static readonly OPS_FLUSH_MS = 30_000;
   private static readonly READS_FLUSH_MS = 10_000;
-  /** Read marks are best-effort: wait this long for the lock, then drop the batch. */
-  private static readonly READS_BUSY_MS = 250;
+  /** Flushes wait at most this long for the write lock (timer, exit and stats reads alike). */
+  private static readonly FLUSH_BUSY_MS = 250;
+  /** Operation keys kept across failed flushes; the oldest are dropped past this. */
+  private static readonly MAX_PENDING_OPS = 10_000;
   /** `${op}|${ISO second}` → count; one raw row per counted op is still written. */
   private pendingOps = new Map<string, number>();
   /** entry id → reads since the last flush, and when the latest one happened. */
@@ -147,10 +149,7 @@ export class KnowledgeService {
     const n = Math.max(1, count);
     const key = `${op}|${new Date().toISOString().slice(0, 19)}.000Z`;
     this.pendingOps.set(key, (this.pendingOps.get(key) ?? 0) + n);
-    if (!this.opsTimer) {
-      this.opsTimer = setTimeout(() => { this.opsTimer = null; this.flushOperations(); }, KnowledgeService.OPS_FLUSH_MS);
-      this.opsTimer.unref?.();
-    }
+    this.armOpsTimer();
   }
 
   private bufferReads(ids: string[]) {
@@ -162,15 +161,38 @@ export class KnowledgeService {
     }
   }
 
-  /** Write the buffered operation counters (one transaction). Errors are swallowed, as the per-op insert's were. */
+  private armOpsTimer() {
+    if (this.opsTimer) return;
+    this.opsTimer = setTimeout(() => { this.opsTimer = null; this.flushOperations(); }, KnowledgeService.OPS_FLUSH_MS);
+    this.opsTimer.unref?.();
+  }
+
+  /**
+   * Write the buffered operation counters (one transaction, short lock wait).
+   * A busy database keeps the counts for the next flush instead of blocking
+   * the caller (a stats request, the timer, process exit) for the full
+   * connection busy_timeout.
+   */
   flushOperations(): void {
     if (this.pendingOps.size === 0) return;
-    const batch = Array.from(this.pendingOps, ([key, count]) => {
+    const pending = this.pendingOps;
+    const batch = Array.from(pending, ([key, count]) => {
       const [operation, createdAt] = key.split('|');
       return { operation: operation as 'read' | 'write', createdAt, count };
     });
-    this.pendingOps.clear();
-    try { this.repository.logOperationsBuffered(batch); } catch { /* silent */ }
+    this.pendingOps = new Map();
+    try {
+      this.repository.logOperationsBuffered(batch, KnowledgeService.FLUSH_BUSY_MS);
+    } catch {
+      // Merge back under anything counted meanwhile; bounded, oldest keys go first.
+      for (const [key, count] of this.pendingOps) pending.set(key, (pending.get(key) ?? 0) + count);
+      for (const key of pending.keys()) {
+        if (pending.size <= KnowledgeService.MAX_PENDING_OPS) break;
+        pending.delete(key);
+      }
+      this.pendingOps = pending;
+      this.armOpsTimer();
+    }
   }
 
   /** Write the buffered read marks (one transaction, short lock wait); a busy database drops them. */
@@ -178,7 +200,7 @@ export class KnowledgeService {
     if (this.pendingReads.size === 0) return;
     const batch = Array.from(this.pendingReads, ([id, r]) => ({ id, count: r.count, at: r.at }));
     this.pendingReads.clear();
-    try { this.repository.markReadBatch(batch, KnowledgeService.READS_BUSY_MS); } catch { /* best-effort signal */ }
+    try { this.repository.markReadBatch(batch, KnowledgeService.FLUSH_BUSY_MS); } catch { /* best-effort signal */ }
   }
 
   /** Flush both buffers now (close, process exit, tests). */
