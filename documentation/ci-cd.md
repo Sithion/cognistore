@@ -33,9 +33,10 @@ All Linux jobs run on `ubuntu-24.04`, pinned rather than `ubuntu-latest`, so a r
 2. **type-check**
 3. **build:** the suites spawn the built sidecar and MCP server. `turbo.json` declares `dist-server/**` as a build output, so a cached build restores the sidecar too.
 4. **unit:** Vitest in `packages/core` and the sidecar's `auth.ts`/`settings.ts`.
-5. **integration:** the Playwright projects e2e, load and compat. This covers the API route inventory, the MCP contract, the MCP × database matrix and the upgrade matrix.
-6. **knip:** only when it is installed (it is not yet).
-7. **coverage:** with `--coverage`, steps 4–5 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
+5. **scripts:** `pnpm test:scripts`, `node:test` for the root tooling scripts (`scripts/test/`, e.g. the coverage normalizer). The root is not a workspace package, so these use Node's built-in runner instead of pulling Vitest in.
+6. **integration:** the Playwright projects e2e, load and compat. This covers the API route inventory, the MCP contract, the MCP × database matrix and the upgrade matrix.
+7. **knip:** only when it is installed (it is not yet).
+8. **coverage:** with `--coverage`, steps 4 and 6 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
 
 The `@perf` suite is not part of `pnpm verify`; it runs in the `perf` job.
 
