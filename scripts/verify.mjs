@@ -12,6 +12,7 @@
  *   type-check  turbo type-check (dashboard frontend + server, MCP server, tests)
  *   build       turbo build (the suites spawn the built sidecar and MCP server)
  *   unit        Vitest: packages/core and the sidecar's auth/settings
+ *   scripts     node:test for the root tooling scripts (scripts/test/)
  *   integration Playwright projects e2e, load and compat: the API inventory, the
  *               MCP contract and MCP x DB matrix, and the upgrade matrix
  *   knip        only when knip is installed (it is not, yet)
@@ -49,6 +50,7 @@ steps.push(
   ['type-check', ['pnpm', 'type-check']],
   ['build', ['pnpm', 'build']],
   ['unit', coverage ? ['pnpm', 'coverage:unit'] : ['pnpm', '--filter', '@cognistore/core', '--filter', '@cognistore/dashboard', 'test']],
+  ['scripts', ['pnpm', 'test:scripts']],
   ['integration', coverage ? ['pnpm', 'coverage:integration'] : ['pnpm', '--filter', '@cognistore/tests', 'test']],
 );
 if (existsSync(join(ROOT, 'node_modules', '.bin', 'knip'))) steps.push(['knip', ['pnpm', 'exec', 'knip']]);

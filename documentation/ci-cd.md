@@ -33,19 +33,21 @@ All Linux jobs run on `ubuntu-24.04`, pinned rather than `ubuntu-latest`, so a r
 2. **type-check**
 3. **build:** the suites spawn the built sidecar and MCP server. `turbo.json` declares `dist-server/**` as a build output, so a cached build restores the sidecar too.
 4. **unit:** Vitest in `packages/core` and the sidecar's `auth.ts`/`settings.ts`.
-5. **integration:** the Playwright projects e2e, load and compat. This covers the API route inventory, the MCP contract, the MCP × database matrix and the upgrade matrix.
-6. **knip:** only when it is installed (it is not yet).
-7. **coverage:** with `--coverage`, steps 4–5 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
+5. **scripts:** `pnpm test:scripts`, `node:test` for the root tooling scripts (`scripts/test/`, e.g. the coverage normalizer). The root is not a workspace package, so these use Node's built-in runner instead of pulling Vitest in.
+6. **integration:** the Playwright projects e2e, load and compat. This covers the API route inventory, the MCP contract, the MCP × database matrix and the upgrade matrix.
+7. **knip:** only when it is installed (it is not yet).
+8. **coverage:** with `--coverage`, steps 4 and 6 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
 
 The `@perf` suite is not part of `pnpm verify`; it runs in the `perf` job.
 
-### Coverage (v2.6)
+### Coverage
 
 Both test layers run under V8 coverage in `build-and-test`:
 
 - **Unit:** `pnpm coverage:unit` runs Vitest with `@vitest/coverage-v8` in `packages/core` and `apps/dashboard` (`auth.ts`, `settings.ts`).
 - **Integration:** `pnpm coverage:integration` wraps the Playwright suites in `c8` (`.c8rc.json`). The sidecar and MCP processes the tests spawn inherit `NODE_V8_COVERAGE`, so their code is measured too. c8 filters on the built `dist` files and maps them back to `src`. The MCP server is a single tsup bundle and is reported as one row, `mcp-server (bundle)`, which also contains the code it inlines.
 - **Report and gate:** `pnpm coverage:report` (`scripts/coverage-report.mjs`) prints lines and branches per package and layer. With `--markdown <file>` it also writes the table, plus the reasons when the gate fails, to a file that CI appends to the job summary. It fails when any row drops more than 1 pt below `coverage-baseline.json`, when a baseline row was not measured or measured under half its recorded lines (a source map that did not load), or when the baseline file is missing. The raw reports are uploaded as the `coverage` artifact.
+- **Normalizing the integration dumps (v2.6, B.6):** before reading the integration numbers, the report runs `scripts/coverage-normalize.mjs` on `coverage/integration/.v8` and then `c8 report` again. Why: the Playwright runner and worker processes load `packages/*/dist` through Playwright's transforming loader, so their V8 dumps carry the line lengths of the transformed code, not of the file on disk. c8 merges the `source-map-cache` of all dumps with `Object.assign` in directory order, so the last dump wins, and dump names start with the process id. When a Playwright dump won, every file of that package was remapped to a single line (`only N lines measured`), depending on nothing but PIDs: green in CI, red on another machine. The normalizer drops every cache entry whose line lengths differ from the file on disk, together with that dump's coverage of the same URL; it is idempotent. Consequence: code the Playwright tests run in-process (not in a spawned sidecar or MCP server) is not counted in the integration layer; it was being mapped onto the wrong lines anyway, and the Vitest layer covers it.
 - **Raising the bar:** after a change that adds tests, run `pnpm coverage` locally (or take the numbers from the CI artifact) and commit the result of `node scripts/coverage-report.mjs --write-baseline`. The baseline only moves up on purpose; a drop has to be explained in the PR. Take the numbers from CI when they differ: a test that reads something only a developer machine has (e.g. real agent logs) inflates a local run.
 
 **Why not the AppImage/deb in CI (decision, v2.6):** the bundle smoke covers what breaks the desktop app at runtime: the single-file server, the native ABI and sqlite-vec's loadable extension. The `rust` job compiles and tests the shell. Building the AppImage/deb as well would add the full Tauri bundling (about 15 minutes cold, plus linuxdeploy) to every PR, only to check the packaging step that `publish.yml` already runs on each release, and a packaging failure there leaves the release a draft (`verify-release`), so nothing broken reaches users. Revisit if a release fails at packaging.
