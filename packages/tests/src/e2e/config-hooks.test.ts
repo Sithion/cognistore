@@ -51,6 +51,21 @@ test('injectHooks is idempotent and preserves user hooks + other keys', async ()
   expect(ptuCog).toBe(5);
 });
 
+test('re-injecting over a pre-2.6 hook set registers the addKnowledge capture marker (B.1 upgrade path)', async () => {
+  // What an install deployed before the fix holds: every group except addKnowledge.
+  const legacy = ConfigManager.buildClaudeHookConfig(ConfigManager.CLAUDE_HOOKS_DIR) as Record<string, any[]>;
+  legacy.PostToolUse = legacy.PostToolUse.filter((g) => g.matcher !== 'mcp__cognistore__addKnowledge');
+  writeFileSync(settings, JSON.stringify({ hooks: legacy }));
+
+  // The upgrade re-deploy (deployGlobalHooks) is this call.
+  await cm.injectHooks(settings, ConfigManager.buildClaudeHookConfig(ConfigManager.CLAUDE_HOOKS_DIR));
+
+  const post = JSON.parse(readFileSync(settings, 'utf-8')).hooks.PostToolUse;
+  const capture = post.filter((g: any) => g.matcher === 'mcp__cognistore__addKnowledge');
+  expect(capture).toHaveLength(1);
+  expect(capture[0].hooks[0].command).toBe(join(ConfigManager.CLAUDE_HOOKS_DIR, 'post-add-knowledge-marker.sh'));
+});
+
 test('removeHooks strips only cognistore entries, leaving user hooks intact', async () => {
   writeFileSync(settings, JSON.stringify({
     hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: userHookCmd }] }] },

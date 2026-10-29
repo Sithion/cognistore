@@ -45,6 +45,7 @@ import {
   isValidOllamaModelName,
   SETTINGS_DEFAULTS,
   type AppSettings,
+  type CreatedConfigFile,
 } from './settings.js';
 import { registerCleanupRoutes, maybeGenerateReport } from './cleanup-routes.js';
 import {
@@ -644,13 +645,25 @@ Pass an array to addKnowledge to create multiple entries at once.
    * ~/.copilot/hooks/hooks.json (Copilot, reminder-only). Idempotent — safe to re-run
    * on setup, upgrade, and redeploy. Copilot failures are non-fatal.
    */
+  /**
+   * Remember that setup created `file` from nothing, so uninstall may delete it
+   * once only setup's own keys are left (setup/uninstall symmetry, plan v2.6 T.5).
+   */
+  function noteIfCreated(file: CreatedConfigFile, result: { action: string } | null | undefined): void {
+    if (result?.action !== 'created') return;
+    try {
+      const current = readSettings().createdConfigFiles;
+      if (!current.includes(file)) writeSettings({ createdConfigFiles: [...current, file] });
+    } catch { /* best effort: without the record uninstall only cleans the file */ }
+  }
+
   async function deployGlobalHooks(): Promise<void> {
     const hooksDir = await configManager.setupHooks(TEMPLATES_PATH);
     if (hooksDir) {
-      await configManager.injectHooks(
+      noteIfCreated('claude-settings', await configManager.injectHooks(
         ConfigManager.CLAUDE_SETTINGS,
         ConfigManager.buildClaudeHookConfig(hooksDir)
-      );
+      ));
     }
     try {
       await configManager.setupCopilotHooks(TEMPLATES_PATH);
@@ -733,8 +746,8 @@ Pass an array to addKnowledge to create multiple entries at once.
       await configManager.setupMcpConfig(ConfigManager.MCP_CONFIG, claudeEntry);
       try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, claudeEntry); } catch { /* optional */ }
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, copilotEntry); } catch { /* optional */ }
-      try { await configManager.setupOpenCodeMcp(opencodeEntry); } catch { /* optional */ }
-      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
+      try { noteIfCreated('opencode-config', await configManager.setupOpenCodeMcp(opencodeEntry)); } catch { /* optional */ }
+      try { noteIfCreated('claude-settings', await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS)); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
       push({ step: 'mcp-configs', status: 'success' });
     } catch (e: any) {
       push({ step: 'mcp-configs', status: 'error', message: e.message });
@@ -1118,10 +1131,10 @@ Pass an array to addKnowledge to create multiple entries at once.
 
       try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, claudeEntry); results.push('Claude JSON config set'); } catch { /* optional */ }
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, copilotEntry); results.push('Copilot MCP config set'); } catch { /* optional */ }
-      try { await configManager.setupOpenCodeMcp(opencodeEntry); results.push('OpenCode MCP config set'); } catch { /* optional */ }
+      try { noteIfCreated('opencode-config', await configManager.setupOpenCodeMcp(opencodeEntry)); results.push('OpenCode MCP config set'); } catch { /* optional */ }
 
       // Inject tool permissions for auto-approve (read + write)
-      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS); results.push('Claude permissions injected'); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
+      try { noteIfCreated('claude-settings', await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS)); results.push('Claude permissions injected'); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
 
       // Global enforcement hooks. Skill-dir hooks never registered with Claude Code;
       // real global hooks must live in ~/.claude/settings.json (and ~/.copilot/hooks/).
@@ -1524,9 +1537,14 @@ Pass an array to addKnowledge to create multiple entries at once.
       await step('MCP config cleaned', () => configManager.removeMcpEntry(ConfigManager.MCP_CONFIG, 'cognistore'), results, errors);
       await step('Claude JSON cleaned', () => configManager.removeMcpEntry(ConfigManager.CLAUDE_JSON, 'cognistore'), results, errors);
       await step('Copilot MCP cleaned', () => configManager.removeMcpEntry(ConfigManager.COPILOT_MCP_CONFIG, 'cognistore'), results, errors);
-      await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp(), results, errors);
-      await step('Claude permissions cleaned', () => configManager.removePermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS), results, errors);
-      await step('Claude hooks cleaned', () => configManager.removeHooks(ConfigManager.CLAUDE_SETTINGS), results, errors);
+      // Read before ~/.cognistore (and settings.json with it) is removed below.
+      const created = new Set<CreatedConfigFile>((() => {
+        try { return readSettings().createdConfigFiles; } catch { return []; }
+      })());
+      const claudeSettingsOpts = { fileCreatedBySetup: created.has('claude-settings') };
+      await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp({ fileCreatedBySetup: created.has('opencode-config') }), results, errors);
+      await step('Claude permissions cleaned', () => configManager.removePermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS, claudeSettingsOpts), results, errors);
+      await step('Claude hooks cleaned', () => configManager.removeHooks(ConfigManager.CLAUDE_SETTINGS, claudeSettingsOpts), results, errors);
       await step('Copilot hooks cleaned', () => configManager.removeCopilotHooks(), results, errors);
 
       // 3. Remove skills
