@@ -249,7 +249,7 @@ The knowledge base previously only ever grew. The retention model adds three lay
 deliberately:
 
 **1. Read tracking (signal).** `knowledge_entries.last_read_at` / `read_count` are written by
-`KnowledgeRepository.markRead()` and by nothing else — never by `update()`, so a read can never be
+`KnowledgeRepository.markReadBatch()` (buffered in the service, one transaction every 10 s with a 250 ms lock wait, v2.6) and by nothing else — never by `update()`, so a read can never be
 confused with an edit and cannot perturb `updated_at`, `version`, staleness detection or
 duplicate-group canonical ordering. Tracking is **opt-in per call** through `SearchOptions.trackRead`
 (declared on the interface *and* in `searchOptionsSchema`, since the Zod object strips unknown keys at
