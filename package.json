@@ -10,7 +10,7 @@
     "lint": "biome lint .",
     "knip": "knip",
     "test": "turbo test",
-    "clean": "turbo clean",
+    "clean": "turbo clean && node scripts/clean.mjs",
     "bump": "bash scripts/bump-version.sh",
     "check:version": "node scripts/check-release-version.mjs",
     "dmg": "pnpm --filter @cognistore/dashboard tauri:dmg",

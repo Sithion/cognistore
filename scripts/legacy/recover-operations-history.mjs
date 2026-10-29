@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Restore lost Activity-chart history from a pre-prune backup of knowledge.db.
 //
+// Legacy (moved to scripts/legacy/ in v2.6): only useful for installs that
+// pruned operations_log before v2.3.2. Kept for reference, not maintained.
+//
 // Context: before v2.3.2 the dashboard Activity chart aggregated the raw
 // operations_log table, which is hard-DELETE-pruned. Days pruned before v2.3.2
 // are gone from the live DB and can only be recovered from a backup taken while
@@ -14,7 +17,7 @@
 // partial backup can never clobber a higher live value.
 //
 // Usage:
-//   node scripts/recover-operations-history.mjs <backup.db> [liveDb] [--dry-run]
+//   node scripts/legacy/recover-operations-history.mjs <backup.db> [liveDb] [--dry-run]
 //
 //   <backup.db>  Path to the pre-prune knowledge.db backup (required).
 //   [liveDb]     Live DB to restore into. Default: ~/.cognistore/knowledge.db
@@ -30,7 +33,7 @@ import { homedir } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Resolve better-sqlite3 from the workspace (pnpm-hoisted under packages/core).
-const require = createRequire(join(here, '..', 'packages', 'core', 'noop.js'));
+const require = createRequire(join(here, '..', '..', 'packages', 'core', 'noop.js'));
 const Database = require('better-sqlite3');
 
 const args = process.argv.slice(2);
@@ -40,7 +43,7 @@ const backupPath = positional[0];
 const livePath = positional[1] || join(homedir(), '.cognistore', 'knowledge.db');
 
 if (!backupPath) {
-  console.error('Usage: node scripts/recover-operations-history.mjs <backup.db> [liveDb] [--dry-run]');
+  console.error('Usage: node scripts/legacy/recover-operations-history.mjs <backup.db> [liveDb] [--dry-run]');
   process.exit(1);
 }
 const backupAbs = resolve(backupPath);
