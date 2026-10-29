@@ -24,7 +24,9 @@ Exempt: static assets and the SPA shell, which the webview must fetch before any
 
 `GET /api/health` no longer returns the token. The shell proves the sidecar's identity over the child process's stdout instead.
 
-**Errors:** in production, 5xx responses carry a generic message plus a `ref` correlation id; the detail is in `~/.cognistore/cognistore.log`.
+**Errors:** in production, 5xx responses carry a generic message plus a `ref` correlation id; the detail is in `~/.cognistore/cognistore.log`. Input the SDK rejects (a `ValidationError`, e.g. `POST /api/knowledge` without `source`) is a **400**, not a 500. An unknown `/api/...` path is a **404** `{ "error": "Not found" }`; only non-API paths fall back to the SPA shell.
+
+**Route inventory:** with `COGNISTORE_ROUTE_MANIFEST=<file>` the sidecar writes every route Fastify registered to that file once it listens. `packages/tests/src/api/sidecar-api.test.ts` reads it and fails on any `/api` route that no test names, and it sweeps every route for the token and Origin checks. A new route needs a test, and this file is the place for a plain call. The variable is for tests only; the shell never sets it.
 
 **File:** `apps/dashboard/server/index.ts`
 

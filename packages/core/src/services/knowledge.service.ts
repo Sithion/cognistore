@@ -553,7 +553,9 @@ export class KnowledgeService {
         }
         const tagsText = entry.tags.join(' ');
         const embedding = await this.embeddingProvider.embed(tagsText);
-        await this.repository.create({ ...entry, embedding });
+        // The import schema leaves `source` optional (exports from other tools
+        // omit it), but the column is NOT NULL: such entries failed one by one.
+        await this.repository.create({ ...entry, source: entry.source || 'import', embedding });
         existingHashes.add(hash);
         imported++;
         this.logOp('write');

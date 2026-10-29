@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve, sep } from 'node:path';
 import { execSync, execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync, copyFileSync, appendFileSync, renameSync, realpathSync, openSync, readSync, closeSync, fstatSync, constants as fsConstants } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
@@ -375,6 +376,17 @@ Pass an array to addKnowledge to create multiple entries at once.
 
   const app = Fastify({ logger: true });
 
+  // Route inventory for the API test suite (plan v2.6, T.7): with
+  // COGNISTORE_ROUTE_MANIFEST set, every registered route is written to that
+  // file once the server listens, straight from Fastify, so a route without a
+  // test cannot hide. Unset in production; no route is added.
+  const routeManifest: { method: string; url: string }[] = [];
+  if (process.env.COGNISTORE_ROUTE_MANIFEST) {
+    app.addHook('onRoute', (r) => {
+      for (const method of [r.method].flat()) routeManifest.push({ method, url: r.url });
+    });
+  }
+
   const authConfig: AuthConfig = {
     token: process.env.SIDECAR_TOKEN || '',
     port: PORT,
@@ -409,7 +421,9 @@ Pass an array to addKnowledge to create multiple entries at once.
   app.setErrorHandler((error: any, request, reply) => {
     const ref = randomUUID().slice(0, 8);
     log('error', `[${ref}] ${request.method} ${request.url}: ${error?.message ?? error}`);
-    const status = error?.statusCode ?? 500;
+    // The SDK rejects bad input with ValidationError (no statusCode): that is the
+    // caller's fault, a 400 — not a 500 that reads like a server failure.
+    const status = error?.statusCode ?? (error?.code === 'VALIDATION_ERROR' ? 400 : 500);
     reply.code(status);
     return reply.send(
       isProd && status >= 500
@@ -459,7 +473,11 @@ Pass an array to addKnowledge to create multiple entries at once.
     wildcard: false,
   });
 
-  app.setNotFoundHandler(async (_request, reply) => {
+  app.setNotFoundHandler(async (request, reply) => {
+    // The SPA fallback is for page routes. An unknown API path answered with
+    // index.html and a 200, so a typo or a route a newer client expects looked
+    // like success and failed later as a JSON parse error.
+    if ((request.url || '').split('?')[0].startsWith('/api/')) return sendError(reply, 404, 'Not found');
     return reply.sendFile('index.html');
   });
 
@@ -2031,7 +2049,7 @@ Pass an array to addKnowledge to create multiple entries at once.
     const body = request.body as any;
     const { query, includeExternal, providers, ...options } = body;
     if (!query || typeof query !== 'string') {
-      throw new Error('Query is required and must be a string');
+      return sendError(reply, 400, 'Query is required and must be a string');
     }
     // `providers: []` means "no specific filter" not "enable external search" —
     // only treat a non-empty array as an explicit external-search request.
@@ -2679,6 +2697,9 @@ Pass an array to addKnowledge to create multiple entries at once.
 
   await app.listen({ port: PORT, host: '127.0.0.1' });
   log('info', `Server listening on http://localhost:${PORT}`);
+  if (process.env.COGNISTORE_ROUTE_MANIFEST) {
+    await writeFile(process.env.COGNISTORE_ROUTE_MANIFEST, JSON.stringify(routeManifest, null, 2));
+  }
   // Readiness handshake with the Tauri shell. It reads this on the child's own
   // stdout pipe, which no other process can write to — that unforgeability is
   // what replaced echoing the identity token from /api/health.
