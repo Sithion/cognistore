@@ -17,11 +17,27 @@ The project uses **GitHub Actions** with two workflows:
 | `version-check`, `release-version-guard` | Version bumped vs `main`, release sources in sync, tag unpublished | PRs to `main`. Expected red on a WIP release PR that has not been bumped yet |
 | `validate-dependencies` | External URLs (Ollama install script, Releases API) answer 200 | Required |
 | `type-check` | `pnpm type-check`: dashboard frontend + server, MCP server, and the test package (`packages/tests`, since v2.6) | Required |
-| `build-and-test` | `pnpm build`, Chromium for the browser e2e, the Vitest unit layer and the Playwright suite (both under V8 coverage, see below), `npm publish --dry-run` | Required. Also fails when a package's coverage drops below the baseline |
+| `build-and-test` | Chromium for the browser e2e, then `pnpm verify --coverage` (below): lint, type-check, build, the Vitest unit layer and the Playwright suites under V8 coverage, and the coverage gate. Then `npm publish --dry-run` | Required. Also fails when a package's coverage drops below the baseline |
 | `sidecar-bundle` (v2.6) | Builds the packaged sidecar like `publish.yml` (`bundle-sidecar.mjs`: tsup single-file server, frontend, templates, native `better-sqlite3`/`sqlite-vec` rebuilt for Node 24) on `ubuntu-24.04`. Checks that the compiled agent instructions in `templates/configs/` match their base template, then runs `smoke-sidecar-bundle.mjs`: the bundle is copied to a temp `Resources/` layout and started with the env of `sidecar.rs`, except `COGNISTORE_MANAGED` (so the startup self-heal does not run) and with `OLLAMA_HOST` pointing at a stub, in a sandboxed HOME. It must print the ready marker, report the database connected on `/api/health`, and find an added entry by semantic search, which needs sqlite-vec. Same steps as `publish.yml`, but on `ubuntu-24.04`, while the release builds Linux on `ubuntu-22.04` | Required |
 | `rust` (v2.6) | `cargo check --locked` + `cargo test --locked` in `apps/dashboard/src-tauri` on `ubuntu-24.04`, toolchain from `rust-toolchain.toml` (1.97.0, also passed to `dtolnay/rust-toolchain` — keep both in sync), the same Linux deps as `publish.yml`. The `sidecar-bundle/{dist,dist-server,node_modules}` resources `tauri_build` requires are empty stubs here; the `sidecar-bundle` job builds and runs the real one | Required |
 | `perf` (v2.6) | The `@perf` suite on the cached 10k-entry fixture with `PERF_BUDGET_SCALE=3`. Its `PERF` lines go to the job summary for comparison with `packages/tests/src/performance/baseline.json` | Report only (`continue-on-error`) |
-| `osv-scan` | OSV-Scanner over the npm and Cargo lockfiles | Required. Weekly failures open/update a tracking issue |
+| `osv-scan` | OSV-Scanner over the npm and Cargo lockfiles, with the ignore list in `osv-scanner.toml`. Every ignore carries a `reason`, and ignores that no longer match are removed (to list them, run the scanner with an empty config) | Required. Weekly failures open/update a tracking issue |
+
+All Linux jobs run on `ubuntu-24.04`, pinned rather than `ubuntu-latest`, so a runner image change is a deliberate edit. The exception is the Linux release build in `publish.yml`, which stays on `ubuntu-22.04` so the AppImage/deb link against an older glibc. Actions are pinned by commit SHA.
+
+### `pnpm verify` (v2.6)
+
+`scripts/verify.mjs` is the single gate, used both by CI's `build-and-test` and by the `pre-push` hook (`.husky/pre-push`). The hook skips pushes that send no new commits (branch deletions, tags only); skip any other push with `git push --no-verify`. It runs in order and stops at the first failure:
+
+1. **lint:** `turbo lint`. It is skipped while no workspace defines a `lint` script, which is the case today.
+2. **type-check**
+3. **build:** the suites spawn the built sidecar and MCP server. `turbo.json` declares `dist-server/**` as a build output, so a cached build restores the sidecar too.
+4. **unit:** Vitest in `packages/core` and the sidecar's `auth.ts`/`settings.ts`.
+5. **integration:** the Playwright projects e2e, load and compat. This covers the API route inventory, the MCP contract, the MCP × database matrix and the upgrade matrix.
+6. **knip:** only when it is installed (it is not yet).
+7. **coverage:** with `--coverage`, steps 4–5 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
+
+The `@perf` suite is not part of `pnpm verify`; it runs in the `perf` job.
 
 ### Coverage (v2.6)
 
@@ -44,6 +60,8 @@ The perf fixture cache key is the hash of `packages/tests/src/performance/fixtur
 The pipeline builds each release as a **draft**, verifies its updater manifest is complete, then promotes it to public — so updater clients never see a half-built release:
 
 `publish-mcp` → `create-release` (draft) → `build-web` → `publish-tauri` → `verify-release` → `promote-release`.
+
+When any of these fails on `main`, `alert-on-failure` opens an issue titled "Publish workflow is failing on main", or comments on the open one, with a link to the run (v2.6).
 
 ### Job 1: publish-mcp
 

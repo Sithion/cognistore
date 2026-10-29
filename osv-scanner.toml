@@ -1,9 +1,11 @@
 # OSV-Scanner ignore list (applied via --config in the osv-scan job of .github/workflows/ci.yml).
 #
 # Only advisories with NO available fix in our dependency tree are ignored, each
-# with a rationale. Re-evaluate the entries below whenever dependencies are upgraded.
+# with a rationale and a `reason` (printed by osv-scanner when it filters the
+# finding). Re-evaluate the entries whenever dependencies are upgraded, and drop
+# any that no longer match (run osv-scanner with an empty config to list them).
 
-# ── npm: unfixable transitive deps ──
+# ── npm ──
 
 # GHSA-67mh-4wv8-2f99 — esbuild dev-server CORS bypass (CVSS 5.3)
 # esbuild@0.18.20 is pinned by @esbuild-kit/core-utils@3.3.2 (latest published;
@@ -13,69 +15,15 @@
 # uses esbuild as a compiler (no dev server is started). Not exploitable here.
 [[IgnoredVulns]]
 id = "GHSA-67mh-4wv8-2f99"
+reason = "esbuild 0.18.20 pinned by @esbuild-kit/core-utils (latest) via drizzle-kit; the bug is in esbuild's dev server, which is never started (compiler use only)."
 
-# GHSA-qwww-vcr4-c8h2 — React Router RSC Mode CSRF bypass (CVSS 7.1)
-# 2026-10: the GitHub advisory now lists 7.18.2 as patched and we ship 7.18.5
-# (override in package.json). Kept until OSV's record agrees; remove afterwards.
-# Affects react-router >=7.12.0, fixed in 8.3.0. Not reachable by a version bump:
-# react-router-dom's latest is 7.18.1 and pins react-router at 7.18.1 exactly, so
-# 8.3.0 requires migrating off react-router-dom (v8 merged it into react-router)
-# plus a react/react-dom bump to >=19.2.7. The advisory is specific to RSC mode —
-# server actions executing before the CSRF check returns 400. The dashboard is a
-# client-only SPA in a Tauri webview: it uses only the declarative router
-# (BrowserRouter/Routes/Route/Link/useNavigate/useLocation/useSearchParams), with
-# no createBrowserRouter, no RouterProvider, no data-router actions or loaders,
-# and no RSC. Re-evaluate when react-router-dom ships a 7.x patch or the app
-# migrates to react-router v8.
-[[IgnoredVulns]]
-id = "GHSA-qwww-vcr4-c8h2"
-
-# ── Tauri 2.x Linux GTK stack: "unmaintained" advisories, no fixed version ──
-# These crates are pulled transitively by Tauri 2.x's GTK3 bindings on Linux.
-# gtk-rs deprecated them; there is no fixed release and no app-level remediation
-# until Tauri migrates its windowing stack.
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0411" # gdkwayland-sys — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0412" # gdk — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0413" # atk — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0414" # gdkx11-sys — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0415" # gtk — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0416" # atk-sys — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0417" # gdkx11 — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0418" # gdk-sys — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0419" # gtk3-macros — unmaintained (Tauri GTK stack)
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0420" # gtk-sys — unmaintained (Tauri GTK stack)
-
-# ── Other unmaintained transitive crates, no fixed version ──
+# ── Rust: no fixed version reachable in our tree ──
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370" # proc-macro-error — unmaintained, no fix; transitive via macro crates
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0057" # fxhash — unmaintained, no fix; transitive
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0075" # unic-char-range — unmaintained, no fix
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0080" # unic-common — unmaintained, no fix
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0081" # unic-char-property — unmaintained, no fix
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0098" # unic-ucd-version — unmaintained, no fix
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0100" # unic-ucd-ident — unmaintained, no fix
-
-# ── Fix exists upstream but not reachable in our tree yet ──
+reason = "Unmaintained, no patched version; build-time proc-macro dependency of transitive macro crates."
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0429" # glib < 0.20 — pinned by Tauri 2.x GTK stack (glib 0.18); fix needs an upstream Tauri upgrade
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0097" # rand — the 0.8.x line is bumped to 0.8.6; a transitive rand 0.7.3 remains with no in-major fix
+reason = "glib 0.18 pinned by Tauri 2.x's GTK3 bindings; the 0.20 fix needs an upstream Tauri upgrade."
 
 # quick-xml < 0.41.0 (RUSTSEC-2026-0194 / -0195, CVSS 7.5). quick-xml 0.38.4 is
 # pulled by plist, whose requirement is `^0.38`; even the latest plist (1.9.0)
@@ -86,8 +34,10 @@ id = "RUSTSEC-2026-0097" # rand — the 0.8.x line is bumped to 0.8.6; a transit
 # reachable with attacker-controlled data here.
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0194" # quick-xml < 0.41 — transitive via plist (Tauri); fix needs an upstream Tauri/plist upgrade
+reason = "quick-xml 0.38 via plist (Tauri); 0.41 unreachable until Tauri bumps plist; only parses trusted local .plist files."
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0195" # quick-xml < 0.41 — transitive via plist (Tauri); fix needs an upstream Tauri/plist upgrade
+reason = "Same path as RUSTSEC-2026-0194: quick-xml 0.38 via plist (Tauri), trusted local .plist input only."
 
 # zvariant / zvariant_derive / zbus_names (RUSTSEC-2026-0370 / -0372 / -0371):
 # "unmaintained" informational advisories, no patched version — the crates were
