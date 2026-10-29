@@ -75,9 +75,11 @@ export class KnowledgeSDK {
         this.db = db;
         this.sqlite = sqlite;
       } catch (error) {
-        throw new ConnectionError(
+        const wrapped = new ConnectionError(
           `Failed to open database: ${error instanceof Error ? error.message : String(error)}`
         );
+        Object.defineProperty(wrapped, 'cause', { value: error, configurable: true });
+        throw wrapped;
       }
 
       // Step 2: Ensure Ollama model is available

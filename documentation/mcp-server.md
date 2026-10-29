@@ -6,6 +6,19 @@ The MCP server (`@cognistore/mcp-server`) is the primary interface for AI coding
 
 **System knowledge guard:** Several tools enforce protection of system entries (`type=system`). System entries are seeded during setup and contain mandatory protocol instructions. They cannot be deleted or modified through MCP tools, and `addPlanRelation` silently skips them.
 
+## Node.js ABI recovery
+
+After a Node.js upgrade, the first MCP session may time out in the client while
+the MCP server rebuilds `better-sqlite3`; the next launch succeeds. The server
+runs one rebuild with a 120-second timeout from the directory containing the
+resolved native module.
+The rebuild uses the failing Node installation and discards inherited npm
+runtime/target overrides. A fresh guarded process preserves the MCP arguments.
+Diagnostics and rebuild output use stderr; stdout remains JSON-RPC.
+Failure exits 78 and recommends `npx clear-npx-cache` or
+`npm rebuild better-sqlite3 --prefix <directory containing node_modules>`.
+`COGNISTORE_ABI_REBUILT=1` prevents repeated rebuilds.
+
 ## Transport
 
 ```

@@ -31,7 +31,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_254 = resolve(__dirname, '../../fixtures/upgrade/2.5.4.db.gz');
 const NPM_VERSIONS = ['2.5.3', '2.5.4'];
 // Per user: a shared, predictable /tmp path could be pre-seeded by another account.
-const NPX_SANDBOX = join(tmpdir(), `cognistore-mcp-matrix-npx-${process.getuid?.() ?? 'user'}`);
+const NPX_SANDBOX = join(tmpdir(), `cognistore-mcp-matrix-npx-${process.getuid?.() ?? 'user'}-abi${process.versions.modules}`);
 const MODEL = 'nomic-embed-text';
 
 let work: string;
