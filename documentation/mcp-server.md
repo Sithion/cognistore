@@ -265,8 +265,25 @@ Tools are annotated with hints for MCP clients:
 
 | Annotation | Tools | Purpose |
 |------------|-------|---------|
-| `readOnlyHint: true` | `getKnowledge`, `listTags`, `healthCheck`, `listPlanTasks`, `getPlanChain` | Signals the tool does not modify knowledge content. `getKnowledge` still updates the `last_read_at` / `read_count` retention counters of the entries it returns — it never modifies an entry's content, tags or `version` |
+| `readOnlyHint: true` | `getKnowledge`, `listTags`, `healthCheck`, `listPlans`, `listPlanTasks`, `getPlanChain`, `getTokenUsage` | Signals the tool does not modify knowledge content. `getKnowledge` still updates the `last_read_at` / `read_count` retention counters of the entries it returns — it never modifies an entry's content, tags or `version` |
 | `destructiveHint: true` | `deleteKnowledge`, `deletePlanTask` | Signals the tool permanently removes data |
+
+
+## Frozen contract
+
+The tool surface is a public contract: agents, injected skills and older npm builds on other machines call these tools by name. `packages/tests/src/contract/mcp-contract.test.ts` boots the bundled server (`dist/index.js`) over stdio and checks it against `mcp-contract.snapshot.json`:
+
+- **Tools**: names, input schemas and annotations must match the snapshot exactly.
+- **Responses**: every tool is called once, and each response must keep every field the snapshot recorded, with the same type. New fields are allowed.
+
+The snapshot was generated from the v2.5.4 bundle, so a passing run also shows the current build exposes the published surface. To change the contract on purpose (add an optional parameter, say), regenerate the snapshot in the same PR and review the diff structurally:
+
+```bash
+pnpm build
+cd packages/tests && UPDATE_MCP_CONTRACT=1 npx playwright test --project=compat src/contract/mcp-contract.test.ts
+```
+
+Removing or renaming a tool, a parameter or a response field is not allowed in a minor release.
 
 ## MCP Resources
 

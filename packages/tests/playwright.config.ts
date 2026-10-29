@@ -11,6 +11,9 @@ export default defineConfig({
   projects: [
     { name: 'e2e', testMatch: /e2e\/.*\.test\.ts/ },
     { name: 'load', testMatch: /load\/.*\.test\.ts/ },
+    // Compatibility net (plan v2.6, Fase T): the frozen MCP contract, the
+    // upgrade and MCP × database matrices, and the sidecar API inventory.
+    { name: 'compat', testMatch: /\/src\/(contract|compat|api)\/[^/]+\.test\.ts$/ },
     { name: 'performance', testMatch: /performance\/.*\.test\.ts/ },
   ],
 });
