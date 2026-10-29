@@ -8,7 +8,7 @@
  *   pnpm verify --coverage --markdown <file>   # also write the coverage table
  *
  * Steps, in order, stopping at the first failure:
- *   lint        turbo lint; skipped while no workspace defines a `lint` script
+ *   lint        Biome (biome.json): errors fail, the warnings are the recorded baseline
  *   type-check  turbo type-check (dashboard frontend + server, MCP server, tests)
  *   build       turbo build (the suites spawn the built sidecar and MCP server)
  *   unit        Vitest: packages/core and the sidecar's auth/settings
@@ -22,7 +22,7 @@
  * The @perf suite is not part of it; CI runs it in its own job.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,27 +32,14 @@ const coverage = args.includes('--coverage');
 const mdIndex = args.indexOf('--markdown');
 const markdown = mdIndex >= 0 ? args[mdIndex + 1] : undefined;
 
-/** True when some workspace package.json defines `script`. */
-function anyWorkspaceScript(script) {
-  for (const group of ['apps', 'packages']) {
-    for (const name of readdirSync(join(ROOT, group))) {
-      const pkg = join(ROOT, group, name, 'package.json');
-      if (existsSync(pkg) && JSON.parse(readFileSync(pkg, 'utf-8')).scripts?.[script]) return true;
-    }
-  }
-  return false;
-}
-
-const steps = [];
-if (anyWorkspaceScript('lint')) steps.push(['lint', ['pnpm', 'lint']]);
-else console.log('verify: no workspace defines a lint script — skipped');
-steps.push(
+const steps = [
+  ['lint', ['pnpm', 'lint']],
   ['type-check', ['pnpm', 'type-check']],
   ['build', ['pnpm', 'build']],
   ['unit', coverage ? ['pnpm', 'coverage:unit'] : ['pnpm', '--filter', '@cognistore/core', '--filter', '@cognistore/dashboard', 'test']],
   ['scripts', ['pnpm', 'test:scripts']],
   ['integration', coverage ? ['pnpm', 'coverage:integration'] : ['pnpm', '--filter', '@cognistore/tests', 'test']],
-);
+];
 if (existsSync(join(ROOT, 'node_modules', '.bin', 'knip'))) steps.push(['knip', ['pnpm', 'exec', 'knip']]);
 else console.log('verify: knip is not installed — skipped');
 if (coverage) steps.push(['coverage', ['node', 'scripts/coverage-report.mjs', ...(markdown ? ['--markdown', markdown] : [])]]);
