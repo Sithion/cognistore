@@ -244,3 +244,5 @@ The script traps EXIT and restores original MCP configs from backups, ensuring t
 | `scripts/bump-version.sh` | Cross-package version bump |
 | `scripts/test-agents.sh` | Agent test battery (local, Docker-based) |
 | `scripts/repair-embeddings.mjs` | Offline embedding-index repair — see [Recovery](./recovery.md) |
+| `scripts/clean.mjs` | Second half of `pnpm clean` (after `turbo clean`): removes coverage, Playwright reports, Stryker leftovers, the sidecar bundle and `.turbo` from a fixed list of literal paths |
+| `scripts/legacy/` | One-off scripts kept for reference, not maintained (`recover-operations-history.mjs`: pre-2.3.2 Activity history from a backup) |

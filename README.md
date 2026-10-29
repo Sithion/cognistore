@@ -336,6 +336,8 @@ cognistore/
 └── scripts/
     ├── bump-version.sh           # Bump the version across all packages
     ├── check-release-version.mjs # Assert all release-driving versions agree
+    ├── clean.mjs                 # Remove coverage, reports and build leftovers (pnpm clean)
+    ├── legacy/                   # One-off scripts kept for reference, not maintained
     ├── repair-embeddings.mjs     # Offline embedding-index repair (documentation/recovery.md)
     └── security-check.sh         # Local secret/security scan
 ```
