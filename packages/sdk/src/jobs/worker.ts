@@ -1,6 +1,7 @@
 import { parentPort, workerData, threadId } from 'node:worker_threads';
 import { dispatchJobWithConnection, createDbClient, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
 import { OllamaEmbeddingClient } from '@cognistore/embeddings';
+import { performance } from 'node:perf_hooks';
 
 if (!parentPort) throw new Error('Worker requires a parent port');
 let active: { id: string; cancelled: boolean; checkpoint?: () => void } | undefined;
@@ -37,12 +38,22 @@ parentPort.on('message', async (message: any) => {
   const job: { id: string; cancelled: boolean; checkpoint?: () => void } = { id: message.id, cancelled: false };
   active = job;
   try {
-    parentPort!.postMessage({ type: 'progress', id: job.id, progress: { phase: 'health', done: 0, total: 1 } });
-    await new Promise<void>((resolve, reject) => {
+    const checkpoint = () => new Promise<void>((resolve, reject) => {
       job.checkpoint = () => { job.checkpoint = undefined; job.cancelled ? reject(Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' })) : resolve(); };
     });
+    if (message.kind === 'health') {
+      parentPort!.postMessage({ type: 'progress', id: job.id, progress: { phase: 'health', done: 0, total: 1 } });
+      await checkpoint();
+    }
     const activeJob = job;
-    const result = await dispatchJobWithConnection(message.kind, message.payload, sqlite);
+    let lastProgress = performance.now();
+    const result = await dispatchJobWithConnection(message.kind, message.payload, sqlite, async (done, total) => {
+      if (job.cancelled) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      if (performance.now() - lastProgress < 50) return;
+      lastProgress = performance.now();
+      parentPort!.postMessage({ type: 'progress', id: job.id, progress: { phase: message.kind, done, total } });
+      await checkpoint();
+    });
     parentPort!.postMessage({ type: 'done', id: activeJob.id, result: { ...result, threadId } });
   } catch (error) {
     const e = error as Error & { code?: string };

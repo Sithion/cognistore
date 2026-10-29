@@ -55,6 +55,37 @@ export interface DuplicateScanResult {
 
 export const dupScanStateKey = (threshold: number) => `${DUP_SCAN_STATE_KEY}:${threshold}`;
 
+/** Fingerprint used by the SDK result cache; includes vector and metadata watermarks. */
+export function duplicateFingerprint(sqlite: Database.Database, threshold: number): string {
+  try {
+    const row = sqlite.prepare(`SELECT
+      (SELECT COALESCE(MAX(rowid), 0) FROM knowledge_embeddings_rowids) AS maxRowid,
+      (SELECT COALESCE(MAX(updated_at), '') FROM knowledge_entries WHERE type != 'system') AS maxUpdated,
+      (SELECT COUNT(*) FROM knowledge_entries WHERE type != 'system') AS entries,
+      (SELECT COUNT(*) FROM knowledge_embeddings_rowids) AS embeddings`).get() as { maxRowid: number; maxUpdated: string; entries: number; embeddings: number };
+    const generation = sqlite.prepare('SELECT value FROM cleanup_meta WHERE key = ?').get('dup_scan_generation') as { value: string } | undefined;
+    return `${threshold}|${row.maxRowid}|${row.maxUpdated}|${row.entries}|${row.embeddings}|${generation?.value ?? '0'}`;
+  } catch { return `${threshold}|unavailable`; }
+}
+
+export async function findDuplicatePairsForJob(sqlite: Database.Database, opts: { threshold?: number; limit?: number } = {}, checkpoint?: (done: number, total: number) => Promise<void>) {
+  const threshold = opts.threshold ?? 0.9;
+  const limit = opts.limit ?? 100;
+  const { pairs, meta } = await scanDuplicatePairs(sqlite, threshold, { checkpoint });
+  return pairs.filter((p) => meta.has(p.a) && meta.has(p.b)).sort((a, b) => b.similarity - a.similarity).slice(0, clampDuplicateLimit(limit))
+    .map((p) => ({ a: { id: p.a, title: meta.get(p.a)!.title }, b: { id: p.b, title: meta.get(p.b)!.title }, similarity: p.similarity }));
+}
+
+export async function findDuplicateGroupsForJob(sqlite: Database.Database, opts: { threshold?: number; limit?: number } = {}, checkpoint?: (done: number, total: number) => Promise<void>) {
+  const threshold = opts.threshold ?? 0.9;
+  const limit = opts.limit ?? 100;
+  const { pairs, meta } = await scanDuplicatePairs(sqlite, threshold, { checkpoint });
+  const { groupPairs } = await import('./duplicate-pairs.js');
+  return groupPairs(pairs, meta, clampDuplicateLimit(limit)).map((group) => ({ ...group, memberCount: group.members.length, members: group.members.slice(0, 50) }));
+}
+
+export const clampDuplicateLimit = (limit: number) => Math.min(500, Math.max(1, Math.floor(Number.isFinite(limit) ? limit : 100)));
+
 const yieldToEventLoop = () => new Promise<void>((r) => setImmediate(r));
 
 function readThresholdState(sqlite: Database.Database, threshold: number): ThresholdState | null {
@@ -96,6 +127,7 @@ function writeThresholdState(sqlite: Database.Database, threshold: number, state
 /** Forget the incremental state: the next scan is a full one. */
 export function invalidateDuplicateScan(sqlite: Database.Database): void {
   try {
+    sqlite.prepare(`INSERT INTO cleanup_meta (key, value) VALUES ('dup_scan_generation', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`).run();
     sqlite.prepare(`DELETE FROM cleanup_meta WHERE key = ? OR key LIKE ?`).run(DUP_SCAN_STATE_KEY, `${DUP_SCAN_STATE_KEY}:%`);
   } catch { /* nothing to invalidate */ }
 }
@@ -107,7 +139,7 @@ const inFlight = new WeakMap<Database.Database, Map<string, Promise<DuplicateSca
 export function scanDuplicatePairs(
   sqlite: Database.Database,
   threshold: number,
-  opts: { incremental?: boolean; yieldEveryMs?: number; maxPairs?: number } = {},
+  opts: { incremental?: boolean; yieldEveryMs?: number; maxPairs?: number; checkpoint?: (done: number, total: number) => Promise<void> } = {},
 ): Promise<DuplicateScanResult> {
   const key = `${threshold}|${opts.incremental !== false}|${opts.maxPairs ?? ''}`;
   let perDb = inFlight.get(sqlite);
@@ -122,13 +154,15 @@ export function scanDuplicatePairs(
 async function runScan(
   sqlite: Database.Database,
   threshold: number,
-  opts: { incremental?: boolean; yieldEveryMs?: number; maxPairs?: number },
+  opts: { incremental?: boolean; yieldEveryMs?: number; maxPairs?: number; checkpoint?: (done: number, total: number) => Promise<void> },
 ): Promise<DuplicateScanResult> {
   // Snapshot the vector watermark BEFORE reading metadata: anything inserted
   // later is left for the next scan instead of being skipped for good.
   const capRowid = maxEmbeddingRowid(sqlite);
 
   const meta = new Map<string, GroupMember>();
+  let metadataDone = 0;
+  const metadataTotal = sqlite.prepare("SELECT COUNT(*) AS total FROM knowledge_entries WHERE type != 'system'").get() as { total: number };
   let maxUpdated = '';
   const page = sqlite.prepare(
     `SELECT id, title, scope, type, version, updated_at AS updatedAt FROM knowledge_entries
@@ -139,8 +173,9 @@ async function runScan(
     for (const r of rows) {
       meta.set(r.id, { id: r.id, title: r.title, scope: r.scope, type: r.type, version: r.version ?? 1, updatedAt: r.updatedAt });
       if (r.updatedAt > maxUpdated) maxUpdated = r.updatedAt;
+      metadataDone++;
     }
-    await yieldToEventLoop();
+    await (opts.checkpoint ? opts.checkpoint(metadataDone, metadataTotal.total) : yieldToEventLoop());
     if (rows.length < META_PAGE) break;
     after = rows[rows.length - 1].id;
   }
@@ -174,7 +209,7 @@ async function runScan(
       vectors.set(chunk.vectors.subarray(i * dims, (i + 1) * dims), row * dims);
       tailNorm[row] = normalizeRow(vectors, row, dims);
     }
-    await yieldToEventLoop();
+    await (opts.checkpoint ? opts.checkpoint(ids.length, metadataTotal.total) : yieldToEventLoop());
   }
   if (ids.length === 0) return empty(false);
   const set = { ids, vectors: vectors.subarray(0, ids.length * dims), dims };
@@ -198,7 +233,7 @@ async function runScan(
       .filter(([a, b]) => present.has(a) && present.has(b) && !changed.has(a) && !changed.has(b))
       .map(([a, b, similarity]) => ({ a, b, similarity }));
     const fresh = changedRows.length
-      ? await findPairsInVectors(set, threshold, { queryRows: changedRows, tailNorm: norms, yieldEveryMs: opts.yieldEveryMs, maxPairs: opts.maxPairs })
+      ? await findPairsInVectors(set, threshold, { queryRows: changedRows, tailNorm: norms, yieldEveryMs: opts.yieldEveryMs, maxPairs: opts.maxPairs, checkpoint: opts.checkpoint })
       : { pairs: [], truncated: false };
     result = { pairs: kept.concat(fresh.pairs), meta, mode: 'incremental', compared: changedRows.length, truncated: fresh.truncated };
     // Entries sharing the newest updated_at are re-checked on every scan, so
@@ -207,7 +242,7 @@ async function runScan(
     changedSomething = capRowid !== prev.maxRowid || maxUpdated !== prev.maxUpdated
       || result.pairs.length !== prev.pairs.length || result.pairs.some((p) => !prevKeys.has(`${p.a}|${p.b}`));
   } else {
-    const found = await findPairsInVectors(set, threshold, { tailNorm: norms, yieldEveryMs: opts.yieldEveryMs, maxPairs: opts.maxPairs });
+    const found = await findPairsInVectors(set, threshold, { tailNorm: norms, yieldEveryMs: opts.yieldEveryMs, maxPairs: opts.maxPairs, checkpoint: opts.checkpoint });
     result = { pairs: found.pairs, meta, mode: 'full', compared: ids.length, truncated: found.truncated };
   }
 

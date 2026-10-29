@@ -759,7 +759,7 @@ export class KnowledgeService {
    * The user approves each candidate individually; these methods just describe
    * what could be removed.
    */
-  async generateCleanupReport(opts: { unreadDays?: number; dupThreshold?: number } = {}) {
+  async generateCleanupReport(opts: { unreadDays?: number; dupThreshold?: number } = {}, duplicateGroups?: Awaited<ReturnType<KnowledgeRepository['findDuplicateGroups']>>) {
     this.flushReads(); // unread detection reads last_read_at
     const unreadDays = opts.unreadDays ?? CLEANUP_UNREAD_DAYS;
     const dupThreshold = opts.dupThreshold ?? CLEANUP_DUP_THRESHOLD;
@@ -804,7 +804,7 @@ export class KnowledgeService {
     // (c) near-duplicate groups to consolidate into the newest member.
     let groupCount = 0;
     let groupMemberTotal = 0;
-    const groups = await this.repository.findDuplicateGroups({ threshold: dupThreshold });
+    const groups = duplicateGroups ?? await this.repository.findDuplicateGroups({ threshold: dupThreshold });
     for (const g of groups) {
       // An entry already queued for deletion must not also be merged. Drop it
       // from the group; a group that falls below two members is not a group.

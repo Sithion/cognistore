@@ -22,6 +22,9 @@ worker opens its own connection with `createDbClient`, which checks migrations
 on startup. Shutdown flushes worker buffers, stops timers, closes resources,
 then acknowledges.
 
+Duplicate scans execute in the worker with metadata and batched vector reads.
+Parent caches remain guarded by captured fingerprints and incremental watermarks.
+
 ## High-Level Architecture
 
 ```

@@ -16,6 +16,9 @@ import {
   type JobPayloads,
   type JobResults,
   JobRunner,
+  type DuplicateJobOptions,
+  duplicateFingerprint,
+  invalidateDuplicateScan,
 } from '@cognistore/core';
 import { OllamaEmbeddingClient, checkOllamaHealth } from '@cognistore/embeddings';
 import {
@@ -61,6 +64,8 @@ export class KnowledgeSDK {
   private alwaysExternal = false;
   private initialized = false;
   private jobs?: JobRunner;
+  private duplicateCache = new Map<string, { fingerprint: string; result: unknown[] }>();
+  private duplicateInFlight = new Map<string, Promise<any[]>>();
 
   private getJobRunner(): JobRunner {
     if (this.jobs) return this.jobs;
@@ -288,7 +293,9 @@ export class KnowledgeSDK {
       if (existing?.type === 'system' && updates.type && updates.type !== 'system') {
         throw new ValidationError('System knowledge type cannot be changed');
       }
-      return await this.service!.update(id, parsed.data as UpdateKnowledgeInput);
+      const updated = await this.service!.update(id, parsed.data as UpdateKnowledgeInput);
+      this.duplicateCache.clear();
+      return updated;
     } catch (error) {
       if (error instanceof ValidationError) throw error;
       throw this.wrapError(error, 'Failed to update knowledge');
@@ -375,10 +382,10 @@ export class KnowledgeSDK {
     }
   }
 
-  async findDuplicatePairs(opts: { threshold?: number; limit?: number } = {}) {
+  async findDuplicatePairs(opts: { threshold?: number; limit?: number; signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}) {
     this.ensureInitialized();
     try {
-      return await this.service!.findDuplicatePairs(opts);
+      return await this.findDuplicates('duplicates.pairs', opts);
     } catch (error) {
       throw this.wrapError(error, 'Failed to find duplicate pairs');
     }
@@ -391,11 +398,12 @@ export class KnowledgeSDK {
   // would give the sidecar two instances on one database file.
 
   async generateCleanupReport(
-    opts: { unreadDays?: number; dupThreshold?: number } = {},
+    opts: { unreadDays?: number; dupThreshold?: number; signal?: AbortSignal } = {},
   ): Promise<{ report: CleanupReport; created: boolean }> {
     this.ensureInitialized();
     try {
-      return await this.service!.generateCleanupReport(opts);
+      const groups = await this.findDuplicates('duplicates.groups', { threshold: opts.dupThreshold, signal: opts.signal });
+      return await this.service!.generateCleanupReport(opts, groups);
     } catch (error) {
       throw this.wrapError(error, 'Failed to generate cleanup report');
     }
@@ -478,13 +486,43 @@ export class KnowledgeSDK {
     }
   }
 
-  async findDuplicateGroups(opts: { threshold?: number; limit?: number } = {}) {
+  async findDuplicateGroups(opts: { threshold?: number; limit?: number; signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}) {
     this.ensureInitialized();
     try {
-      return await this.service!.findDuplicateGroups(opts);
+      return await this.findDuplicates('duplicates.groups', opts);
     } catch (error) {
       throw this.wrapError(error, 'Failed to find duplicate groups');
     }
+  }
+
+  private async findDuplicates(kind: 'duplicates.pairs' | 'duplicates.groups', opts: DuplicateJobOptions & { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<any[]> {
+    const limit = Math.min(500, Math.max(1, Math.floor(opts.limit ?? 100)));
+    const key = `${kind}|${opts.threshold ?? 0.9}|${limit}`;
+    if (opts.signal?.aborted) throw Object.assign(new Error('The operation was aborted'), { code: 'ABORT_ERR' });
+    const inFlight = this.duplicateInFlight.get(key);
+    if (inFlight) return inFlight;
+    const fingerprint = this.currentDuplicateFingerprint(opts.threshold ?? 0.9);
+    const cached = this.duplicateCache.get(key);
+    if (cached?.fingerprint === fingerprint) return cached.result;
+    const promise = this.run(kind, { threshold: opts.threshold, limit }, { signal: opts.signal, onProgress: opts.onProgress }).then((response) => {
+      if (this.currentDuplicateFingerprint(opts.threshold ?? 0.9) === response.fingerprint) {
+        this.duplicateCache.set(key, { fingerprint: response.fingerprint, result: response.result });
+        while (this.duplicateCache.size > 8) this.duplicateCache.delete(this.duplicateCache.keys().next().value!);
+      }
+      return response.result;
+    }).finally(() => this.duplicateInFlight.delete(key));
+    this.duplicateInFlight.set(key, promise);
+    opts.signal?.addEventListener('abort', () => {
+      if (this.duplicateInFlight.get(key) === promise) this.duplicateInFlight.delete(key);
+    }, { once: true });
+    return promise;
+  }
+
+  private currentDuplicateFingerprint(threshold: number): string {
+    if (!this.sqlite) return 'unavailable';
+    try {
+      return duplicateFingerprint(this.sqlite, threshold);
+    } catch { return `${threshold}|unavailable`; }
   }
 
   async countByType(opts: { from?: string; to?: string } = {}) {
@@ -705,7 +743,10 @@ export class KnowledgeSDK {
    */
   async reembedAll(): Promise<number> {
     this.ensureInitialized();
-    return this.service!.reembedAll();
+    const count = await this.service!.reembedAll();
+    if (this.sqlite) invalidateDuplicateScan(this.sqlite);
+    this.duplicateCache.clear();
+    return count;
   }
 
   /**
@@ -718,7 +759,10 @@ export class KnowledgeSDK {
     onProgress?: (p: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number }) => void;
   }): Promise<{ embedded: number; failed: number; remaining: number }> {
     this.ensureInitialized();
-    return this.service!.embedMissing(opts);
+    const result = await this.service!.embedMissing(opts);
+    if (this.sqlite && result.embedded > 0) invalidateDuplicateScan(this.sqlite);
+    this.duplicateCache.clear();
+    return result;
   }
 
   async embeddingCoverage() {
@@ -893,6 +937,7 @@ export class KnowledgeSDK {
         // Ignore cleanup errors
       }
       this.sqlite = null;
+      this.duplicateCache.clear();
     }
     this.db = null;
     this.service = null;

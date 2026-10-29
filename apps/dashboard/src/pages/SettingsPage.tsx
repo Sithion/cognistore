@@ -959,7 +959,7 @@ function TagSuggestionsSection() {
 }
 
 
-type DuplicateGroup = { groupId: string; maxSimilarity: number; members: { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[] };
+type DuplicateGroup = { groupId: string; maxSimilarity: number; memberCount: number; members: { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[] };
 
 function KnowledgeHealthSection() {
   const { t } = useTranslation();
@@ -1056,11 +1056,11 @@ function KnowledgeHealthSection() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {duplicates.map((g) => {
                   const keeperId = keeperFor(g);
-                  const deleteCount = g.members.length - 1;
+                      const deleteCount = (g.memberCount ?? g.members.length) - 1;
                   return (
                     <div key={g.groupId} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {t('health.groupTitle', { count: g.members.length })} · {Math.round(g.maxSimilarity * 100)}%
+                        {t('health.groupTitle', { count: g.memberCount ?? g.members.length })} · {Math.round(g.maxSimilarity * 100)}%
                       </div>
                       {g.members.map((m) => (
                         <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>

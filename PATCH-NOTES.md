@@ -5,6 +5,7 @@
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
 ### Improvements
+- **Duplicate computation moved to a worker.** Settings duplicate scans and the cleanup report run in the JobRunner worker.
 - **Packaged background runner.** FIFO jobs use their own SQLite/sqlite-vec worker; the isolated sidecar bundle smoke executes a real health job.
 - **Optional incremental vacuum upgrade.** Explicit opt-in enables incremental vacuum outside the sidecar event loop, including after an earlier skip; already-incremental databases are left untouched and lock/disk-space issues are reported as warnings.
 - **Permanent daily token totals.** Insert-maintained daily counters preserve lexical dates and distinct NULL/empty projects.

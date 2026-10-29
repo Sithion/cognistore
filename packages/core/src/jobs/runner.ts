@@ -6,8 +6,8 @@ type Options = { signal?: AbortSignal; onProgress?: (progress: unknown) => void 
 type Entry = { id: string; kind: JobKind; payload: unknown; options: Options; resolve: (v: unknown) => void; reject: (e: Error) => void; abort?: () => void };
 export type JobRunnerConfig = { workerUrl: URL; databasePath: string; embeddingConfig: { host: string; model: string; dimensions: number } };
 
-function abortError(message = 'The operation was aborted'): Error {
-  const e = new Error(message); e.name = 'AbortError'; return e;
+function abortError(message = 'The operation was aborted'): Error & { code: string } {
+  const e = new Error(message) as Error & { code: string }; e.name = 'AbortError'; e.code = 'ABORT_ERR'; return e;
 }
 
 export class JobRunner {

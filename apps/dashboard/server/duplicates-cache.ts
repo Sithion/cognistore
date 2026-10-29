@@ -39,8 +39,3 @@ export function createDuplicatesCache<T>(fingerprint: () => string): DuplicatesC
 }
 
 /** Fingerprint of everything duplicate detection reads. Two aggregate scans of a few ms each at 10k rows. */
-export const DUPLICATES_FINGERPRINT_SQL = `
-  SELECT
-    (SELECT MAX(updated_at) FROM knowledge_entries) AS maxUpdated,
-    (SELECT COUNT(*) FROM knowledge_entries) AS entries,
-    (SELECT COUNT(*) FROM knowledge_embeddings_rowids) AS embeddings`;

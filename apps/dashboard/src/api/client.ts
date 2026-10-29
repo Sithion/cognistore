@@ -191,7 +191,7 @@ export const api = {
   getStaleEntries: () =>
     request<{ id: string; title: string; type: string; scope: string; confidenceScore: number; updatedAt: string; expiresAt: string | null }[]>('/api/health/stale'),
   getDuplicateGroups: () =>
-    request<{ groupId: string; maxSimilarity: number; members: { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[] }[]>('/api/health/duplicates'),
+    request<{ groupId: string; maxSimilarity: number; memberCount: number; members: { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[] }[]>('/api/health/duplicates'),
 
   // Cleanup cycle
   getCleanupReport: () => request<CleanupReportResponse>('/api/cleanup/report'),
