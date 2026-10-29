@@ -18,6 +18,7 @@
     "coverage:unit": "pnpm --filter @cognistore/core --filter @cognistore/dashboard test:coverage",
     "coverage:integration": "c8 pnpm --filter @cognistore/tests test",
     "coverage:report": "node scripts/coverage-report.mjs",
+    "test:scripts": "node --test scripts/test/*.test.mjs",
     "coverage": "pnpm coverage:unit && pnpm coverage:integration && pnpm coverage:report"
   },
   "devDependencies": {

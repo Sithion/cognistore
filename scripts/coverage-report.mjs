@@ -18,10 +18,15 @@
  * source map that failed to load shows every file as 1 covered line, i.e. a
  * vacuous 100%); --write-baseline records the current numbers instead. A
  * missing baseline fails too, so deleting it cannot switch the gate off.
+ * Integration dumps are normalized before c8 reports them because Playwright's
+ * transforming loader can leave stale line lengths in the shared source map
+ * cache, which prevents c8 from remapping files correctly.
  */
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeDumps } from './coverage-normalize.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE = join(ROOT, 'coverage-baseline.json');
@@ -45,6 +50,17 @@ function packageOf(file) {
   if (rel.startsWith('apps/dashboard/')) return 'dashboard-server';
   if (rel.startsWith('apps/mcp-server/')) return 'mcp-server (bundle)';
   return rel;
+}
+
+const v8Dir = join(ROOT, 'coverage/integration/.v8');
+if (existsSync(v8Dir)) {
+  const { dumps, dropped, touched } = normalizeDumps(v8Dir);
+  console.log(`coverage-normalize: dropped ${dropped} transformed-source entries from ${touched} of ${dumps} dumps`);
+  const report = spawnSync(process.execPath, [join(ROOT, 'node_modules/c8/bin/c8.js'), 'report'], { cwd: ROOT, stdio: 'inherit' });
+  if (report.status !== 0) {
+    console.error('c8 report failed after normalizing dumps');
+    process.exit(1);
+  }
 }
 
 const rows = {};
@@ -86,7 +102,7 @@ for (const [key, c] of Object.entries(current)) {
   }
   if (b?.lineTotal && c.lineTotal < b.lineTotal / 2) {
     status = '❌';
-    failures.push(`${key}: only ${c.lineTotal} lines measured, the baseline had ${b.lineTotal} (source maps not loaded?)`);
+    failures.push(`${key}: only ${c.lineTotal} lines measured, the baseline had ${b.lineTotal} — source maps did not remap (see documentation/ci-cd.md#coverage)`);
   }
   lines.push(`| ${key} | ${c.lines}% | ${c.branches}% | ${b ? `${b.lines}% / ${b.branches}%` : 'none'} | ${status} |`);
 }
