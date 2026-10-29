@@ -965,7 +965,10 @@ function KnowledgeHealthSection() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [stale, setStale] = useState<{ id: string; title: string; type: string; scope: string; confidenceScore: number; updatedAt: string; expiresAt: string | null }[]>([]);
-  const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
+  // null = not checked yet. Duplicate detection is a full scan of the base, so
+  // it runs only when the user asks for it, never on mount (plan v2.6 1A.5).
+  const [duplicates, setDuplicates] = useState<DuplicateGroup[] | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [loading, setLoading] = useState(true);
   // Per-group "keep" choice (groupId → member id). Default = first member
   // (server pre-sorts: version DESC, then updatedAt DESC).
@@ -975,16 +978,21 @@ function KnowledgeHealthSection() {
   const [dupMessage, setDupMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getStaleEntries().catch(() => []),
-      api.getDuplicateGroups().catch(() => []),
-    ]).then(([s, d]) => { setStale(s); setDuplicates(d); }).finally(() => setLoading(false));
+    api.getStaleEntries().catch(() => []).then(setStale).finally(() => setLoading(false));
   }, []);
 
   const openEntry = (id: string) => navigate('/?edit=' + encodeURIComponent(id));
 
-  const reloadDuplicates = () =>
-    api.getDuplicateGroups().then(setDuplicates).catch(() => {});
+  const reloadDuplicates = async () => {
+    setCheckingDuplicates(true);
+    try {
+      setDuplicates(await api.getDuplicateGroups());
+    } catch {
+      setDuplicates((prev) => prev ?? []);
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  };
 
   const keeperFor = (g: DuplicateGroup) => keepChoice[g.groupId] ?? g.members[0]?.id;
 
@@ -1037,7 +1045,12 @@ function KnowledgeHealthSection() {
           <div>
             <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('health.duplicates')}</h3>
             {dupMessage && <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>{dupMessage}</p>}
-            {duplicates.length === 0 ? (
+            <div style={{ marginBottom: 8 }}>
+              <button style={ghostButtonStyle} disabled={checkingDuplicates || resolving} onClick={reloadDuplicates} data-testid="check-duplicates">
+                {checkingDuplicates ? t('health.checkingDuplicates') : t('health.checkDuplicates')}
+              </button>
+            </div>
+            {duplicates === null ? null : duplicates.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('health.dupEmpty')}</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

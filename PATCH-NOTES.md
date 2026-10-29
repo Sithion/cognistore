@@ -6,6 +6,7 @@
 
 ### Improvements
 - **The sidecar now measures itself.** Every 5 minutes it logs event-loop delay (p50/p99/max) and a summary of database calls: how many took 100 ms or more, how many of those were writes (usually a lock wait behind another process), how many failed with `SQLITE_BUSY`, and the slowest statements of the interval. Bound values are never logged, only the SQL text. The summary goes to `~/.cognistore/cognistore.log` with asynchronous I/O. This is the baseline for the "app freezes on large databases" work.
+- **Opening Settings no longer scans the whole base for duplicates.** The Knowledge Health panel used to run duplicate detection every time Settings opened — 41 s of a frozen sidecar on a 10,000-entry base. It now runs only when you click **Check for duplicates**, and the result is cached until an entry is added, edited or deleted (or the base is re-embedded), so checking again on an unchanged base is instant.
 
 ### Maintenance
 - Removed leftover Stryker mutation-testing output (`packages/core/packages/`, `packages/core/reports/`) and added it to `.gitignore`.

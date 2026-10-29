@@ -28,6 +28,7 @@ import {
 } from '@cognistore/shared';
 import { registerAuth, isAllowedOrigin, TOKEN_HEADER, type AuthConfig } from './auth.js';
 import { createPerfMonitor } from './perf-monitor.js';
+import { createDuplicatesCache, DUPLICATES_FINGERPRINT_SQL } from './duplicates-cache.js';
 import type { SQLiteDatabase } from '@cognistore/core';
 import {
   UNKNOWN_VERSION,
@@ -465,6 +466,17 @@ Pass an array to addKnowledge to create multiple entries at once.
   type RawSqlite = { prepare: (sql: string) => any; exec: (sql: string) => unknown; transaction?: (fn: any) => any };
   const getRawSqlite = (): RawSqlite | undefined =>
     ((sdk as any).sqlite ?? (sdk as any).db?.sqlite) as RawSqlite | undefined;
+
+  // Without a raw handle (or mid-upgrade, with the vec table dropped) the
+  // fingerprint is unique per call, i.e. no caching.
+  let fingerprintMiss = 0;
+  const duplicatesCache = createDuplicatesCache<Awaited<ReturnType<typeof sdk.findDuplicateGroups>>>(() => {
+    try {
+      const row = getRawSqlite()?.prepare(DUPLICATES_FINGERPRINT_SQL).get();
+      if (row) return `${row.maxUpdated}|${row.entries}|${row.embeddings}`;
+    } catch { /* fall through */ }
+    return `nocache-${++fingerprintMiss}`;
+  });
 
   // ─── Setup endpoints ───────────────────────────────────────────
 
@@ -1336,6 +1348,7 @@ Pass an array to addKnowledge to create multiple entries at once.
               if (reinitOk) {
                 try {
                   const reembedded = await sdk.reembedAll();
+                  duplicatesCache.clear();
                   record({ step: 'reembed', status: 'success', message: `Re-embedded ${reembedded} entries with new model` });
                   console.log(`[CogniStore] Re-embedded ${reembedded} entries`);
                 } catch (e: any) {
@@ -1396,6 +1409,7 @@ Pass an array to addKnowledge to create multiple entries at once.
               console.warn('[CogniStore] Upgrade: skipping embedding backfill (Ollama cannot embed)');
             } else {
               const result = await sdk.embedMissing();
+              duplicatesCache.clear();
               // Only a run that made NO progress at all is an error. A partial
               // backfill left the index strictly better than it found it, and
               // marking it `error` would make saveDeployedVersion() refuse to
@@ -1903,7 +1917,9 @@ Pass an array to addKnowledge to create multiple entries at once.
   });
 
   // Returns duplicate GROUPS (connected components), not raw pairs — N copies of
-  // an entry render as one group. Single consumer: the Settings health panel.
+  // an entry render as one group. Single consumer: the Settings health panel,
+  // which calls it only on demand ("Check for duplicates"). The result is cached
+  // per base fingerprint; `x-cognistore-cache` says whether this call reused it.
   app.get('/api/health/duplicates', async (request, reply) => {
     const err = ensureReady(reply);
     if (err) return err;
@@ -1911,7 +1927,9 @@ Pass an array to addKnowledge to create multiple entries at once.
     const opts: { threshold?: number; limit?: number } = {};
     if (q.threshold) opts.threshold = Number(q.threshold);
     if (q.limit) opts.limit = Number(q.limit);
-    return sdk.findDuplicateGroups(opts);
+    const { value, hit } = await duplicatesCache.get(JSON.stringify(opts), () => sdk.findDuplicateGroups(opts));
+    reply.header('x-cognistore-cache', hit ? 'hit' : 'miss');
+    return value;
   });
 
   app.get('/api/knowledge/recent', async (request, reply) => {
