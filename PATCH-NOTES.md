@@ -1,5 +1,13 @@
 # Patch Notes
 
+## v2.5.4
+
+**Security maintenance release: two advisories published after 2.5.3.** Caught by the weekly OSV scan on the v2.6 draft PR the same day they appeared.
+
+### Security
+- **`zip` 9.0.0 → 9.1.3 (GHSA-m665-v7pm-7grj, critical).** A parser differential between the central directory and local file headers ("zip cloaking") can make an extracted file land somewhere other than where the archive index says. `zip` is used by the Tauri updater to unpack downloaded updates (which are also signature-checked). `libc` moves to 0.2.191, required by the fixed `zip`.
+- **`@hono/node-server` → 2.1.5 (GHSA-rmxm-3fg6-px4f, moderate).** `serveStatic` decoded the request path twice, letting a crafted path skip middleware on static prefixes. Pulled in through the MCP SDK; the override in `package.json` is raised from `>=2.0.5` to `>=2.1.3`.
+
 ## v2.5.3
 
 **Security maintenance release: the weekly dependency scan had been failing since September 7.** New advisories were published against transitive dependencies after v2.5.2 shipped; the scheduled OSV scan caught them every Monday, but a failing scheduled run notifies nobody, so eight weeks went by unnoticed. This release clears them and makes the next one impossible to miss.
