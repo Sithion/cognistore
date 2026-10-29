@@ -40,7 +40,7 @@ export function makeDb() {
   const repository = new KnowledgeRepository(db, sqlite);
   const service = new KnowledgeService(repository, stubEmbedder);
   return {
-    db, sqlite, repository, service,
+    db, sqlite, repository, service, path: join(dir, 'knowledge.db'),
     cleanup: () => { try { sqlite.close(); } catch { /* already closed */ } rmSync(dir, { recursive: true, force: true }); },
   };
 }

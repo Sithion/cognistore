@@ -2,7 +2,7 @@
 // Standalone, offline repair for a knowledge base whose embedding index has
 // fallen behind or been wiped (see PATCH-NOTES v2.5.2 and
 // documentation/recovery.md). Runs the same incremental, resumable backfill
-// the 2.5.2 upgrade runs inline (KnowledgeSDK.embedMissing()) — it never
+// the 2.5.2 upgrade runs through the worker (KnowledgeSDK.embedMissing()) — it never
 // drops a table and only touches ids that are missing an embedding.
 //
 // Deliberately built over @cognistore/sdk, not @cognistore/core directly:

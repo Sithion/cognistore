@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDbClient, JobRunner, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
 import { KnowledgeSDK } from '@cognistore/sdk';
-export async function mockEmbedding() {
+async function mockEmbedding() {
   let hook: ((prompt: string) => Promise<void>) | undefined;
   const server = createServer(async (req, res: ServerResponse) => {
     if (req.url === '/api/tags') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ models: [{ name: 'nomic-embed-text' }] })); return; }
@@ -39,4 +39,23 @@ export function forbidMain(methods: (keyof KnowledgeRepository | keyof Knowledge
     };
   }
   return () => { for (const [name, original] of originals) original.owner[name] = original.method; };
+}
+
+export function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+export function seed(sqlite: ReturnType<typeof createDbClient>['sqlite'], count: number) {
+  const insert = sqlite.prepare(`INSERT INTO knowledge_entries
+    (id,title,content,tags,type,scope,source,version,confidence_score,created_at,updated_at)
+    VALUES(?,?,?,'[]','note','global','r5',1,1,?,?)`);
+  const tx = sqlite.transaction(() => {
+    for (let i = 0; i < count; i++) {
+      const id = `id-${String(i).padStart(5, '0')}`;
+      insert.run(id, `Title ${i}`, `Content ${i}`, '2026-10-01', '2026-10-01');
+    }
+  });
+  tx();
 }

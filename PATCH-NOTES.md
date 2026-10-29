@@ -4,7 +4,12 @@
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
+### Fixes
+- **Cleanup report cancellation detection.** The route now listens for request `aborted` instead of `close`, so a fully read request body no longer marks the report as cancelled.
+- **MCP `addPlanRelation` no longer crashes the server.** A missing `await` let a foreign-key rejection (unknown plan id) escape the handler and terminate the MCP process; it now returns a tool error.
+
 ### Improvements
+- **Embedding maintenance moved to a worker.** Bounded repairs preserve progress, failures, cancellation, and protection against concurrent edits.
 - **Duplicate computation moved to a worker.** Settings duplicate scans and the cleanup report run in the JobRunner worker.
 - **Packaged background runner.** FIFO jobs use their own SQLite/sqlite-vec worker; the isolated sidecar bundle smoke executes a real health job.
 - **Optional incremental vacuum upgrade.** Explicit opt-in enables incremental vacuum outside the sidecar event loop, including after an earlier skip; already-incremental databases are left untouched and lock/disk-space issues are reported as warnings.

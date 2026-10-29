@@ -88,16 +88,25 @@ export async function connectMcp(launch: McpLaunch, env: NodeJS.ProcessEnv): Pro
     args: launch.args,
     env: { ...process.env, ...launch.env, ...env } as Record<string, string>,
     cwd: launch.cwd,
-    stderr: 'ignore',
+    stderr: 'pipe',
   });
+  let stderr = '';
+  transport.stderr?.on('data', (chunk) => { stderr += String(chunk); });
   const client = new Client({ name: 'cognistore-tests', version: '0.0.0' });
   await client.connect(transport);
+  Object.assign(client, { getMcpStderr: () => stderr });
   return client;
 }
 
 /** Call a tool and parse its first text block as JSON (falls back to the raw text). */
 export async function callJson(client: Client, name: string, args: Record<string, unknown> = {}): Promise<{ isError: boolean; body: unknown }> {
-  const res = (await client.callTool({ name, arguments: args })) as { isError?: boolean; content?: { type: string; text?: string }[] };
+  let res: { isError?: boolean; content?: { type: string; text?: string }[] };
+  try {
+    res = (await client.callTool({ name, arguments: args })) as typeof res;
+  } catch (error) {
+    const stderr = (client as Client & { getMcpStderr?: () => string }).getMcpStderr?.() ?? '';
+    throw new Error(`${name} failed: ${error instanceof Error ? error.message : String(error)}\nMCP stderr:\n${stderr}`);
+  }
   const text = res.content?.find((c) => c.type === 'text')?.text ?? '';
   let body: unknown = text;
   try { body = JSON.parse(text); } catch { /* plain-text response */ }

@@ -18,7 +18,6 @@ import {
   JobRunner,
   type DuplicateJobOptions,
   duplicateFingerprint,
-  invalidateDuplicateScan,
 } from '@cognistore/core';
 import { OllamaEmbeddingClient, checkOllamaHealth } from '@cognistore/embeddings';
 import {
@@ -178,7 +177,9 @@ export class KnowledgeSDK {
   }
 
   async close(): Promise<void> {
-    await this.jobs?.close();
+    const jobs = this.jobs;
+    this.jobs = undefined;
+    await jobs?.close();
     await this.cleanup();
     this.initialized = false;
   }
@@ -741,12 +742,10 @@ export class KnowledgeSDK {
    * Re-embed all knowledge entries and plans with the current embedding model.
    * Used during upgrade when switching embedding models (dimensions change).
    */
-  async reembedAll(): Promise<number> {
+  async reembedAll(opts?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<number> {
     this.ensureInitialized();
-    const count = await this.service!.reembedAll();
-    if (this.sqlite) invalidateDuplicateScan(this.sqlite);
-    this.duplicateCache.clear();
-    return count;
+    try { return await this.run('reembedAll', {}, opts); }
+    finally { this.duplicateCache.clear(); }
   }
 
   /**
@@ -757,12 +756,14 @@ export class KnowledgeSDK {
   async embedMissing(opts?: {
     signal?: AbortSignal;
     onProgress?: (p: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number }) => void;
-  }): Promise<{ embedded: number; failed: number; remaining: number }> {
+  }): Promise<{ embedded: number; failed: number; remaining: number; cancelled: boolean }> {
     this.ensureInitialized();
-    const result = await this.service!.embedMissing(opts);
-    if (this.sqlite && result.embedded > 0) invalidateDuplicateScan(this.sqlite);
-    this.duplicateCache.clear();
-    return result;
+    try {
+      return await this.run('embedMissing', {}, {
+        signal: opts?.signal,
+        onProgress: opts?.onProgress as ((progress: unknown) => void) | undefined,
+      });
+    } finally { this.duplicateCache.clear(); }
   }
 
   async embeddingCoverage() {
@@ -976,13 +977,14 @@ export class KnowledgeSDK {
       `);
 
       // Re-embed all entries with new dimensions
-      const repository = new KnowledgeRepository(this.db!, this.sqlite!);
-      const tempService = new KnowledgeService(repository, this.ollamaClient);
-      const count = await tempService.reembedAll();
+      const count = await this.run('reembedAll', {});
+      this.duplicateCache.clear();
       console.error(`[CogniStore] Re-embedded ${count} entries at ${targetDims} dimensions`);
     } catch (error) {
       // Non-fatal: if migration fails, existing search still works (just with old dims)
       console.error(`[CogniStore] Dimension migration failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.duplicateCache.clear();
     }
   }
 

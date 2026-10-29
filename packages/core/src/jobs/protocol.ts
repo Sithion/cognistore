@@ -1,19 +1,25 @@
-export type JobKind = 'health' | 'duplicates.pairs' | 'duplicates.groups';
+export type JobKind = 'health' | 'duplicates.pairs' | 'duplicates.groups' | 'reembedAll' | 'embedMissing';
 export type DuplicateJobOptions = { threshold?: number; limit?: number };
 export type JobPayloads = {
   health: Record<string, unknown>;
   'duplicates.pairs': DuplicateJobOptions;
   'duplicates.groups': DuplicateJobOptions;
+  reembedAll: Record<string, never>;
+  embedMissing: Record<string, never>;
 };
 export type JobResults = {
   health: { database: true; sqliteVec: true; threadId: number };
   'duplicates.pairs': { result: unknown[]; fingerprint: string };
   'duplicates.groups': { result: unknown[]; fingerprint: string };
+  reembedAll: number;
+  embedMissing: { embedded: number; failed: number; remaining: number; cancelled: boolean };
 };
 export type JobProgress = {
   health: { phase: string; done: number; total: number };
   'duplicates.pairs': { phase: 'duplicates.pairs'; done: number; total: number };
   'duplicates.groups': { phase: 'duplicates.groups'; done: number; total: number };
+  reembedAll: { phase: 'knowledge' | 'plans'; done: number; total: number };
+  embedMissing: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number };
 };
 
 export type ParentMessage =
