@@ -261,7 +261,8 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
   // runner only STAMPED 0.8.0 here, without running it, but real v0.8.0
   // installs have no operations_log, which 2.3.2 reads. So the loop below runs
   // the 0.8.0 base schema on every open, stamped or not: it is all IF NOT
-  // EXISTS, which takes no write lock once the objects exist.
+  // EXISTS. Re-run this base schema outside a transaction on every open; an
+  // up-to-date open must not acquire a write lock.
   if (applied.size === 0) {
     const tableExists = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_entries'")
@@ -291,34 +292,68 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
     console.error('Migration: using embedded migrations (bundled mode)');
   }
 
-  // 5. Apply pending migrations
+  // 5. Apply each candidate under its own write lock.
   for (const { version, sql } of migrations) {
-    if (applied.has(version) && version !== BASE_VERSION) continue;
-
-    const cleanedSql = sql
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('--'))
-      .join('\n');
-    const statements = cleanedSql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
-    for (const stmt of statements) {
-      try {
-        sqlite.exec(stmt + ';');
-      } catch (err: any) {
-        if (err?.message?.includes('duplicate column')) continue;
-        if (err?.message?.includes('already exists')) continue;
-        throw err;
+    const markedAtomic = /^\s*-- cognistore:atomic-script\b/.test(sql);
+    if (version === BASE_VERSION) {
+      // Repair the historically under-created base schema using its
+      // idempotent IF NOT EXISTS statements, in autocommit mode.
+      runSql(sql, sqlite, markedAtomic);
+      if (!applied.has(version)) {
+        sqlite.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)')
+          .run(version, new Date().toISOString());
+        applied.add(version);
       }
+      continue;
+    }
+    if (applied.has(version)) continue;
+
+    sqlite.exec('BEGIN IMMEDIATE');
+    let committed = false;
+    let versionIsApplied = false;
+    try {
+      versionIsApplied = Boolean(sqlite
+        .prepare('SELECT 1 AS applied FROM schema_version WHERE version = ?')
+        .get(version));
+
+      if (!versionIsApplied || version === BASE_VERSION) {
+        runSql(sql, sqlite, markedAtomic);
+
+        sqlite.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)')
+          .run(version, new Date().toISOString());
+      }
+
+      sqlite.exec('COMMIT');
+      committed = true;
+    } finally {
+      if (!committed && sqlite.inTransaction) sqlite.exec('ROLLBACK');
     }
 
-    if (applied.has(version)) continue; // base schema re-checked, already recorded
-    sqlite
-      .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
-      .run(version, new Date().toISOString());
-    console.error(`Migration: ${version} applied`);
+    applied.add(version);
+    if (!versionIsApplied) {
+      console.error(`Migration: ${version} applied`);
+    }
+  }
+}
+
+function runSql(sql: string, sqlite: BetterSqlite3.Database, markedAtomic: boolean): void {
+  const cleanedSql = sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
+  if (markedAtomic) {
+    sqlite.exec(cleanedSql);
+    return;
+  }
+  const statements = cleanedSql.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+  for (const stmt of statements) {
+    try {
+      sqlite.exec(stmt + ';');
+    } catch (err: any) {
+      if (err?.message?.includes('duplicate column')) continue;
+      if (err?.message?.includes('already exists')) continue;
+      throw err;
+    }
   }
 }
 

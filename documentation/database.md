@@ -149,17 +149,17 @@ Schema changes are managed through versioned SQL migration files. On startup, `c
 
 1. Creates the `schema_version` table if it does not exist
 2. Reads all `.sql` files from the migrations directory, sorted by version
-3. Skips migrations already recorded in `schema_version`
-4. Executes pending migrations in order, statement by statement (no wrapping transaction: a version is recorded only after all its statements ran)
-5. Records each applied migration in `schema_version`
+3. Acquires an immediate transaction for each migration and rechecks its applied version under the write lock
+4. Executes marked atomic scripts whole; historical unmarked scripts retain statement splitting and duplicate-column/already-exists tolerance
+5. Records the version with `INSERT OR IGNORE` in the same transaction; a failure rolls back that migration
 
 For pre-migration databases (existing databases with no `schema_version` table but with `knowledge_entries`), the runner bootstraps by running the `0.8.0` base schema and then every subsequent migration.
 
 **Note on system knowledge:** System knowledge entries (`type=system`) are seeded via application code in `server/index.ts` during the setup configure step, not via SQL migrations. This allows the content to be updated programmatically on upgrades without requiring new migration files.
 
-**Note on schema_version bootstrap:** When the migration runner encounters an existing database that has no `schema_version` table, it creates the table and applies `0.8.0` like any pending migration. The `0.8.0` base schema is also re-run on every open, even when it is already recorded. Its statements are all `IF NOT EXISTS`: existing tables and rows are untouched, and when everything exists no write lock is taken. Before 2.6 the runner only recorded `0.8.0` as applied, so a real v0.8.0 install, which never had `operations_log`, failed from 2.3.2 on (`no such table: operations_log`, the table `2.3.2` reads). That also covers such a database after an older release recorded 0.8.0 … 2.3.0 in it.
+**Note on schema_version bootstrap:** When the migration runner encounters an existing database that has no `schema_version` table, it creates the table and applies `0.8.0` like any pending migration. The `0.8.0` base schema is also re-run on every open, even when it is already recorded. Its statements are all `IF NOT EXISTS`: existing tables and rows are untouched. This base-schema check runs in autocommit mode; on an up-to-date database it only reads and takes no write lock. Before 2.6 the runner only recorded `0.8.0` as applied, so a real v0.8.0 install, which never had `operations_log`, failed from 2.3.2 on (`no such table: operations_log`, the table `2.3.2` reads). That also covers such a database after an older release recorded 0.8.0 … 2.3.0 in it.
 
-**Upgrade matrix:** `packages/tests/src/compat/upgrade-matrix.test.ts` opens one fixture per published schema (0.8.0 through 2.5.4, a 0.8.0 database after v2.1.0 opened it, and the legacy 1.3.0 `.deb` layout) with the current code and checks that no rows are lost, the FTS and embeddings are intact, search works and the migrations are idempotent. The fixtures in `packages/tests/fixtures/upgrade/` are written by each release's own SDK from its git tag (`node packages/tests/scripts/gen-upgrade-fixtures.mjs`); never edit them by hand. A release that adds a migration must add its fixture, and the test fails until it does.
+**Upgrade matrix:** `packages/tests/src/compat/upgrade-matrix.test.ts` opens one fixture per published schema (0.8.0 through 2.5.4, a 0.8.0 database after v2.1.0 opened it, and the legacy 1.3.0 `.deb` layout) with the current code and checks that no rows are lost, the FTS and embeddings are intact, search works and the migrations are idempotent. The fixtures in `packages/tests/fixtures/upgrade/` are written by each release's own SDK from its git tag (`node packages/tests/scripts/gen-upgrade-fixtures.mjs`); never edit them by hand. Published fixtures remain immutable.
 
 ```
 packages/core/src/db/migrations/
