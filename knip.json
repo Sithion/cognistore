@@ -1,0 +1,45 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": [
+    "brew",
+    "pkexec",
+    "ollama",
+    "pkill",
+    "sqlite3",
+    "pgrep"
+  ],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/**/*.mjs"
+      ],
+      "ignoreDependencies": [
+        "better-sqlite3"
+      ]
+    },
+    "apps/dashboard": {
+      "entry": [
+        "tsup.sidecar.ts",
+        "scripts/*.mjs",
+        "templates/configs/compile-instructions.mjs",
+        "templates/plugins/opencode/*.ts"
+      ],
+      "ignoreDependencies": [
+        "opencode"
+      ]
+    },
+    "apps/mcp-server": {
+      "ignoreDependencies": [
+        "better-sqlite3",
+        "drizzle-orm",
+        "sqlite-vec"
+      ]
+    },
+    "packages/tests": {
+      "entry": [
+        "scripts/*.mjs"
+      ]
+    }
+  },
+  "ignoreExportsUsedInFile": true
+}

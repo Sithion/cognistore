@@ -125,6 +125,6 @@ export function ScopeAutocomplete({ value, onChange, style, required }: ScopeAut
 }
 
 /** Reset cache so next mount refetches */
-export function invalidateScopesCache() {
+function invalidateScopesCache() {
   scopesCache = null;
 }

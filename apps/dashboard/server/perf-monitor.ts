@@ -1,7 +1,7 @@
 import { appendFile } from 'node:fs/promises';
 import { createPerfMonitor as createCorePerfMonitor, type PerfMonitor } from '@cognistore/core';
 
-export { formatPerfSummary, type PerfMonitor } from '@cognistore/core';
+export type { PerfMonitor } from '@cognistore/core';
 
 /**
  * Sidecar performance monitor (plan v2.6, item 0.2): the shared core monitor

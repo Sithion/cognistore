@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export type WidgetState = 'idle' | 'loading' | 'loaded' | 'empty' | 'error';
 
-export function Spinner({ size = 24 }: { size?: number }) {
+function Spinner({ size = 24 }: { size?: number }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
       <div
@@ -131,7 +131,7 @@ export function getHeatmapColor(count: number, maxCount: number): string {
   return '#39d353';
 }
 
-export function useContainerWidth() {
+function useContainerWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -144,7 +144,7 @@ export function useContainerWidth() {
   return { ref, width };
 }
 
-export const CHART_MIN_WIDTH = 300;
+const CHART_MIN_WIDTH = 300;
 
 /** Format a token count with k/M suffixes for compact display. */
 export function formatTokens(n: number): string {

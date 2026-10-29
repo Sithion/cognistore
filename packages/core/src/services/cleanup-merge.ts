@@ -34,7 +34,7 @@ export const CLEANUP_CONTROL_TAGS = ['deprecated', 'keep'] as const;
 export const MERGE_MAX_TITLE = 500;
 export const MERGE_MAX_CONTENT = 100_000;
 export const MERGE_MAX_TAGS = 20;
-export const MERGE_MAX_TAG_LENGTH = 50;
+const MERGE_MAX_TAG_LENGTH = 50;
 /** Per-member cap when building the deterministic appendix. */
 export const MERGE_APPENDIX_BUDGET = 50_000;
 

@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const SERVER_ENTRY = resolve(__dirname, '../../../apps/dashboard/dist-server/index.js');
 
 /** nomic-embed-text native width; the server truncates to 256 via Matryoshka. */
-export const EMBED_DIMS_NATIVE = 768;
+const EMBED_DIMS_NATIVE = 768;
 
 export function getFreePort(): Promise<number> {
   return new Promise((res, rej) => {
