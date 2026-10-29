@@ -1,22 +1,22 @@
 {
   "integration: config": {
-    "lines": 83.9,
-    "branches": 73.2,
+    "lines": 90.3,
+    "branches": 69.1,
     "lineTotal": 946
   },
   "integration: core": {
-    "lines": 81.2,
-    "branches": 72.1,
+    "lines": 75.8,
+    "branches": 66.5,
     "lineTotal": 5797
   },
   "integration: dashboard-server": {
-    "lines": 76.3,
-    "branches": 56.6,
+    "lines": 75.6,
+    "branches": 55.5,
     "lineTotal": 3948
   },
   "integration: embeddings": {
-    "lines": 65,
-    "branches": 51.9,
+    "lines": 72.6,
+    "branches": 56.3,
     "lineTotal": 369
   },
   "integration: mcp-server (bundle)": {
@@ -25,13 +25,13 @@
     "lineTotal": 6802
   },
   "integration: providers": {
-    "lines": 67.5,
-    "branches": 68.7,
+    "lines": 61.2,
+    "branches": 47.3,
     "lineTotal": 1056
   },
   "integration: sdk": {
-    "lines": 49.6,
-    "branches": 54.6,
+    "lines": 73.4,
+    "branches": 59.1,
     "lineTotal": 945
   },
   "integration: shared": {
@@ -41,7 +41,7 @@
   },
   "unit: core": {
     "lines": 94.2,
-    "branches": 77,
+    "branches": 76.9,
     "lineTotal": 1888
   },
   "unit: dashboard-server": {

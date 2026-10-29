@@ -7,7 +7,8 @@
     "prepare": "git config core.hooksPath .husky || true",
     "build": "turbo build",
     "dev": "turbo dev",
-    "lint": "turbo lint",
+    "lint": "biome lint .",
+    "knip": "knip",
     "test": "turbo test",
     "clean": "turbo clean",
     "bump": "bash scripts/bump-version.sh",
@@ -18,9 +19,11 @@
     "coverage:unit": "pnpm --filter @cognistore/core --filter @cognistore/dashboard test:coverage",
     "coverage:integration": "c8 pnpm --filter @cognistore/tests test",
     "coverage:report": "node scripts/coverage-report.mjs",
+    "test:scripts": "node --test scripts/test/*.test.mjs",
     "coverage": "pnpm coverage:unit && pnpm coverage:integration && pnpm coverage:report"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.4",
     "@types/node": "^25.9.1",
     "c8": "12.0.0",
     "knip": "6.43.0",
