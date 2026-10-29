@@ -133,8 +133,9 @@ export async function waitForSidecar(baseUrl: string, timeoutMs = 45_000): Promi
 
 /** SIGTERM, then SIGKILL if it lingers. */
 export async function stopSidecar(child: ChildProcess | undefined): Promise<void> {
-  if (!child || child.killed) return;
+  if (!child || child.exitCode !== null) return;
   child.kill('SIGTERM');
   await new Promise((res) => setTimeout(res, 300));
-  if (!child.killed) child.kill('SIGKILL');
+  // `killed` only says a signal was sent; exitCode says whether it actually exited.
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
 }
