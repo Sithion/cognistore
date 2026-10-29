@@ -41,6 +41,11 @@
       "ignoreDependencies": [
         "tsx"
       ]
+    },
+    "packages/core": {
+      "entry": [
+        "src/jobs/*-worker.ts"
+      ]
     }
   },
   "ignoreExportsUsedInFile": true

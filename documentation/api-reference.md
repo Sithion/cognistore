@@ -17,6 +17,19 @@ uses the whole rollup day and may overcount the requested hours.
 NULL and empty-string projects remain distinct groups.
 Existing token response fields are unchanged.
 
+## Optional incremental vacuum upgrade
+
+`POST /api/upgrade/run` accepts boolean `skipIncrementalVacuum`, default true.
+Explicit false opts into a pending one-time rewrite, including on an already
+current installation and after restart. Invalid types return 400 before replay
+guards. An earlier default skip does not prevent later opt-in.
+The `incremental-vacuum` progress step reports running and terminal status.
+Mode-2 databases are not rewritten. Skipping this optional step leaves an
+otherwise successful upgrade complete.
+This applies on both the current-install opt-in and full-upgrade paths. Insufficient
+free disk space or a database lock is reported as a warning; the opt-in rewrite
+holds the database write lock, so close agent sessions before opting in.
+
 ## Authentication
 
 **Every route requires the sidecar token** (since v2.5.0). Loopback is not a trust boundary: any other local process, and any page served by any other local HTTP server, sits inside it — and `POST /api/uninstall` takes no body, so a body-less `fetch(..., {mode:'no-cors'})` from an ordinary web page was a CORS-simple request that ran the whole teardown.

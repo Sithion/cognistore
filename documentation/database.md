@@ -29,6 +29,18 @@ older events from other connections, preventing permanent totals from growing
 when scan state is reset after pruning. Retention never deletes daily counters.
 The migration also indexes `knowledge_entries(updated_at)`.
 
+## Incremental vacuum
+
+Only an explicitly opted-in upgrade switches SQLite to incremental auto-vacuum.
+The rewrite runs in a dedicated worker. Database opens and MCP startup never
+run VACUUM. Maintenance only reclaims a bounded number of pages when mode 2
+is already enabled, using bounded work every six hours. Enabling it rewrites
+the database and needs free disk space of about twice the database's current size.
+Agent sessions writing during the opted-in rewrite may wait. External lock
+failures are recorded as warnings and do not block indefinitely.
+Periodic reclaim runs independently of token retention and only starts when
+`freelist_count` exceeds `max(1000, page_count * 0.05)`.
+
 ## Schema
 
 ### knowledge_entries (relational table)

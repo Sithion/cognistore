@@ -35,7 +35,8 @@ import {
   type FederatedSearchResult,
 } from '@cognistore/shared';
 import { loadProviders, ProviderManager, EnvSecretStore, FileTokenStore, resolveProviderPolicy } from '@cognistore/providers';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { homedir } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveConfig } from './config.js';
@@ -46,6 +47,7 @@ function expandHome(p: string): string {
 }
 
 export class KnowledgeSDK {
+  static maintenanceRunning = false;
   private config: SDKConfig;
   private db: Database | null = null;
   private sqlite: SQLiteDatabase | null = null;
@@ -63,6 +65,46 @@ export class KnowledgeSDK {
       model: this.config.ollama.model,
       dimensions: this.config.ollama.dimensions,
     });
+  }
+
+  getDatabasePath(): string {
+    const path = expandHome(this.config.database.path);
+    return isAbsolute(path) ? path : resolve(path);
+  }
+
+  async enableIncrementalVacuum(workerUrl: URL): Promise<{ alreadyIncremental: boolean; checkpointBusy: boolean }> {
+    return KnowledgeSDK.runMaintenanceWorker(workerUrl, { databasePath: this.getDatabasePath(), operation: 'enable' });
+  }
+
+  async incrementalVacuum(workerUrl: URL, budgetMs = 2000): Promise<void> {
+    if (!Number.isFinite(budgetMs) || budgetMs < 1) throw new ValidationError('budgetMs must be a positive number');
+    await KnowledgeSDK.runMaintenanceWorker(workerUrl, { databasePath: this.getDatabasePath(), operation: 'reclaim', budgetMs });
+  }
+
+  private static async runMaintenanceWorker(workerUrl: URL, data: { databasePath: string; operation: 'enable' | 'reclaim'; budgetMs?: number }): Promise<{ alreadyIncremental: boolean; checkpointBusy: boolean }> {
+    if (KnowledgeSDK.maintenanceRunning) {
+      const error = new Error('Database maintenance is already running; retry shortly.') as Error & { code: string };
+      error.code = 'DATABASE_LOCKED';
+      throw error;
+    }
+    KnowledgeSDK.maintenanceRunning = true;
+    try {
+      const worker = new Worker(workerUrl, { workerData: data });
+      const result = await new Promise<{ ok: boolean; code?: string; message?: string; retryable?: boolean; alreadyIncremental?: boolean; checkpointBusy?: boolean }>((resolve, reject) => {
+        let receivedMessage = false;
+        worker.once('message', (message) => { receivedMessage = true; resolve(message); });
+        worker.once('error', reject);
+        worker.once('exit', (code) => {
+          if (code !== 0 || !receivedMessage) reject(new Error('Vacuum worker exited unexpectedly'));
+        });
+      });
+      await worker.terminate();
+      if (!result.ok) {
+        const error = new Error(result.message ?? 'Vacuum failed') as Error & { code?: string; retryable?: boolean };
+        error.code = result.code; error.retryable = result.retryable; throw error;
+      }
+      return { alreadyIncremental: result.alreadyIncremental === true, checkpointBusy: result.checkpointBusy === true };
+    } finally { KnowledgeSDK.maintenanceRunning = false; }
   }
 
   async initialize(): Promise<void> {
@@ -701,7 +743,13 @@ export class KnowledgeSDK {
 
   pruneTokenUsageBefore(cutoff: string, opts?: { signal?: AbortSignal }): Promise<number> {
     this.ensureInitialized();
-    return this.tokenService!.pruneBefore(cutoff, opts);
+    if (KnowledgeSDK.maintenanceRunning) {
+      const error = new Error('Database maintenance is already running; retry shortly.') as Error & { code: string };
+      error.code = 'DATABASE_LOCKED';
+      return Promise.reject(error);
+    }
+    KnowledgeSDK.maintenanceRunning = true;
+    return this.tokenService!.pruneBefore(cutoff, opts).finally(() => { KnowledgeSDK.maintenanceRunning = false; });
   }
 
   getTokenUsage(filter: TokenUsageFilter): TokenUsageAggregates {

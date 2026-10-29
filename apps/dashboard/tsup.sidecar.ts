@@ -2,7 +2,10 @@ import { defineConfig } from 'tsup';
 import pkg from './package.json';
 
 export default defineConfig({
-  entry: ['server/index.ts'],
+  entry: {
+    index: 'server/index.ts',
+    'jobs/vacuum-worker': '../../packages/core/src/jobs/vacuum-worker.ts',
+  },
   // Inline the version at build time. Resolving it at runtime from a package.json
   // next to __dirname is unreliable: the packaged sidecar runs from
   // <app>/Resources/dist-server/ where no package.json exists, which silently
