@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { KnowledgeSDK } from '@cognistore/sdk';
+import { createDbClient } from '@cognistore/core';
 import { DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
 import {
   SERVER_ENTRY, TEST_TOKEN, authFetch, getFreePort, spawnSidecar, startMockOllama, stopSidecar, waitForSidecar,
@@ -129,6 +130,24 @@ async function readBackWithSdk(db: string, wrote: { knowledgeId: string; planId:
 }
 
 for (const v of NPM_VERSIONS) {
+  test(`npm MCP ${v} works after upgrading the immutable legacy fixture`, async () => {
+    needNpx();
+    expect(npxInstalledVersions(NPX_SANDBOX)).toContain(v);
+    const db = join(work, `legacy-${v}.db`);
+    writeFileSync(db, gunzipSync(readFileSync(resolve(__dirname, '../../fixtures/upgrade/1.3.0-legacy.db.gz'))));
+    const current = await withMcp(bundleLaunch(), db, (c) => smoke(c, `legacy-current-${v}`));
+    const { sqlite } = createDbClient(db);
+    try {
+      expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE name IN ('consumption_samples','consumption_ingest_state')").all()).toEqual([]);
+      expect(sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+    } finally { sqlite.close(); }
+    const wrote = await withMcp(npxLaunch(v, NPX_SANDBOX), db, async (c) => {
+      expect(JSON.stringify(await ok(c, 'getKnowledge', { query: `Written by legacy-current-${v}` }))).toContain(current.knowledgeId);
+      return smoke(c, `legacy-npm-${v}`);
+    });
+    await readBackWithSdk(db, wrote);
+  });
+
   test(`npm MCP ${v} (npx) works on a 2.6 database`, async () => {
     needNpx();
     expect(npxInstalledVersions(NPX_SANDBOX), 'npx resolved the published build').toContain(v);

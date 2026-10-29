@@ -4,6 +4,13 @@
 
 The knowledge base uses **SQLite** with the **sqlite-vec** extension for vector similarity search. The database is managed through **Drizzle ORM** and stored as a single file at `~/.cognistore/knowledge.db`.
 
+## Round 5 migration 2.4.2
+
+Migration 2.4.2 removes only `consumption_samples` and
+`consumption_ingest_state`. Current token usage, scan state, operations,
+knowledge, and plans remain. Both compatibility matrices use the unchanged
+1.3.0-legacy fixture.
+
 ## Schema
 
 ### knowledge_entries (relational table)

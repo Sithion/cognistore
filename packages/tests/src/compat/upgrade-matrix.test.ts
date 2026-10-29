@@ -87,10 +87,11 @@ test('the matrix covers every published schema version', () => {
   expect(Object.keys(manifest).sort()).toEqual(
     ['0.8.0', '0.8.0-via-2.1.0', '0.9.0', '1.3.0', '1.3.0-legacy', '2.0.0', '2.1.0', '2.3.5', '2.4.0', '2.4.1', '2.5.4'].sort(),
   );
-  // The newest fixture already has every migration this checkout ships; a new
-  // migration needs a new fixture (regenerate from its release tag).
+  const published = ['0.8.0', '0.9.0', '1.3.0', '2.0.0', '2.1.0', '2.3.0', '2.3.2', '2.4.0', '2.4.1'];
+  const unreleased = ['2.4.2'];
   const shipped = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).map((f) => f.replace('.sql', '')).sort();
-  expect([...manifest['2.5.4'].schemaVersions].sort()).toEqual(shipped);
+  expect([...manifest['2.5.4'].schemaVersions].sort()).toEqual([...published].sort());
+  expect(shipped).toEqual([...published, ...unreleased].sort());
 });
 
 for (const id of Object.keys(manifest)) {
@@ -123,8 +124,13 @@ for (const id of Object.keys(manifest)) {
 
       const after = open(path);
       try {
-        // No table vanished and none lost rows (reads may append operations_log rows).
+        const removed = ['consumption_samples', 'consumption_ingest_state'];
+        if (id === '1.3.0-legacy') {
+          for (const t of removed) expect(tablesBefore).toContain(t);
+        }
+        for (const t of removed) expect(tables(after)).not.toContain(t);
         for (const t of tablesBefore) {
+          if (removed.includes(t)) continue;
           expect(tables(after), `table ${t} survived`).toContain(t);
           expect(count(after, t), `rows of ${t}`).toBeGreaterThanOrEqual(countsBefore[t]);
         }
@@ -142,9 +148,11 @@ for (const id of Object.keys(manifest)) {
         const vec = after.prepare('SELECT embedding FROM knowledge_embeddings LIMIT 1').get() as { embedding: Buffer };
         expect(vec.embedding.byteLength / 4).toBe(DEFAULT_EMBEDDING_DIMENSIONS);
 
-        // A legacy .deb install gets the real token tables and keeps its old ones.
+        // Legacy installs gain current tables; only the two approved obsolete tables are removed.
         expect(tables(after)).toEqual(expect.arrayContaining(['operations_log', 'token_usage', 'scan_state', 'plans', 'plan_tasks']));
-        expect(schemaState(after).versions).toEqual(expect.arrayContaining(manifest[id].schemaVersions));
+        const shipped = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).map((f) => f.slice(0, -4)).sort();
+        expect(schemaState(after).versions).toEqual(shipped);
+        expect(after.pragma('integrity_check', { simple: true })).toBe('ok');
       } finally {
         after.close();
       }
@@ -157,6 +165,8 @@ for (const id of Object.keys(manifest)) {
         runMigrations(disk, MIGRATIONS_DIR);
         runMigrations(embedded, NO_DIR);
         const once = schemaState(disk);
+        const shipped = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).map((f) => f.slice(0, -4)).sort();
+        expect(once.versions).toEqual(shipped);
         // The bundled MCP server and the sidecar must leave the same database.
         expect(schemaState(embedded)).toEqual(once);
 
