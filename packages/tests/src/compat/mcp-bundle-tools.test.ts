@@ -34,6 +34,9 @@ test('MCP bundle exercises health, token usage, plans and task error paths', asy
     const search = await callJson(client, 'getKnowledge', { query: 'First MCP bundle knowledge item', scope: 'workspace:mcp-bundle-tools', tags: ['bundle'], limit: 5, threshold: 0 });
     expect(search.isError).toBe(false);
     expect(JSON.stringify(search.body)).toContain(knowledgeId);
+    const filteredSearch = await callJson(client, 'getKnowledge', { query: 'Second MCP bundle knowledge item', scope: 'workspace:mcp-bundle-tools', tags: ['bundle'], type: 'fix', limit: 2, threshold: 0, includePlanContext: false });
+    expect(filteredSearch.isError).toBe(false);
+    expect(JSON.stringify(filteredSearch.body)).toContain('Bundle fact two');
     const tags = await callJson(client, 'listTags');
     expect(tags.body).toEqual(expect.arrayContaining(['bundle', 'integration']));
     const changedKnowledge = await callJson(client, 'updateKnowledge', { id: knowledgeId, title: 'Bundle fact updated', confidenceScore: 0.8 });
@@ -83,6 +86,14 @@ test('MCP bundle exercises health, token usage, plans and task error paths', asy
     );
     const chainResult = await callJson(client, 'getPlanChain', { planId: plan.id });
     expect(chainResult.body).toMatchObject({ total: 1, original: { id: plan.id } });
+    const relation = await callJson(client, 'addPlanRelation', { planId: plan.id, knowledgeId, relationType: 'input' });
+    expect(relation.body).toMatchObject({ success: true, relationType: 'input' });
+    const missingRelation = await callJson(client, 'addPlanRelation', { planId: plan.id, knowledgeId: 'not-a-uuid', relationType: 'output' });
+    expect(missingRelation.isError).toBe(true);
+    expect(missingRelation.body).toMatchObject({ error: 'link_failed', knowledgeId: 'not-a-uuid' });
+    const healthAfterMissingRelation = await callJson(client, 'healthCheck');
+    expect(healthAfterMissingRelation.isError).toBe(false);
+    expect(healthAfterMissingRelation.body).toMatchObject({ database: { connected: true }, ollama: { connected: true } });
 
     const addedTask = await callJson(client, 'addPlanTask', { planId: plan.id, description: 'Remove this extra task', priority: 'low', notes: 'Temporary' });
     expect(addedTask.isError).toBe(false);
@@ -114,6 +125,8 @@ test('MCP bundle exercises health, token usage, plans and task error paths', asy
 
     const archived = await callJson(client, 'archivePlan', { planId: plan.id });
     expect(archived.body).toMatchObject({ archived: true, id: plan.id, status: 'archived' });
+    const missingArchive = await callJson(client, 'archivePlan', { planId: 'missing-plan' });
+    expect(missingArchive.body).toEqual({ error: 'not_found', type: 'plan', id: 'missing-plan' });
 
     const missingTask = await callJson(client, 'updatePlanTask', { taskId: 'missing-task', status: 'completed' });
     expect(missingTask.body).toEqual({ error: 'not_found', type: 'plan_task', id: 'missing-task' });
@@ -125,6 +138,11 @@ test('MCP bundle exercises health, token usage, plans and task error paths', asy
     expect(deletedKnowledge.body).toEqual({ deleted: true, id: knowledgeId });
     const absentDelete = await callJson(client, 'deleteKnowledge', { id: '00000000-0000-4000-8000-000000000000' });
     expect(absentDelete.body).toEqual({ error: 'not_found', type: 'knowledge_entry', id: '00000000-0000-4000-8000-000000000000' });
+    const invalidId = await callJson(client, 'deleteKnowledge', { id: 'not-a-uuid' });
+    expect(invalidId.isError).toBe(true);
+    const healthAfterInvalidId = await callJson(client, 'healthCheck');
+    expect(healthAfterInvalidId.isError).toBe(false);
+    expect(healthAfterInvalidId.body).toMatchObject({ database: { connected: true }, ollama: { connected: true } });
   } finally {
     await client?.close().catch(() => {});
     await new Promise<void>((resolve) => mock.server.close(() => resolve()));

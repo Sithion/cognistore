@@ -25,6 +25,10 @@ then acknowledges.
 Duplicate scans execute in the worker with metadata and batched vector reads.
 Parent caches remain guarded by captured fingerprints and incremental watermarks.
 
+Embedding maintenance runs in worker pages. Network calls hold no SQLite write
+transaction, and publication rechecks each source row's identity and updated_at.
+Missing-repair progress includes cumulative failure counts.
+
 ## High-Level Architecture
 
 ```

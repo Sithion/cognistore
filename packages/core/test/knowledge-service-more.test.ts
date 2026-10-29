@@ -87,8 +87,8 @@ describe('KnowledgeService additional coverage', () => {
     ctx.sqlite.prepare('DELETE FROM knowledge_embeddings WHERE id IN (?, ?)').run(ok.id, failed.id);
     const resumable = new KnowledgeService(ctx.repository, { async embed(t) { if (t.includes('FAIL')) throw new Error('down'); return stubEmbedding(t); } });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(await resumable.embedMissing()).toEqual({ embedded: 1, failed: 1, remaining: 1 });
-    expect(await resumable.embedMissing()).toEqual({ embedded: 0, failed: 1, remaining: 1 });
+    expect(await resumable.embedMissing()).toEqual({ embedded: 1, failed: 1, remaining: 1, cancelled: false });
+    expect(await resumable.embedMissing()).toEqual({ embedded: 0, failed: 1, remaining: 1, cancelled: false });
     expect(warn).toHaveBeenCalled();
     ctx.sqlite.prepare("DELETE FROM knowledge_fts").run();
     expect(ctx.service.backfillFtsIfNeeded()).toBeGreaterThanOrEqual(2);

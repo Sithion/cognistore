@@ -441,10 +441,10 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     WRITE,
     async (params) => {
       try {
-        sdk.addPlanRelation(params.planId, params.knowledgeId, params.relationType);
+        await sdk.addPlanRelation(params.planId, params.knowledgeId, params.relationType);
         return { content: [{ type: 'text' as const, text: JSON.stringify({ success: true, ...params }) }] };
       } catch (e) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'link_failed', message: e instanceof Error ? e.message : 'Unknown error', ...params }) }] };
+        return { isError: true, content: [{ type: 'text' as const, text: JSON.stringify({ error: 'link_failed', message: e instanceof Error ? e.message : 'Unknown error', ...params }) }] };
       }
     }
   );

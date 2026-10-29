@@ -126,10 +126,8 @@ function writeThresholdState(sqlite: Database.Database, threshold: number, state
 
 /** Forget the incremental state: the next scan is a full one. */
 export function invalidateDuplicateScan(sqlite: Database.Database): void {
-  try {
     sqlite.prepare(`INSERT INTO cleanup_meta (key, value) VALUES ('dup_scan_generation', '1') ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`).run();
     sqlite.prepare(`DELETE FROM cleanup_meta WHERE key = ? OR key LIKE ?`).run(DUP_SCAN_STATE_KEY, `${DUP_SCAN_STATE_KEY}:%`);
-  } catch { /* nothing to invalidate */ }
 }
 
 // One scan per (database, threshold) at a time: the Settings route and the

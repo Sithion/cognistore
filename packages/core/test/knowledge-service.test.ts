@@ -112,8 +112,11 @@ describe('KnowledgeService knowledge entries', () => {
     ctx.sqlite.prepare('DELETE FROM knowledge_embeddings WHERE id = ?').run(entry.id);
     expect(await ctx.service.embeddingCoverage()).toMatchObject({ missingEntries: 1 });
     const progress: unknown[] = [];
-    expect(await ctx.service.embedMissing({ onProgress: (p) => progress.push(p) })).toEqual({ embedded: 1, failed: 0, remaining: 0 });
-    expect(progress).toHaveLength(1);
+    expect(await ctx.service.embedMissing({ onProgress: (p) => progress.push(p) })).toEqual({ embedded: 1, failed: 0, remaining: 0, cancelled: false });
+    expect(progress).toEqual(expect.arrayContaining([
+      { phase: 'knowledge', done: 0, total: 1, failed: 0 },
+      { phase: 'knowledge', done: 1, total: 1, failed: 0 },
+    ]));
   });
 
   it('merges one tag and collapses duplicate tags', async () => {

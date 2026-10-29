@@ -119,7 +119,9 @@ export function registerCleanupRoutes(app: FastifyInstance, deps: CleanupRouteDe
     const err = ensureReady(reply); if (err) return err;
     const settings = readSettings();
     const controller = new AbortController();
-    request.raw.once('close', () => controller.abort());
+    // IncomingMessage's `close` event also fires after the request body is
+    // consumed; only treat it as cancellation when the client disconnected.
+    request.raw.once('aborted', () => controller.abort());
     const result = await sdk.generateCleanupReport({
       unreadDays: settings.cleanupUnreadDays,
       dupThreshold: settings.cleanupDupThreshold,

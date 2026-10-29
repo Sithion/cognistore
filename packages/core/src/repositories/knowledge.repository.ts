@@ -553,7 +553,7 @@ export class KnowledgeRepository {
 
   /** Drop the incremental duplicate-scan state (vectors changed without `updated_at`). */
   invalidateDuplicateScan(): void {
-    invalidateDuplicateScan(this.sqlite);
+    this.sqlite.transaction(() => invalidateDuplicateScan(this.sqlite)).immediate();
   }
 
   /**
@@ -701,6 +701,84 @@ export class KnowledgeRepository {
     `;
     const stmt = this.sqlite.prepare(sql);
     return (limit ? stmt.all(limit) : stmt.all()) as { id: string; updatedAt: string }[];
+  }
+
+  listKnowledgeEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT id, updated_at AS updatedAt FROM knowledge_entries
+      WHERE id > ? ORDER BY id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  listPlanEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT id, updated_at AS updatedAt FROM plans
+      WHERE id > ? ORDER BY id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  listMissingKnowledgeEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT e.id, e.updated_at AS updatedAt FROM knowledge_entries e
+      LEFT JOIN knowledge_embeddings_rowids r ON r.id = e.id
+      WHERE r.id IS NULL AND e.id > ? ORDER BY e.id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  listMissingPlanEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT p.id, p.updated_at AS updatedAt FROM plans p
+      LEFT JOIN plans_embeddings_rowids r ON r.id = p.id
+      WHERE r.id IS NULL AND p.id > ? ORDER BY p.id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  getKnowledgeEntryForEmbedding(id: string): { id: string; title: string; content: string; tags: string; updatedAt: string } | undefined {
+    return this.sqlite.prepare('SELECT id, title, content, tags, updated_at AS updatedAt FROM knowledge_entries WHERE id = ?').get(id) as any;
+  }
+
+  getPlanForEmbedding(id: string): { id: string; title: string; content: string; updatedAt: string } | undefined {
+    return this.sqlite.prepare('SELECT id, title, content, updated_at AS updatedAt FROM plans WHERE id = ?').get(id) as any;
+  }
+
+  publishKnowledgeEmbedding(id: string, updatedAt: string, embedding: number[]): boolean {
+    const publish = this.sqlite.transaction(() => {
+      const row = this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE id = ? AND updated_at = ?').get(id, updatedAt);
+      if (!row) return false;
+      this.upsertEmbeddingById(id, embedding);
+      return true;
+    });
+    return publish.immediate();
+  }
+
+  publishPlanEmbedding(id: string, updatedAt: string, embedding: number[]): boolean {
+    const publish = this.sqlite.transaction(() => {
+      const row = this.sqlite.prepare('SELECT 1 FROM plans WHERE id = ? AND updated_at = ?').get(id, updatedAt);
+      if (!row) return false;
+      this.upsertPlanEmbeddingById(id, embedding);
+      return true;
+    });
+    return publish.immediate();
+  }
+
+  publishKnowledgeEmbeddingBatch(rows: { id: string; updatedAt: string; embedding: number[] }[]): number {
+    if (!rows.length) return 0;
+    return this.sqlite.transaction(() => {
+      let count = 0;
+      const exists = this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE id = ? AND updated_at = ?');
+      for (const row of rows) {
+        if (!exists.get(row.id, row.updatedAt)) continue;
+        this.upsertEmbeddingById(row.id, row.embedding);
+        count++;
+      }
+      return count;
+    }).immediate();
+  }
+
+  publishPlanEmbeddingBatch(rows: { id: string; updatedAt: string; embedding: number[] }[]): number {
+    if (!rows.length) return 0;
+    return this.sqlite.transaction(() => {
+      let count = 0;
+      const exists = this.sqlite.prepare('SELECT 1 FROM plans WHERE id = ? AND updated_at = ?');
+      for (const row of rows) {
+        if (!exists.get(row.id, row.updatedAt)) continue;
+        this.upsertPlanEmbeddingById(row.id, row.embedding);
+        count++;
+      }
+      return count;
+    }).immediate();
   }
 
   listMissingPlanEmbeddingIds(limit?: number): { id: string; updatedAt: string }[] {

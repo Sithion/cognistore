@@ -1465,12 +1465,11 @@ Pass an array to addKnowledge to create multiple entries at once.
               if (reinitOk) {
                 try {
                   const reembedded = await sdk.reembedAll();
-                  duplicatesCache.clear();
                   record({ step: 'reembed', status: 'success', message: `Re-embedded ${reembedded} entries with new model` });
                   console.log(`[CogniStore] Re-embedded ${reembedded} entries`);
                 } catch (e: any) {
                   record({ step: 'reembed', status: 'error', message: e.message });
-                }
+                } finally { duplicatesCache.clear(); }
               } else {
                 record({ step: 'reembed', status: 'error', message: 'SDK re-init failed after dropping vec tables' });
               }
@@ -1486,9 +1485,9 @@ Pass an array to addKnowledge to create multiple entries at once.
       // COUNT(knowledge_embeddings_rowids), but that count excludes nothing —
       // reembedAll() iterated a query that DID exclude system-owned entries, so
       // the two counts could never agree and this step dropped and rebuilt the
-      // entire vector index on every single upgrade run, forever, and left it
-      // empty if the run was ever interrupted. embedMissing() targets exactly
-      // the ids that are actually missing and only ever inserts/upserts.
+      // entire vector index on every single upgrade run until v2.5.2 replaced
+      // that path. It also left the index empty if interrupted. embedMissing()
+      // targets exactly the ids that are missing and only inserts/upserts.
       try {
         if (sdkReady) {
           const coverage = await sdk.embeddingCoverage();
@@ -1525,8 +1524,7 @@ Pass an array to addKnowledge to create multiple entries at once.
               record({ step: 'integrity', status: 'skipped', message: `Ollama unavailable — ${coverage.missingEntries + coverage.missingPlans} embeddings still missing, will backfill on next upgrade` });
               console.warn('[CogniStore] Upgrade: skipping embedding backfill (Ollama cannot embed)');
             } else {
-              const result = await sdk.embedMissing();
-              duplicatesCache.clear();
+      const result = await sdk.embedMissing();
               // Only a run that made NO progress at all is an error. A partial
               // backfill left the index strictly better than it found it, and
               // marking it `error` would make saveDeployedVersion() refuse to
@@ -1543,7 +1541,7 @@ Pass an array to addKnowledge to create multiple entries at once.
         }
       } catch (e: any) {
         record({ step: 'integrity', status: 'error', message: e.message });
-      }
+      } finally { duplicatesCache.clear(); }
 
       // Steps 2-4b: re-deploy every on-disk artifact (shared with /api/redeploy).
       // Its steps are recorded through `onStep` as they complete — the returned

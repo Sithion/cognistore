@@ -133,10 +133,10 @@ Objetivo: medir antes de mexer e ter um banco grande reprodutível para testes.
 - [ ] 1B.5 `auto_vacuum=INCREMENTAL` (exige um `VACUUM` único — fazer no fluxo de upgrade com progresso) + `PRAGMA incremental_vacuum` na manutenção.
 
 ### 1C. Tirar o trabalho pesado da thread principal
-- [ ] 1C.1 Criar `packages/core/src/jobs/` com um **JobRunner**: fila de concorrência 1, cada job roda em `worker_threads` com conexão better-sqlite3 própria (+ sqlite-vec carregado); progresso via mensagens; cancelável. Garantir que o bundle do sidecar (tsup) inclui o arquivo do worker.
+- [x] 1C.1 Criar `packages/core/src/jobs/` com um **JobRunner**: fila de concorrência 1, cada job roda em `worker_threads` com conexão better-sqlite3 própria (+ sqlite-vec carregado); progresso via mensagens; cancelável. Garantir que o bundle do sidecar (tsup) inclui o arquivo do worker. — JobRunner merged.
 - [x] 1C.2 Reescrever detecção de duplicatas: selecionar só metadados (sem `content`), ler todos os vetores uma vez dos chunks vec0 e calcular pares exatos no worker com checkpoints cooperativos.
 - [x] 1C.3 Modo incremental: guardar watermark (`cleanup_meta.dup_scan_at`); comparar só entradas alteradas desde então contra a base inteira. — **Rodada 2** (76ef6a6 + bb065cd, merge 0307679): watermark por limiar em `cleanup_meta` (`dup_scan_state:<limiar>`), incremental 62 ms na base de 10k.
-- [ ] 1C.4 Mover para o JobRunner: `reembedAll`, `backfillMissingEmbeddings`, export/import grandes, FTS backfill.
+- [ ] 1C.4 Mover para o JobRunner: `reembedAll`/`embedMissing` done; export/import + FTS backfill pending.
 - [ ] 1C.5 `importKnowledge`: deduplicar por hash usando uma coluna `content_hash` indexada (ver Fase 2) em vez de `listAll()`.
 
 ### 1D. FTS sem cópia
@@ -406,6 +406,8 @@ Reordenado após a Rodada 1: o congelamento tem causa concreta e barata de ataca
 - **MCP novo migra banco de app antigo** → matriz T.4 obrigatória antes de publicar o pacote npm.
 
 ## Diário de execução
+
+- 2026-10-29 — 1C.4 partial: `reembedAll`/`embedMissing` moved to the worker; export/import and FTS backfill remain pending. Added retryable batched publishes, cancellation reporting, and duplicate scan invalidation in the worker.
 
 > Agentes: anote aqui data, fase/item, PR/commit, números medidos e qualquer desvio do plano.
 
