@@ -40,6 +40,9 @@ export {
 } from './perf/instrumentation.js';
 
 // Token usage
+export { scanDuplicatePairs, invalidateDuplicateScan, DUP_SCAN_STATE_KEY, type DuplicateScanResult } from './services/duplicate-scan.js';
+export { findPairsInVectors, normalizeRows, groupPairs, type SimilarPair, type DuplicateGroup, type GroupMember } from './services/duplicate-pairs.js';
+export { readEmbeddingsChunked, type EmbeddingChunk } from './db/schema/sqlite-vec.js';
 export { TokenUsageRepository } from './repositories/token-usage.repository.js';
 export { TokenUsageService } from './services/token-usage/service.js';
 export { TokenUsageScanner, type ScanResult } from './services/token-usage/scanner.js';

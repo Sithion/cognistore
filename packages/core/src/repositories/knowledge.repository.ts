@@ -6,7 +6,6 @@ import {
   updateEmbedding,
   deleteEmbedding,
   searchKnn,
-  getEmbeddingById,
   insertPlanEmbedding,
   updatePlanEmbedding,
   deletePlanEmbedding,
@@ -20,6 +19,8 @@ import {
   ftsCount,
   type FtsResult,
 } from '../db/schema/fts.js';
+import { scanDuplicatePairs, invalidateDuplicateScan } from '../services/duplicate-scan.js';
+import { groupPairs } from '../services/duplicate-pairs.js';
 import type { CreateKnowledgeInput, UpdateKnowledgeInput, SearchOptions } from '@cognistore/shared';
 import { DEFAULT_SEARCH_LIMIT, DEFAULT_SIMILARITY_THRESHOLD, isPlanStatus } from '@cognistore/shared';
 
@@ -510,116 +511,41 @@ export class KnowledgeRepository {
   }
 
   /**
-   * Find near-duplicate entry pairs via per-entry KNN (avoids an O(n²) full scan).
-   * The embedding MUST be read from the vec table (listAll() blanks it). Canonical
-   * `id < neighborId` filter dedups pairs and drops the self-match. Returns [] when
-   * there are no embeddings yet.
+   * Near-duplicate entry pairs (similarity DESC), from the exact, cooperative
+   * scan in services/duplicate-scan.ts — see there for the incremental state.
+   * Returns [] when there are no embeddings yet.
    */
   async findDuplicatePairs(opts: { threshold?: number; limit?: number } = {}) {
     const threshold = opts.threshold ?? 0.9;
     const limit = opts.limit ?? 100;
-    const { pairs } = await this.collectDuplicatePairs(threshold, 5, limit);
+    const { pairs, meta } = await scanDuplicatePairs(this.sqlite, threshold);
     return pairs
-      .map((p) => ({ a: { id: p.a.id, title: p.a.title }, b: { id: p.b.id, title: p.b.title }, similarity: p.similarity }))
+      .filter((p) => meta.has(p.a) && meta.has(p.b))
       .sort((x, y) => y.similarity - x.similarity)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((p) => ({
+        a: { id: p.a, title: meta.get(p.a)!.title },
+        b: { id: p.b, title: meta.get(p.b)!.title },
+        similarity: p.similarity,
+      }));
   }
 
   /**
-   * Shared KNN pair collection for findDuplicatePairs/findDuplicateGroups.
-   * `pairCap` exists only as a runaway safety net — group callers pass a large cap
-   * (a truncated pair graph would split/lose cluster members in union-find).
-   */
-  private async collectDuplicatePairs(threshold: number, k: number, pairCap: number) {
-    type Meta = { id: string; title: string; scope: string; type: string; version: number; updatedAt: string };
-    const entries = await this.listAll();
-    const meta = new Map<string, Meta>(entries.map((e) => [e.id, {
-      id: e.id, title: e.title, scope: e.scope, type: e.type,
-      version: (e as { version?: number }).version ?? 1, updatedAt: e.updatedAt,
-    }]));
-    const pairs: { a: Meta; b: Meta; similarity: number }[] = [];
-    for (const entry of entries) {
-      const emb = getEmbeddingById(this.sqlite, entry.id);
-      if (!emb) continue;
-      const neighbors = searchKnn(this.sqlite, emb, k);
-      for (const n of neighbors) {
-        if (entry.id >= n.id) continue; // canonical order + drops self
-        if (!meta.has(n.id)) continue;  // skip system / missing
-        const similarity = 1 - n.distance;
-        if (similarity >= threshold) {
-          pairs.push({ a: meta.get(entry.id)!, b: meta.get(n.id)!, similarity });
-        }
-      }
-      if (pairs.length >= pairCap) break;
-    }
-    return { pairs, meta };
-  }
-
-  // KNN width for duplicate GROUPING. Per-entry KNN keeps a cluster of up to
-  // ~DUP_KNN_K identical members fully connected; raise if users report a giant
-  // duplicate cluster rendering as two cards.
-  private static readonly DUP_KNN_K = 20;
-  // Safety net only — never intended to truncate a real pair graph (105 pairs for
-  // a 15-member cluster; 5000 covers pathological DBs without unbounded memory).
-  private static readonly DUP_PAIR_CAP = 5000;
-
-  /**
-   * Cluster near-duplicate pairs into connected components (union-find) so N
-   * copies of one entry render as ONE group, not N(N-1)/2 repeated pair rows.
-   * `limit` applies to the GROUP list (size DESC, then similarity DESC) — never
-   * to the underlying pair collection.
+   * Cluster near-duplicate pairs into connected components so N copies of one
+   * entry render as ONE group, not N(N-1)/2 repeated pair rows. `limit` applies
+   * to the GROUP list (size DESC, then similarity DESC). Runs without blocking
+   * the event loop for more than a few ms at a time (plan v2.6, 1C.3).
    */
   async findDuplicateGroups(opts: { threshold?: number; limit?: number } = {}) {
     const threshold = opts.threshold ?? 0.9;
     const limit = opts.limit ?? 100;
-    const { pairs } = await this.collectDuplicatePairs(
-      threshold, KnowledgeRepository.DUP_KNN_K, KnowledgeRepository.DUP_PAIR_CAP,
-    );
+    const { pairs, meta } = await scanDuplicatePairs(this.sqlite, threshold);
+    return groupPairs(pairs, meta, limit);
+  }
 
-    // Union-find with path compression over pair endpoints.
-    const parent = new Map<string, string>();
-    const find = (x: string): string => {
-      let root = x;
-      while (parent.get(root) !== undefined && parent.get(root) !== root) root = parent.get(root)!;
-      // path compression
-      let cur = x;
-      while (cur !== root) { const next = parent.get(cur)!; parent.set(cur, root); cur = next; }
-      return root;
-    };
-    const union = (a: string, b: string) => {
-      if (!parent.has(a)) parent.set(a, a);
-      if (!parent.has(b)) parent.set(b, b);
-      const ra = find(a); const rb = find(b);
-      if (ra !== rb) parent.set(rb, ra);
-    };
-
-    const memberMeta = new Map<string, { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }>();
-    const maxSim = new Map<string, number>(); // tracked per root AFTER all unions below
-    for (const p of pairs) {
-      union(p.a.id, p.b.id);
-      memberMeta.set(p.a.id, p.a);
-      memberMeta.set(p.b.id, p.b);
-    }
-    const grouped = new Map<string, { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[]>();
-    for (const m of memberMeta.values()) {
-      const root = find(m.id);
-      const arr = grouped.get(root) ?? [];
-      arr.push(m);
-      grouped.set(root, arr);
-    }
-    for (const p of pairs) {
-      const root = find(p.a.id);
-      maxSim.set(root, Math.max(maxSim.get(root) ?? 0, p.similarity));
-    }
-
-    const groups = Array.from(grouped.entries()).map(([root, members]) => {
-      members.sort((a, b) => (b.version - a.version) || b.updatedAt.localeCompare(a.updatedAt));
-      const groupId = members.reduce((min, m) => (m.id < min ? m.id : min), members[0].id);
-      return { groupId, maxSimilarity: maxSim.get(root) ?? 0, members };
-    });
-    return groups
-      .sort((x, y) => (y.members.length - x.members.length) || (y.maxSimilarity - x.maxSimilarity))
-      .slice(0, limit);
+  /** Drop the incremental duplicate-scan state (vectors changed without `updated_at`). */
+  invalidateDuplicateScan(): void {
+    invalidateDuplicateScan(this.sqlite);
   }
 
   /**

@@ -324,6 +324,8 @@ export class KnowledgeService {
    */
   async reembedAll(): Promise<number> {
     let count = 0;
+    // Vectors change without `updated_at`: the incremental duplicate scan must start over.
+    this.repository.invalidateDuplicateScan();
 
     // Re-embed knowledge entries
     const entries = await this.repository.listAll();

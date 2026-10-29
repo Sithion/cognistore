@@ -262,7 +262,7 @@ server contend for the same file.
 
 **2. Detection (`packages/core`).** `KnowledgeService.generateCleanupReport()` proposes three
 categories — `deprecated` (tag), `unread` (window, with the `keep` tag as an escape hatch) and
-`duplicate_group` (high-threshold KNN). It only *describes*; it deletes nothing and calls no model.
+`duplicate_group` (high-threshold exact similarity scan, see `database.md`). It only *describes*; it deletes nothing and calls no model.
 Unread detection is double-gated on a domain fact stored in the `cleanup_meta` table
 (`read_tracking_since`, written by the migration) rather than on `schema_version` — migration
 bookkeeping is not a business fact — plus a liveness check, because a user still running a pre-2.4.0

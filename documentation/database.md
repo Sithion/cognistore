@@ -211,6 +211,18 @@ Input: query vector (768-dim), options (scope, tags, type, limit, threshold)
 3. Return: [{ entry, similarity }]
 ```
 
+### Duplicate Detection (cooperative scan, v2.6)
+
+**Files:** `packages/core/src/services/duplicate-scan.ts` (orchestration), `duplicate-pairs.ts` (pure pair engine), `readEmbeddingsChunked` in `packages/core/src/db/schema/sqlite-vec.ts`.
+
+`findDuplicateGroups` / `findDuplicatePairs` find every pair of non-system entries whose cosine similarity is at or above the threshold (default 0.9), the exact threshold graph, then group them with union-find. They never load `content` and never run one KNN query per entry:
+
+1. Metadata (`id, title, scope, type, version, updated_at`) in one query.
+2. Every vector once, read chunk by chunk (≤1024 vectors) straight from the vec0 shadow tables `knowledge_embeddings_rowids` + `knowledge_embeddings_vector_chunks00`. A single virtual-table scan is the fallback if that layout ever changes.
+3. Exact pair search with Cauchy–Schwarz pruning (first 64 dimensions + tail norms), yielding to the event loop with `setImmediate` every ~15 ms. No synchronous slice reaches 100 ms on a 10k-entry base.
+
+**Incremental state** lives in `cleanup_meta` under the key `dup_scan_state` (JSON `{ v: 1, byThreshold: { "<threshold>": { dims, maxRowid, maxUpdated, savedAt, pairs } } }`, at most 3 thresholds and 50,000 pairs). The next scan compares only entries with a vec0 rowid above `maxRowid` or an `updated_at` at or above `maxUpdated` against the whole base. It drops pairs whose entries are gone and keeps the rest. A missing or corrupt state, another threshold or dimension count, or rowids going backwards (the vec table was rebuilt) mean a full scan. `reembedAll` deletes the key, because re-embedding changes vectors without touching `updated_at`. The key is a cache: deleting it is always safe.
+
 ### Why Tags Are Embedded (Not Content)
 
 Tags serve as semantic anchors — they are concise, intentional descriptors chosen by the agent. Content can be arbitrarily long and noisy, which dilutes embedding quality. By embedding tags:
