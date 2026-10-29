@@ -6,7 +6,7 @@ import {
   createDbClient,
   KnowledgeRepository,
   startEventLoopMonitor,
-  DUP_SCAN_STATE_KEY,
+  invalidateDuplicateScan,
   type SQLiteDatabase,
 } from '@cognistore/core';
 import { copyFixture, ensureFixture } from './fixtures/generate-fixture.js';
@@ -64,7 +64,7 @@ test.afterAll(() => {
 test.describe('@perf duplicate scan without freezing (1C.3)', () => {
   test('full scan: no event-loop block over 100 ms', async () => {
     test.setTimeout(180_000);
-    sqlite.prepare('DELETE FROM cleanup_meta WHERE key = ?').run(DUP_SCAN_STATE_KEY);
+    invalidateDuplicateScan(sqlite);
     const r = await withEventLoopProbe(() => repo.findDuplicateGroups());
     report('duplicates.scanFull', r.ms, { groups: r.value.length });
     report('duplicates.scanFull.eventLoopMax', r.monitorMax, { driftMax: Number(r.driftMax.toFixed(1)) });
@@ -85,9 +85,30 @@ test.describe('@perf duplicate scan without freezing (1C.3)', () => {
   test('same groups as the legacy per-entry KNN on the 10k fixture', async () => {
     test.setTimeout(300_000);
     const expected = await legacyDuplicateGroups(repo, sqlite);
-    sqlite.prepare('DELETE FROM cleanup_meta WHERE key = ?').run(DUP_SCAN_STATE_KEY);
+    invalidateDuplicateScan(sqlite);
     const actual = await repo.findDuplicateGroups({ limit: 100_000 });
     report('duplicates.equivalence10k', 0, { legacyGroups: expected.length, groups: actual.length });
     expectSameGroups(actual, expected);
+  });
+
+  test('dense cluster (3,000 near-copies of one entry): capped, no block over 100 ms', async () => {
+    test.setTimeout(180_000);
+    const src = (sqlite.prepare('SELECT id FROM knowledge_entries ORDER BY id LIMIT 1').get() as { id: string }).id;
+    const base = sqlite.prepare('SELECT embedding FROM knowledge_embeddings WHERE id = ?').get(src) as { embedding: Buffer };
+    const vec = Array.from(new Float32Array(base.embedding.buffer, base.embedding.byteOffset, base.embedding.byteLength / 4));
+    for (let i = 0; i < 3000; i++) {
+      await repo.create({
+        title: `runaway copy ${i}`, content: 'runaway import', tags: ['copy'], type: 'pattern', scope: 'global', source: 'perf',
+        embedding: vec.map((v, d) => v + ((i + d) % 5) * 1e-4),
+      });
+    }
+    invalidateDuplicateScan(sqlite);
+    const heapBefore = process.memoryUsage().heapUsed;
+    const r = await withEventLoopProbe(() => repo.findDuplicateGroups());
+    const heapMb = (process.memoryUsage().heapUsed - heapBefore) / 2 ** 20;
+    report('duplicates.denseCluster', r.ms, { groups: r.value.length, largest: r.value[0]?.members.length, heapDeltaMb: Number(heapMb.toFixed(1)) });
+    report('duplicates.denseCluster.eventLoopMax', r.monitorMax, { driftMax: Number(r.driftMax.toFixed(1)) });
+    expect(r.monitorMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
+    expect(r.driftMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
   });
 });

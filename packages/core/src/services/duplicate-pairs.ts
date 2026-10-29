@@ -28,55 +28,90 @@ export interface SimilarPair {
   similarity: number;
 }
 
-const HEAD = 64;
+/** Dimensions in the pruning head; the tail norm bounds the rest. */
+export const HEAD = 64;
 
-/** Normalize every row to unit length (zero rows stay zero). */
+/**
+ * Safety cap on collected pairs. m near-identical entries make m(m-1)/2 pairs,
+ * so a runaway import of thousands of copies would otherwise hold millions of
+ * objects. Hitting it stops the search and flags the result `truncated` (the
+ * groups it already found are still reported).
+ */
+export const DUP_PAIR_CAP = 20_000;
+
+/** Normalize one row to unit length in place and return its tail norm. */
+export function normalizeRow(vectors: Float32Array, row: number, dims: number): number {
+  const off = row * dims;
+  let sum = 0;
+  for (let d = 0; d < dims; d++) sum += vectors[off + d] * vectors[off + d];
+  const mag = Math.sqrt(sum);
+  if (mag > 0) for (let d = 0; d < dims; d++) vectors[off + d] /= mag;
+  let tail = 0;
+  for (let d = off + Math.min(HEAD, dims); d < off + dims; d++) tail += vectors[d] * vectors[d];
+  return Math.sqrt(tail);
+}
+
+/** Normalize every row to unit length (zero rows stay zero). Synchronous: small sets only. */
 export function normalizeRows(set: PairVectors): void {
-  const { vectors, dims } = set;
-  for (let r = 0; r < set.ids.length; r++) {
-    const off = r * dims;
-    let sum = 0;
-    for (let d = 0; d < dims; d++) sum += vectors[off + d] * vectors[off + d];
-    const mag = Math.sqrt(sum);
-    if (mag > 0) for (let d = 0; d < dims; d++) vectors[off + d] /= mag;
-  }
+  for (let r = 0; r < set.ids.length; r++) normalizeRow(set.vectors, r, set.dims);
 }
 
 const yieldToEventLoop = () => new Promise<void>((r) => setImmediate(r));
 
+export interface PairSearchResult {
+  pairs: SimilarPair[];
+  /** True when DUP_PAIR_CAP (or `maxPairs`) stopped the search early. */
+  truncated: boolean;
+}
+
 /**
  * Find all pairs with similarity ≥ threshold. `queryRows` (row indexes)
  * restricts the search to pairs touching at least one of those rows — the
- * incremental mode; omitted, every pair is checked. Rows must be normalized.
+ * incremental mode; omitted, every pair is checked. Rows must be normalized;
+ * `tailNorm` (per row, as returned by `normalizeRow`) is computed if omitted.
  */
 export async function findPairsInVectors(
   set: PairVectors,
   threshold: number,
-  opts: { queryRows?: number[]; yieldEveryMs?: number } = {},
-): Promise<SimilarPair[]> {
+  opts: { queryRows?: number[]; yieldEveryMs?: number; tailNorm?: Float64Array; maxPairs?: number } = {},
+): Promise<PairSearchResult> {
   const { ids, vectors, dims } = set;
   const n = ids.length;
   const head = Math.min(HEAD, dims);
   const yieldEveryMs = opts.yieldEveryMs ?? 15;
+  const maxPairs = opts.maxPairs ?? DUP_PAIR_CAP;
+  let sliceStart = performance.now();
+  const maybeYield = async () => {
+    if (performance.now() - sliceStart >= yieldEveryMs) {
+      await yieldToEventLoop();
+      sliceStart = performance.now();
+    }
+  };
 
-  const tailNorm = new Float64Array(n);
-  for (let r = 0; r < n; r++) {
-    let s = 0;
-    for (let d = r * dims + head; d < (r + 1) * dims; d++) s += vectors[d] * vectors[d];
-    tailNorm[r] = Math.sqrt(s);
+  let tailNorm = opts.tailNorm;
+  if (!tailNorm) {
+    tailNorm = new Float64Array(n);
+    for (let r = 0; r < n; r++) {
+      let s = 0;
+      for (let d = r * dims + head; d < (r + 1) * dims; d++) s += vectors[d] * vectors[d];
+      tailNorm[r] = Math.sqrt(s);
+      if ((r & 1023) === 0) await maybeYield();
+    }
   }
 
   const isQuery = opts.queryRows ? new Uint8Array(n) : null;
   if (isQuery) for (const r of opts.queryRows!) isQuery[r] = 1;
-  const rows = opts.queryRows ?? Array.from({ length: n }, (_, i) => i);
+  const rowCount = opts.queryRows ? opts.queryRows.length : n;
 
   const pairs: SimilarPair[] = [];
-  let sliceStart = performance.now();
-  for (const i of rows) {
+  for (let k = 0; k < rowCount; k++) {
+    const i = opts.queryRows ? opts.queryRows[k] : k;
     const oi = i * dims;
     const ti = tailNorm[i];
     // Full mode: j > i. Incremental: every j, except query rows already paired as i.
     for (let j = isQuery ? 0 : i + 1; j < n; j++) {
+      // Dense clusters make every pair pay the full product: check the clock here too.
+      if ((j & 2047) === 0) await maybeYield();
       if (j === i) continue;
       if (isQuery && isQuery[j] && j < i) continue;
       const oj = j * dims;
@@ -87,14 +122,12 @@ export async function findPairsInVectors(
       if (dot >= threshold) {
         const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
         pairs.push({ a, b, similarity: dot });
+        if (pairs.length >= maxPairs) return { pairs, truncated: true };
       }
     }
-    if (performance.now() - sliceStart >= yieldEveryMs) {
-      await yieldToEventLoop();
-      sliceStart = performance.now();
-    }
+    await maybeYield();
   }
-  return pairs;
+  return { pairs, truncated: false };
 }
 
 export interface GroupMember {

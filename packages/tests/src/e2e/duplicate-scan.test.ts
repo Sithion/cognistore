@@ -10,7 +10,10 @@ import {
   scanDuplicatePairs,
   findPairsInVectors,
   normalizeRows,
-  DUP_SCAN_STATE_KEY,
+  dupScanStateKey,
+  invalidateDuplicateScan,
+  readEmbeddingsByLookup,
+  DUP_PAIR_CAP,
   type SQLiteDatabase,
 } from '@cognistore/core';
 import { copyFixture, ensureFixture } from '../performance/fixtures/generate-fixture.js';
@@ -67,7 +70,7 @@ test.describe.serial('duplicate scan (1C.2 + 1C.3)', () => {
   test('same groups as the legacy per-entry KNN algorithm', async () => {
     test.setTimeout(120_000);
     const expected = await legacyDuplicateGroups(repo, sqlite);
-    sqlite.prepare('DELETE FROM cleanup_meta WHERE key = ?').run(DUP_SCAN_STATE_KEY);
+    invalidateDuplicateScan(sqlite);
     const actual = await repo.findDuplicateGroups({ limit: 100_000 });
     expect(expected.length).toBeGreaterThan(20); // the fixture plants clusters
     expectSameGroups(actual, expected);
@@ -117,7 +120,7 @@ test.describe.serial('duplicate scan (1C.2 + 1C.3)', () => {
 
   test('falls back to a full scan on a corrupt state or a new threshold', async () => {
     sqlite.prepare('INSERT INTO cleanup_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-      .run(DUP_SCAN_STATE_KEY, '{not json');
+      .run(dupScanStateKey(0.9), '{not json');
     expect((await scanDuplicatePairs(sqlite, 0.9)).mode).toBe('full');
     expect((await scanDuplicatePairs(sqlite, 0.9)).mode).toBe('incremental');
     expect((await scanDuplicatePairs(sqlite, 0.95)).mode).toBe('full');
@@ -125,9 +128,39 @@ test.describe.serial('duplicate scan (1C.2 + 1C.3)', () => {
     expect((await scanDuplicatePairs(sqlite, 0.9)).mode).toBe('incremental');
   });
 
+  test('the lookup fallback reads the same vectors as the chunked reader', () => {
+    const chunked = new Map<string, Buffer>();
+    for (const c of readEmbeddingsChunked(sqlite)) c.ids.forEach((id, i) => chunked.set(id, Buffer.from(c.vectors.buffer, c.vectors.byteOffset + i * c.dims * 4, c.dims * 4)));
+    let count = 0;
+    for (const c of readEmbeddingsByLookup(sqlite)) {
+      expect(c.rowids).toBeNull();
+      c.ids.forEach((id, i) => {
+        expect(Buffer.from(c.vectors.buffer, c.vectors.byteOffset + i * c.dims * 4, c.dims * 4).equals(chunked.get(id)!)).toBe(true);
+        count++;
+      });
+    }
+    expect(count).toBe(chunked.size);
+  });
+
+  test('an unchanged base does not rewrite the state', async () => {
+    await scanDuplicatePairs(sqlite, 0.9);
+    const changes = () => (sqlite.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+    const before = changes();
+    const again = await scanDuplicatePairs(sqlite, 0.9);
+    expect(again.mode).toBe('incremental');
+    expect(again.compared).toBeLessThanOrEqual(2); // entries sharing the newest updated_at are re-checked
+    expect(changes()).toBe(before);
+  });
+
+  test('concurrent scans of the same threshold share one run', async () => {
+    const [x, y] = [scanDuplicatePairs(sqlite, 0.9), scanDuplicatePairs(sqlite, 0.9)];
+    expect(x).toBe(y);
+    await x;
+  });
+
   test('re-embedding invalidates the incremental state', async () => {
     await scanDuplicatePairs(sqlite, 0.9);
-    const has = () => !!sqlite.prepare('SELECT 1 FROM cleanup_meta WHERE key = ?').get(DUP_SCAN_STATE_KEY);
+    const has = () => !!sqlite.prepare('SELECT 1 FROM cleanup_meta WHERE key = ?').get(dupScanStateKey(0.9));
     expect(has()).toBe(true);
     // A throwaway service on the same handle (existing vectors make the inserts no-ops).
     const service = new KnowledgeService(repo, hashEmbedder);
@@ -137,6 +170,22 @@ test.describe.serial('duplicate scan (1C.2 + 1C.3)', () => {
 });
 
 test.describe('pair engine (unit)', () => {
+  test('a dense cluster stops at the pair cap and keeps the event loop responsive', async () => {
+    const n = 3000; const dims = 256;
+    const vectors = new Float32Array(n * dims);
+    for (let i = 0; i < n; i++) for (let d = 0; d < dims; d++) vectors[i * dims + d] = 1 + ((i * 31 + d) % 7) * 1e-4;
+    const set = { ids: Array.from({ length: n }, (_, i) => `c-${String(i).padStart(5, '0')}`), vectors, dims };
+    normalizeRows(set);
+    let worst = 0;
+    let last = performance.now();
+    const probe = setInterval(() => { const now = performance.now(); worst = Math.max(worst, now - last - 5); last = now; }, 5);
+    const r = await findPairsInVectors(set, 0.9);
+    clearInterval(probe);
+    expect(r.truncated).toBe(true);
+    expect(r.pairs).toHaveLength(DUP_PAIR_CAP);
+    expect(worst).toBeLessThan(100);
+  });
+
   test('pruning never drops a pair the brute force finds', async () => {
     let seed = 7;
     const rand = () => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed / 2 ** 31 - 0.5; };
@@ -155,13 +204,13 @@ test.describe('pair engine (unit)', () => {
       for (let d = 0; d < dims; d++) dot += vectors[i * dims + d] * vectors[j * dims + d];
       if (dot >= 0.9) brute.push(`${ids[i]}|${ids[j]}`);
     }
-    const found = (await findPairsInVectors(set, 0.9)).map((p) => `${p.a}|${p.b}`);
+    const found = (await findPairsInVectors(set, 0.9)).pairs.map((p) => `${p.a}|${p.b}`);
     expect(brute.length).toBeGreaterThan(50);
     expect(found.sort()).toEqual(brute.sort());
     // Incremental restricted to some rows = brute-force pairs touching those rows.
     const q = [1, 2, 50, 299];
     const qIds = new Set(q.map((i) => ids[i]));
-    const inc = (await findPairsInVectors(set, 0.9, { queryRows: q })).map((p) => `${p.a}|${p.b}`);
+    const inc = (await findPairsInVectors(set, 0.9, { queryRows: q })).pairs.map((p) => `${p.a}|${p.b}`);
     expect(inc.sort()).toEqual(brute.filter((k) => k.split('|').some((x) => qIds.has(x))).sort());
   });
 });
