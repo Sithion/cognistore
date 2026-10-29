@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 export type WidgetState = 'idle' | 'loading' | 'loaded' | 'empty' | 'error';
 
@@ -130,21 +130,6 @@ export function getHeatmapColor(count: number, maxCount: number): string {
   if (intensity <= 0.75) return '#26a641';
   return '#39d353';
 }
-
-function useContainerWidth() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-  return { ref, width };
-}
-
-const CHART_MIN_WIDTH = 300;
 
 /** Format a token count with k/M suffixes for compact display. */
 export function formatTokens(n: number): string {

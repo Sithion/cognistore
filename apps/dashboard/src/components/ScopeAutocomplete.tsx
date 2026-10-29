@@ -123,8 +123,3 @@ export function ScopeAutocomplete({ value, onChange, style, required }: ScopeAut
     </div>
   );
 }
-
-/** Reset cache so next mount refetches */
-function invalidateScopesCache() {
-  scopesCache = null;
-}
