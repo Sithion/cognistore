@@ -17,10 +17,19 @@ The project uses **GitHub Actions** with two workflows:
 | `version-check`, `release-version-guard` | Version bumped vs `main`, release sources in sync, tag unpublished | PRs to `main`. Expected red on a WIP release PR that has not been bumped yet |
 | `validate-dependencies` | External URLs (Ollama install script, Releases API) answer 200 | Required |
 | `type-check` | `pnpm type-check`: dashboard frontend + server, MCP server, and the test package (`packages/tests`, since v2.6) | Required |
-| `build-and-test` | `pnpm build`, Chromium for the browser e2e, the Playwright suite, `npm publish --dry-run` | Required |
+| `build-and-test` | `pnpm build`, Chromium for the browser e2e, the Vitest unit layer and the Playwright suite (both under V8 coverage, see below), `npm publish --dry-run` | Required. Also fails when a package's coverage drops below the baseline |
 | `rust` (v2.6) | `cargo check --locked` + `cargo test --locked` in `apps/dashboard/src-tauri` on `ubuntu-24.04`, toolchain from `rust-toolchain.toml` (1.97.0, also passed to `dtolnay/rust-toolchain` — keep both in sync), the same Linux deps as `publish.yml`. The `sidecar-bundle/{dist,dist-server,node_modules}` resources `tauri_build` requires are empty stubs; the real bundle is only built by `publish.yml` | Required |
 | `perf` (v2.6) | The `@perf` suite on the cached 10k-entry fixture with `PERF_BUDGET_SCALE=3`. Its `PERF` lines go to the job summary for comparison with `packages/tests/src/performance/baseline.json` | Report only (`continue-on-error`) |
 | `osv-scan` | OSV-Scanner over the npm and Cargo lockfiles | Required. Weekly failures open/update a tracking issue |
+
+### Coverage (v2.6)
+
+Both test layers run under V8 coverage in `build-and-test`:
+
+- **Unit:** `pnpm coverage:unit` runs Vitest with `@vitest/coverage-v8` in `packages/core` and `apps/dashboard` (`auth.ts`, `settings.ts`).
+- **Integration:** `pnpm coverage:integration` wraps the Playwright suites in `c8` (`.c8rc.json`). The sidecar and MCP processes the tests spawn inherit `NODE_V8_COVERAGE`, so their code is measured too. c8 filters on the built `dist` files and maps them back to `src`. The MCP server is a single tsup bundle and is reported as one row, `mcp-server (bundle)`, which also contains the code it inlines.
+- **Report and gate:** `pnpm coverage:report` (`scripts/coverage-report.mjs`) prints lines and branches per package and layer. With `--markdown <file>` it also writes the table, plus the reasons when the gate fails, to a file that CI appends to the job summary. It fails when any row drops more than 0.5 pt below `coverage-baseline.json`, when a baseline row was not measured or measured under half its recorded lines (a source map that did not load), or when the baseline file is missing. The raw reports are uploaded as the `coverage` artifact.
+- **Raising the bar:** after a change that adds tests, run `pnpm coverage` locally (or take the numbers from the CI artifact) and commit the result of `node scripts/coverage-report.mjs --write-baseline`. The baseline only moves up on purpose; a drop has to be explained in the PR.
 
 The perf fixture cache key is the hash of `packages/tests/src/performance/fixtures/generate-fixture.ts`, so a generator change (or a `FIXTURE_VERSION` bump) rebuilds it.
 
