@@ -28,6 +28,7 @@ const SETTINGS_FILE = resolve(INSTALL_DIR, 'settings.json');
 
 export interface AppSettings {
   autoUpdate: boolean;
+  tokenUsageRetentionDays: number;
   dateRangePreset: '1d' | '1w' | '1m' | '1y' | '2y' | 'custom';
   lastSelectedRange: { from: string; to: string } | null;
   tokenProviderFilter: 'all' | 'claude' | 'copilot';
@@ -78,6 +79,7 @@ export type CreatedConfigFile = (typeof CREATED_CONFIG_FILES)[number];
 
 export const SETTINGS_DEFAULTS: AppSettings = {
   autoUpdate: false,
+  tokenUsageRetentionDays: 90,
   dateRangePreset: '1w',
   lastSelectedRange: null,
   tokenProviderFilter: 'all',
@@ -154,6 +156,11 @@ export function sanitizeSettings<T extends Partial<AppSettings>>(patch: T): T {
   }
 
   if ('cleanupEnabled' in out) out.cleanupEnabled = Boolean(out.cleanupEnabled);
+  if ('tokenUsageRetentionDays' in out) {
+    const n = out.tokenUsageRetentionDays;
+    out.tokenUsageRetentionDays = typeof n === 'number' && Number.isFinite(n) && Number.isInteger(n) && n >= 0 && n <= 36500
+      ? n : SETTINGS_DEFAULTS.tokenUsageRetentionDays;
+  }
   if ('cleanupIntervalDays' in out) {
     out.cleanupIntervalDays = clampInt(out.cleanupIntervalDays, 1, 365, SETTINGS_DEFAULTS.cleanupIntervalDays);
   }

@@ -1,18 +1,23 @@
 import { test, expect } from '@playwright/test';
+import BetterSqlite3 from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createDbClient,
   KnowledgeRepository,
   KnowledgeService,
   TokenUsageRepository,
   TokenUsageService,
+  runMigrations,
   ClaudeCodeAdapter,
   type SQLiteDatabase,
 } from '@cognistore/core';
 import { copyFixture, ensureFixture, generateTokenJsonlDir, DEFAULT_FIXTURE } from './fixtures/generate-fixture.js';
 import { budgetFor, hashEmbedder, measure, report } from './fixtures/perf-helpers.js';
+
+const __dirname = resolve(fileURLToPath(new URL('.', import.meta.url)));
 
 // Plan v2.6 item 0.4 — latency budgets on a 10k-entry / 200k-token-row base.
 // Budgets come from baseline.json (max(4 × baseline, 50 ms)); every run prints
@@ -53,6 +58,35 @@ test.afterAll(() => {
 });
 
 test.describe('@perf large database (0.4)', () => {
+  test('tokens.migration243Backfill', () => {
+    test.setTimeout(180_000);
+    const migrationDir = mkdtempSync(join(tmpdir(), 'cognistore-perf-migration-'));
+    const path = join(migrationDir, 'backfill.db');
+    const db = new BetterSqlite3(path);
+    try {
+      db.exec(`CREATE TABLE schema_version(version TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
+        INSERT INTO schema_version VALUES ('2.4.2', '2026-10-01T00:00:00Z');
+        CREATE TABLE token_usage(id TEXT PRIMARY KEY, source TEXT NOT NULL, model TEXT NOT NULL, project TEXT,
+          session_id TEXT, message_id TEXT, occurred_at TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0, scanned_at TEXT NOT NULL);
+        CREATE INDEX idx_token_usage_occurred ON token_usage(occurred_at);
+        CREATE INDEX idx_token_usage_project ON token_usage(project);
+        CREATE INDEX idx_token_usage_source_model ON token_usage(source, model);`);
+      const insert = db.prepare(`INSERT INTO token_usage VALUES (?, 'claude-code', 'm1', ?, NULL, NULL, ?, 1, 2, 3, 4, ?)`);
+      const bulk = db.transaction(() => {
+        for (let i = 0; i < 200_000; i++) insert.run(`perf-${i}`, i % 2 ? 'project-a' : null,
+          `2026-10-${String(1 + (i % 28)).padStart(2, '0')}T12:00:00.000Z`, '2026-10-29T00:00:00Z');
+      });
+      bulk();
+      const start = performance.now();
+      runMigrations(db, resolve(__dirname, '../../../core/src/db/migrations'));
+      const ms = performance.now() - start;
+      report('tokens.migration243Backfill', ms, { rows: 200_000 });
+      expect((db.prepare('SELECT SUM(messages) AS n FROM token_usage_daily').get() as { n: number }).n).toBe(200_000);
+    } finally { db.close(); rmSync(migrationDir, { recursive: true, force: true }); }
+  });
+
   test('fixture has the expected shape', () => {
     const count = (sql: string) => (sqlite.prepare(sql).get() as { n: number }).n;
     expect(count('SELECT count(*) AS n FROM knowledge_entries')).toBe(DEFAULT_FIXTURE.entries);
@@ -92,7 +126,7 @@ test.describe('@perf large database (0.4)', () => {
     expect(ms).toBeLessThan(budgetFor('stats.knowledge'));
   });
 
-  test('token aggregates, 30 and 180 days', async () => {
+  test('tokens.aggregates, 30 and 180 days', async () => {
     let rows30 = 0;
     let rows180 = 0;
     const ms30 = await measure(() => { rows30 = tokens.getAggregates(window(30)).byDay.length; });
@@ -103,6 +137,14 @@ test.describe('@perf large database (0.4)', () => {
     expect(rows180).toBeGreaterThan(rows30);
     expect(ms30).toBeLessThan(budgetFor('tokens.aggregates30d'));
     expect(ms180).toBeLessThan(budgetFor('tokens.aggregates180d'));
+  });
+
+  test('tokens.aggregatesProjectEdge by project on a partial edge', async () => {
+    const from = new Date(REFERENCE - 30 * DAY_MS + 13 * 60 * 60 * 1000).toISOString();
+    let rows = 0;
+    const ms = await measure(() => { rows = tokens.getAggregates({ ...window(30), from }).byProject.length; });
+    report('tokens.aggregatesProjectEdge', ms);
+    expect(rows).toBeGreaterThan(0);
   });
 
   test('duplicate groups (single run, full scan — 1C.3 made it cooperative; see duplicates-eventloop)', async () => {

@@ -11,6 +11,24 @@ Migration 2.4.2 removes only `consumption_samples` and
 knowledge, and plans remain. Both compatibility matrices use the unchanged
 1.3.0-legacy fixture.
 
+## Token usage retention
+
+Migration 2.4.3 adds permanent daily counters keyed by lexical stored date,
+source, model, project, and a project-null discriminator. SQL NULL projects
+display as `(unknown)`; a real empty-string project remains a separate group.
+The day is `substr(occurred_at, 1, 10)`, including for offset-bearing timestamps.
+
+Whole-day aggregates use rollups. Retained partial-day edges use raw rows.
+Outside raw retention, a partial-day edge uses the whole rollup day and can
+overcount the requested hours. Historical hourly precision cannot be recovered.
+Heatmaps and sessions use retained raw rows.
+
+`token_usage_meta.pruned_before` permanently records the greatest pruning
+cutoff. Current ingestion skips older events, and the insert trigger ignores
+older events from other connections, preventing permanent totals from growing
+when scan state is reset after pruning. Retention never deletes daily counters.
+The migration also indexes `knowledge_entries(updated_at)`.
+
 ## Schema
 
 ### knowledge_entries (relational table)

@@ -233,6 +233,9 @@ async function start() {
   let sdkReady = false;
   let sdkError: string | null = null;
   let retryInterval: ReturnType<typeof setInterval> | null = null;
+  let tokenRetentionDays = readSettings().tokenUsageRetentionDays;
+  let pruneRunning = false;
+  let pruneController: AbortController | null = null;
 
   // Event-loop lag + slow DB op / SQLITE_BUSY monitoring (plan v2.6, 0.2).
   // Re-attached on every (re)init because upgrade paths close and reopen the DB.
@@ -347,6 +350,16 @@ Pass an array to addKnowledge to create multiple entries at once.
   setInterval(() => {
     if (!sdkReady) return;
     try { sdk.reconcileOperationsDaily(); sdk.cleanupOldOperations(); sdk.cleanupCompletedPlanEmbeddings(730); sdk.walCheckpoint(); sdk.optimize(); } catch { /* silent */ }
+    void (async () => {
+      if (tokenRetentionDays <= 0 || pruneRunning) return;
+      pruneRunning = true;
+      pruneController = new AbortController();
+      try {
+        const cutoffDay = new Date(Date.now() - tokenRetentionDays * 86400000).toISOString().slice(0, 10);
+        await sdk.pruneTokenUsageBefore(`${cutoffDay}T00:00:00.000Z`, { signal: pruneController.signal });
+      } catch (e: any) { log('warn', `Token usage retention failed: ${e?.message ?? e}`); }
+      finally { pruneRunning = false; pruneController = null; }
+    })();
     // Cleanup report. Awaited inside its own async IIFE with a catch: an
     // unhandled rejection escaping a setInterval callback would crash the
     // sidecar, and this path talks to the DB and (on preview) to Ollama.
@@ -2537,6 +2550,7 @@ Pass an array to addKnowledge to create multiple entries at once.
     // sanitizeSettings also runs inside writeSettings; calling it here keeps the
     // response honest about what was actually stored.
     const merged = writeSettings(sanitizeSettings(body));
+    tokenRetentionDays = merged.tokenUsageRetentionDays;
     // The always-on flag is read by the SDK for federated search.
     sdk.reloadProviders();
     return merged;
@@ -2802,6 +2816,7 @@ Pass an array to addKnowledge to create multiple entries at once.
   })();
 
   const shutdown = async () => {
+    pruneController?.abort();
     perfMonitor.stop();
     if (sdkReady) await sdk.close();
     await app.close();

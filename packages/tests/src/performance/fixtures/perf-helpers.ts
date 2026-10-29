@@ -40,7 +40,7 @@ const BUDGET_FACTOR = 4;
 
 const PERF_CASES = [
   'search.hybrid', 'listRecent.offset0', 'listRecent.offset5000', 'stats.knowledge',
-  'tokens.aggregates30d', 'tokens.aggregates180d', 'duplicates.groups', 'tokens.scanFull', 'tokens.scanIncremental',
+  'tokens.aggregates30d', 'tokens.aggregates180d', 'tokens.migration243Backfill', 'tokens.aggregatesProjectEdge', 'duplicates.groups', 'tokens.scanFull', 'tokens.scanIncremental',
 ] as const;
 export type PerfCase = (typeof PERF_CASES)[number];
 
