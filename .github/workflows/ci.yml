@@ -145,6 +145,8 @@ jobs:
       # The Settings duplicates e2e drives the built dashboard in Chromium.
       - name: Install Chromium for browser e2e
         run: cd packages/tests && npx playwright install --with-deps chromium
+      - name: Run unit tests (Vitest)
+        run: pnpm --filter @cognistore/core --filter @cognistore/dashboard test
       - name: Run tests
         run: cd packages/tests && npx playwright test --reporter=list
       - name: Dry-run npm publish (fail on warnings)
