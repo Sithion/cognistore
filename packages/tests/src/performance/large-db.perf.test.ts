@@ -105,7 +105,7 @@ test.describe('@perf large database (0.4)', () => {
     expect(ms180).toBeLessThan(budgetFor('tokens.aggregates180d'));
   });
 
-  test('duplicate groups (single run — the current path is O(n) KNN calls)', async () => {
+  test('duplicate groups (single run, full scan — 1C.3 made it cooperative; see duplicates-eventloop)', async () => {
     test.setTimeout(Math.max(budgetFor('duplicates.groups') + 60_000, 120_000));
     const start = performance.now();
     const groups = await service.findDuplicateGroups();

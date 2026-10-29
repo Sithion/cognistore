@@ -211,6 +211,20 @@ Input: query vector (768-dim), options (scope, tags, type, limit, threshold)
 3. Return: [{ entry, similarity }]
 ```
 
+### Duplicate Detection (cooperative scan, v2.6)
+
+**Files:** `packages/core/src/services/duplicate-scan.ts` (orchestration), `duplicate-pairs.ts` (pure pair engine), `readEmbeddingsChunked` in `packages/core/src/db/schema/sqlite-vec.ts`.
+
+`findDuplicateGroups` / `findDuplicatePairs` find every pair of non-system entries whose cosine similarity is at or above the threshold (default 0.9), the exact threshold graph, then group them with union-find. They never load `content` and never run one KNN query per entry:
+
+1. Metadata (`id, title, scope, type, version, updated_at`) in keyset pages of 5,000.
+2. Every vector once, read chunk by chunk (≤1024 vectors) straight from the vec0 shadow tables `knowledge_embeddings_rowids` + `knowledge_embeddings_vector_chunks00` into one preallocated matrix, normalized as it is filled.
+3. Exact pair search with Cauchy–Schwarz pruning (first 64 dimensions + tail norms), yielding to the event loop with `setImmediate` every ~15 ms. No synchronous slice reaches 100 ms on a 10k-entry base.
+
+**Incremental state** lives in `cleanup_meta`, one row per threshold: `dup_scan_state:<threshold>` holds JSON `{ v: 1, dims, maxRowid, maxUpdated, pairs }`, and `dup_scan_state` lists the thresholds kept, most recent first (at most 3). The next scan compares only entries with a vec0 rowid above `maxRowid` or an `updated_at` at or above `maxUpdated` against the whole base. It drops pairs whose entries are gone and keeps the rest. The row is rewritten only when the outcome changed, under a 250 ms `busy_timeout`, so it never waits behind an agent's write. A missing or corrupt state, another dimension count, or rowids going backwards (the vec table was rebuilt) mean a full scan. `reembedAll` deletes every `dup_scan_state*` row, because re-embedding changes vectors without touching `updated_at`. These rows are a cache: deleting them is always safe.
+
+**Limits:** the search stops at 20,000 pairs (`DUP_PAIR_CAP`; m identical copies make m(m−1)/2 pairs) and reports `truncated`. Such a result, or one above 10,000 pairs, is not persisted. Above 100,000 entries the scan is skipped (`MAX_SCAN_ENTRIES`; the matrix is entries × dimensions × 4 bytes). Concurrent scans of the same threshold share one run. If the vec0 shadow layout ever changes, vectors are read by primary-key lookups instead, and the scan runs in full mode only.
+
 ### Why Tags Are Embedded (Not Content)
 
 Tags serve as semantic anchors — they are concise, intentional descriptors chosen by the agent. Content can be arbitrarily long and noisy, which dilutes embedding quality. By embedding tags:
