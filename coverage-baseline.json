@@ -10,8 +10,8 @@
     "lineTotal": 5797
   },
   "integration: dashboard-server": {
-    "lines": 75.6,
-    "branches": 55.5,
+    "lines": 76.2,
+    "branches": 55.6,
     "lineTotal": 3948
   },
   "integration: embeddings": {
@@ -41,7 +41,7 @@
   },
   "unit: core": {
     "lines": 94.2,
-    "branches": 76.9,
+    "branches": 77,
     "lineTotal": 1888
   },
   "unit: dashboard-server": {
