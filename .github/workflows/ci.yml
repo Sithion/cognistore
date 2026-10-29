@@ -169,6 +169,7 @@ jobs:
   rust:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45 # cold tauri/webkit build ~15 min; rust-cache makes later runs fast
     defaults:
       run:
         working-directory: apps/dashboard/src-tauri
@@ -203,6 +204,7 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     continue-on-error: true
+    timeout-minutes: 30
     env:
       PERF_BUDGET_SCALE: '3'
     steps:
@@ -214,23 +216,38 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Cache the perf fixture
-        # The fixture is deterministic per generator version (FIXTURE_VERSION
-        # lives in generate-fixture.ts), so the file's hash is the cache key.
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Restore the perf fixture
+        id: fixture
+        # The fixture is deterministic per generator (FIXTURE_VERSION lives in
+        # generate-fixture.ts) and schema (it is built through createDbClient,
+        # so the migrations are part of the key).
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/cognistore-perf-fixture-v*
-          key: perf-fixture-${{ hashFiles('packages/tests/src/performance/fixtures/generate-fixture.ts') }}
+          key: perf-fixture-${{ hashFiles('packages/tests/src/performance/fixtures/generate-fixture.ts', 'packages/core/src/db/migrations/**') }}
       - name: Run the @perf suite (report only)
+        id: perf
         run: |
           set -o pipefail
           cd packages/tests
           pnpm test:perf --reporter=list 2>&1 | tee "$RUNNER_TEMP/perf.log"
+      - name: Save the perf fixture
+        # Saved even when a budget fails (the interesting case), unlike the
+        # combined actions/cache step, which only saves on success.
+        if: always() && steps.fixture.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/cognistore-perf-fixture-v*
+          key: perf-fixture-${{ hashFiles('packages/tests/src/performance/fixtures/generate-fixture.ts', 'packages/core/src/db/migrations/**') }}
       - name: PERF lines to the job summary
         if: always()
+        env:
+          PERF_OUTCOME: ${{ steps.perf.outcome }}
         run: |
           {
             echo "### @perf (PERF_BUDGET_SCALE=$PERF_BUDGET_SCALE, report only)"
+            # continue-on-error shows the check green: say it here when a budget failed.
+            if [ "$PERF_OUTCOME" != "success" ]; then echo "**Perf step outcome: $PERF_OUTCOME** — see the log for the failing case."; fi
             echo '```'
             grep -oE 'PERF [^ ]+ [0-9.]+ms.*' "$RUNNER_TEMP/perf.log" || echo "(no PERF lines)"
             echo '```'
