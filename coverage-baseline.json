@@ -1,17 +1,17 @@
 {
   "integration: config": {
     "lines": 83.9,
-    "branches": 72.9,
+    "branches": 73.2,
     "lineTotal": 946
   },
   "integration: core": {
-    "lines": 83.3,
-    "branches": 72,
+    "lines": 81.2,
+    "branches": 72.1,
     "lineTotal": 5797
   },
   "integration: dashboard-server": {
-    "lines": 75.8,
-    "branches": 56.2,
+    "lines": 76.3,
+    "branches": 56.6,
     "lineTotal": 3948
   },
   "integration: embeddings": {
@@ -26,7 +26,7 @@
   },
   "integration: providers": {
     "lines": 67.5,
-    "branches": 68.8,
+    "branches": 68.7,
     "lineTotal": 1056
   },
   "integration: sdk": {

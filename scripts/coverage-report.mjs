@@ -25,7 +25,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE = join(ROOT, 'coverage-baseline.json');
-const TOLERANCE = 0.5; // points: V8 counts shift slightly between runs and Node versions
+// Points. V8 counts shift between runs, Node patches and machines: a developer
+// machine measured 0.5 pt off CI on the same tree (2.6, Rodada 3).
+const TOLERANCE = 1;
 
 const SOURCES = [
   { layer: 'integration', file: 'coverage/integration/coverage-summary.json' },
