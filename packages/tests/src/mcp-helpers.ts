@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,10 +39,25 @@ export function npxLaunch(version: string, sandbox: string): McpLaunch {
   };
 }
 
+/**
+ * The npx cache persists at a fixed path, and npx runs what it finds there. So
+ * the directory must be ours alone: not a symlink, owned by this uid, and not
+ * readable or writable by anyone else. Another account could otherwise create
+ * it first and plant a package.
+ */
+function assertOwnPrivateDir(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const st = lstatSync(dir);
+  const uid = process.getuid?.();
+  if (!st.isDirectory() || st.isSymbolicLink() || (uid !== undefined && st.uid !== uid) || (st.mode & 0o077) !== 0) {
+    throw new Error(`refusing npx sandbox ${dir}: must be a private (0700) directory owned by the current user`);
+  }
+}
+
 /** Download the npx package into the sandbox cache (network). Throws when npm cannot fetch it. */
 export function warmNpx(version: string, sandbox: string): void {
   const { cwd, env } = npxLaunch(version, sandbox);
-  mkdirSync(sandbox, { recursive: true });
+  assertOwnPrivateDir(sandbox);
   execFileSync('npm', ['exec', '--yes', `--package=@cognistore/mcp-server@${version}`, '--', 'node', '-e', '0'], {
     // No retries: offline must fail fast into a skip, inside the hook's timeout.
     cwd, env: { ...process.env, ...env, npm_config_fetch_retries: '0', npm_config_fetch_timeout: '30000' }, stdio: 'ignore', timeout: 120_000,
