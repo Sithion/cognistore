@@ -167,8 +167,17 @@ jobs:
           retention-days: 14
       - name: Dry-run npm publish (fail on warnings)
         run: |
-          OUTPUT=$(cd apps/mcp-server && npm publish --dry-run --access public 2>&1)
+          STATUS=0
+          OUTPUT=$(cd apps/mcp-server && npm publish --dry-run --access public 2>&1) || STATUS=$?
           echo "$OUTPUT"
+          # On a release branch that is not bumped yet the version is already on
+          # npm, and the dry run refuses to "publish over" it. That is the
+          # version-check job's concern (expected red until the bump), not a
+          # package.json problem; any other error still fails this step.
+          if [ "$STATUS" -ne 0 ] && ! echo "$OUTPUT" | grep -q "You cannot publish over the previously published versions"; then
+            echo "::error::npm publish dry-run failed (exit $STATUS)."
+            exit "$STATUS"
+          fi
           # "requires you to be logged in ... (dry-run)" is an inherent, benign
           # warning when publishing unauthenticated in CI — and npm's newer CLI
           # now prefixes it with the command name ("npm warn publish ..."), so it
