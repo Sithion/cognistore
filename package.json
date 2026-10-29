@@ -14,6 +14,7 @@
     "check:version": "node scripts/check-release-version.mjs",
     "dmg": "pnpm --filter @cognistore/dashboard tauri:dmg",
     "type-check": "turbo type-check",
+    "verify": "node scripts/verify.mjs",
     "coverage:unit": "pnpm --filter @cognistore/core --filter @cognistore/dashboard test:coverage",
     "coverage:integration": "c8 pnpm --filter @cognistore/tests test",
     "coverage:report": "node scripts/coverage-report.mjs",

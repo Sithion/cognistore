@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+/**
+ * One command for "is this branch good?" (plan v2.6, T.12). CI's build-and-test
+ * job and the pre-push hook run exactly this.
+ *
+ *   pnpm verify                 # lint, type-check, build, unit, integration
+ *   pnpm verify --coverage      # same, under V8 coverage, then the baseline gate
+ *   pnpm verify --coverage --markdown <file>   # also write the coverage table
+ *
+ * Steps, in order, stopping at the first failure:
+ *   lint        turbo lint; skipped while no workspace defines a `lint` script
+ *   type-check  turbo type-check (dashboard frontend + server, MCP server, tests)
+ *   build       turbo build (the suites spawn the built sidecar and MCP server)
+ *   unit        Vitest: packages/core and the sidecar's auth/settings
+ *   integration Playwright projects e2e, load and compat: the API inventory, the
+ *               MCP contract and MCP x DB matrix, and the upgrade matrix
+ *   knip        only when knip is installed (it is not, yet)
+ *   coverage    with --coverage: scripts/coverage-report.mjs against
+ *               coverage-baseline.json. It also runs when unit or integration
+ *               failed, so the table shows what was measured; verify still fails.
+ * The @perf suite is not part of it; CI runs it in its own job.
+ */
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const args = process.argv.slice(2);
+const coverage = args.includes('--coverage');
+const mdIndex = args.indexOf('--markdown');
+const markdown = mdIndex >= 0 ? args[mdIndex + 1] : undefined;
+
+/** True when some workspace package.json defines `script`. */
+function anyWorkspaceScript(script) {
+  for (const group of ['apps', 'packages']) {
+    for (const name of readdirSync(join(ROOT, group))) {
+      const pkg = join(ROOT, group, name, 'package.json');
+      if (existsSync(pkg) && JSON.parse(readFileSync(pkg, 'utf-8')).scripts?.[script]) return true;
+    }
+  }
+  return false;
+}
+
+const steps = [];
+if (anyWorkspaceScript('lint')) steps.push(['lint', ['pnpm', 'lint']]);
+else console.log('verify: no workspace defines a lint script — skipped');
+steps.push(
+  ['type-check', ['pnpm', 'type-check']],
+  ['build', ['pnpm', 'build']],
+  ['unit', coverage ? ['pnpm', 'coverage:unit'] : ['pnpm', '--filter', '@cognistore/core', '--filter', '@cognistore/dashboard', 'test']],
+  ['integration', coverage ? ['pnpm', 'coverage:integration'] : ['pnpm', '--filter', '@cognistore/tests', 'test']],
+);
+if (existsSync(join(ROOT, 'node_modules', '.bin', 'knip'))) steps.push(['knip', ['pnpm', 'exec', 'knip']]);
+else console.log('verify: knip is not installed — skipped');
+if (coverage) steps.push(['coverage', ['node', 'scripts/coverage-report.mjs', ...(markdown ? ['--markdown', markdown] : [])]]);
+
+const timings = [];
+function run(name, [cmd, ...rest]) {
+  console.log(`\n▶ verify: ${name} — ${[cmd, ...rest].join(' ')}`);
+  const started = Date.now();
+  const { status, signal, error } = spawnSync(cmd, rest, { cwd: ROOT, stdio: 'inherit' });
+  const secs = ((Date.now() - started) / 1000).toFixed(1);
+  timings.push(`${name} ${secs}s`);
+  if (status === 0) return 0;
+  const why = error ? ` (${error.message})` : signal ? ` (killed by ${signal})` : '';
+  console.error(`\n✖ verify: ${name} failed${why} after ${secs}s`);
+  return status || 1;
+}
+
+for (const [name, command] of steps) {
+  const status = run(name, command);
+  if (status === 0) continue;
+  // Still print the coverage of what ran, so a red CI run shows the table.
+  if (coverage && (name === 'unit' || name === 'integration')) run('coverage (report only)', steps.at(-1)[1]);
+  process.exit(status);
+}
+console.log(`\n✔ verify passed: ${timings.join(', ')}`);

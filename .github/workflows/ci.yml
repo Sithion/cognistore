@@ -20,7 +20,7 @@ env:
 jobs:
   version-check:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Get PR version
@@ -55,7 +55,7 @@ jobs:
   # this asserts all release-driving version sources agree AND the tag is unpublished.
   release-version-guard:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -95,7 +95,7 @@ jobs:
 
   validate-dependencies:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Validate external dependency URLs
@@ -116,10 +116,10 @@ jobs:
 
   type-check:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
@@ -132,38 +132,28 @@ jobs:
 
   build-and-test:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30 # a full run takes a few minutes; a hung suite must not hold the runner for 6 h
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
       # The Settings duplicates e2e drives the built dashboard in Chromium.
       - name: Install Chromium for browser e2e
         run: cd packages/tests && npx playwright install --with-deps chromium
-      # Both layers run under V8 coverage: Vitest for the unit layer, c8 around
-      # the Playwright suites (it also measures the sidecar and MCP processes
-      # they spawn, which inherit NODE_V8_COVERAGE). See documentation/ci-cd.md.
-      - name: Run unit tests (Vitest, coverage)
-        run: pnpm coverage:unit
-      # No extra argv: pnpm 9 forwards a literal `--`, which Playwright would read
-      # as a file filter (no tests run). The list reporter comes from the config.
-      - name: Run tests (Playwright under c8)
-        run: pnpm coverage:integration
-      # Per-package table in the job summary; fails when a package drops more
-      # than 0.5 pt below coverage-baseline.json.
-      - name: Coverage report and baseline gate
+      # The same command as the pre-push hook (scripts/verify.mjs): lint,
+      # type-check, build, Vitest, the Playwright suites (under c8 here, which
+      # also measures the sidecar and MCP processes they spawn), then the
+      # per-package coverage gate against coverage-baseline.json.
+      - name: pnpm verify (with coverage)
+        run: pnpm verify --coverage --markdown coverage/summary.md
+      - name: Coverage table in the job summary
         if: ${{ !cancelled() }}
-        run: |
-          set +e
-          node scripts/coverage-report.mjs --markdown coverage/summary.md
-          status=$?
-          [ -f coverage/summary.md ] && cat coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
-          exit $status
+        run: '[ -f coverage/summary.md ] && cat coverage/summary.md >> "$GITHUB_STEP_SUMMARY" || echo "no coverage table (an earlier step failed)"'
       - name: Upload coverage reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
@@ -202,7 +192,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
@@ -266,7 +256,7 @@ jobs:
       PERF_BUDGET_SCALE: '3'
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
@@ -316,7 +306,7 @@ jobs:
   # Action) to respect the repo's curated Actions allowlist; the binary is
   # version-pinned and checksum-verified. This job is a required status check.
   osv-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       issues: write # only used by the scheduled-failure step below
