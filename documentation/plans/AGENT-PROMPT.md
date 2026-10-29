@@ -71,7 +71,7 @@ Você é o agente EXECUTOR. Tarefa única: aplicar o hotfix v2.5.3 preparado pel
 7. NÃO faça merge. Responda com a URL do PR, o status dos checks do CI e "RODADA 0 PRONTA PARA VALIDAÇÃO". Pare.
 ```
 
-Depois do merge do hotfix (decisão do Raphael — o merge em main dispara o Publish da 2.5.3), a rodada 1 cria `release/2.6` a partir do main já com o hotfix.
+Depois do merge do hotfix (decisão do mantenedor — o merge em main dispara o Publish da 2.5.3), a rodada 1 cria `release/2.6` a partir do main já com o hotfix.
 
 ---
 
