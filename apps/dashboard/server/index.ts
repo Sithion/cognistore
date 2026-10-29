@@ -344,17 +344,33 @@ Pass an array to addKnowledge to create multiple entries at once.
   // writer) BEFORE pruning the raw log, then cleanup + WAL checkpoint.
   setInterval(() => {
     if (!sdkReady) return;
-    try { sdk.reconcileOperationsDaily(); sdk.cleanupOldOperations(); sdk.cleanupCompletedPlanEmbeddings(730); sdk.walCheckpoint(); } catch { /* silent */ }
+    try { sdk.reconcileOperationsDaily(); sdk.cleanupOldOperations(); sdk.cleanupCompletedPlanEmbeddings(730); sdk.walCheckpoint(); sdk.optimize(); } catch { /* silent */ }
     // Cleanup report. Awaited inside its own async IIFE with a catch: an
     // unhandled rejection escaping a setInterval callback would crash the
     // sidecar, and this path talks to the DB and (on preview) to Ollama.
     void (async () => { await maybeGenerateReport({ sdk, log }); })().catch(() => { /* logged inside */ });
   }, 6 * 60 * 60 * 1000);
 
-  // Token usage scan every 5 minutes — incremental, idempotent.
-  setInterval(() => {
-    if (sdkReady) { sdk.scanTokenUsage().catch((e) => log('warn', `Token scan failed: ${e?.message ?? e}`)); }
-  }, 5 * 60 * 1000);
+  // Token usage scan — incremental, idempotent. Adaptive cadence (plan v2.6,
+  // 1A.4): every 5 minutes while agents are producing usage, every 30 once a
+  // pass finds nothing new. POST /api/token-usage/scan still scans on demand.
+  const TOKEN_SCAN_ACTIVE_MS = 5 * 60 * 1000;
+  const TOKEN_SCAN_IDLE_MS = 30 * 60 * 1000;
+  const scheduleTokenScan = (delayMs: number) => {
+    setTimeout(async () => {
+      let next = TOKEN_SCAN_ACTIVE_MS;
+      if (sdkReady) {
+        try {
+          const result = await sdk.scanTokenUsage();
+          next = result.inserted > 0 ? TOKEN_SCAN_ACTIVE_MS : TOKEN_SCAN_IDLE_MS;
+        } catch (e: any) {
+          log('warn', `Token scan failed: ${e?.message ?? e}`);
+        }
+      }
+      scheduleTokenScan(next);
+    }, delayMs);
+  };
+  scheduleTokenScan(TOKEN_SCAN_ACTIVE_MS);
 
   const app = Fastify({ logger: true });
 

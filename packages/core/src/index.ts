@@ -38,6 +38,7 @@ export {
   type DbInstrumentation,
   type EventLoopReport,
 } from './perf/instrumentation.js';
+export { createPerfMonitor, formatPerfSummary, type PerfMonitor, type PerfMonitorOptions } from './perf/monitor.js';
 
 // Token usage
 export { scanDuplicatePairs, invalidateDuplicateScan, DUP_SCAN_STATE_KEY, dupScanStateKey, MAX_SCAN_ENTRIES, type DuplicateScanResult } from './services/duplicate-scan.js';

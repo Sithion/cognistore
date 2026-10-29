@@ -14,6 +14,22 @@ AI Client ←── stdio (stdin/stdout JSON-RPC) ──→ MCP Server ──→
 
 The server is launched by AI clients via `npx -y @cognistore/mcp-server`. Communication happens over stdin/stdout using JSON-RPC messages per the MCP specification.
 
+## Performance diagnostics (opt-in)
+
+Set `COGNISTORE_PERF=1` in the MCP server's environment (the `env` block of its entry in the agent's MCP config) to make it report its own performance, as the sidecar does:
+
+| Variable | Effect |
+|---|---|
+| `COGNISTORE_PERF=1` | Every interval, one `[perf]` summary line (event-loop p50/p99/max, DB ops, ops ≥ 100 ms, slow writes, `SQLITE_BUSY` count) plus the slowest statements, and one line per slow op as it happens. SQL text only, never bound values. |
+| `COGNISTORE_PERF_LOG=<file>` | Also append those lines to this file (asynchronously). |
+| `COGNISTORE_PERF_INTERVAL_MS=<ms>` | Summary interval (default 300000, 5 minutes). |
+
+Lines go to **stderr** prefixed with `[mcp pid=<pid>]`, never to stdout, which carries the JSON-RPC stream. Unset, the server prints nothing. Wiring: `apps/mcp-server/src/index.ts` → `createPerfMonitor` (`packages/core/src/perf/monitor.ts`).
+
+## Buffered telemetry writes
+
+Operation counters (`operations_log` / `operations_daily`) and `trackRead` read marks are counted in memory and written in one transaction per flush: counters every 30 s, read marks every 10 s, on `close()`, and on process `exit`. Every flush waits at most 250 ms for the write lock instead of the connection's 5 s `busy_timeout`: a busy database keeps the counters for the next flush (bounded to 10,000 per-second keys) and drops that batch of read marks (a best-effort signal). The dashboard therefore sees an agent session's activity up to 30 s late.
+
 ## Tools
 
 ### addKnowledge

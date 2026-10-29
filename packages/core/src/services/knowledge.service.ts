@@ -122,11 +122,97 @@ export class KnowledgeService {
     private embeddingProvider: EmbeddingProvider
   ) {}
 
+  // ─── Buffered telemetry writes (plan v2.6, 1A.2 + 1A.3) ─────────
+  // Every search used to INSERT into operations_log (and bump the daily
+  // rollup) and, with trackRead, UPDATE the hits — synchronous writes on the
+  // read path of a database shared with every agent session. Both are now
+  // counted in memory and written in ONE transaction per flush: operations
+  // every 30 s, read marks every 10 s, on close, and before anything in this
+  // process reads them back. Another process sees them up to one interval late.
+
+  private static readonly OPS_FLUSH_MS = 30_000;
+  private static readonly READS_FLUSH_MS = 10_000;
+  /** Flushes wait at most this long for the write lock (timer, exit and stats reads alike). */
+  private static readonly FLUSH_BUSY_MS = 250;
+  /** Operation keys kept across failed flushes; the oldest are dropped past this. */
+  private static readonly MAX_PENDING_OPS = 10_000;
+  /** `${op}|${ISO second}` → count; one raw row per counted op is still written. */
+  private pendingOps = new Map<string, number>();
+  /** entry id → reads since the last flush, and when the latest one happened. */
+  private pendingReads = new Map<string, { count: number; at: string }>();
+  private opsTimer: ReturnType<typeof setTimeout> | null = null;
+  private readsTimer: ReturnType<typeof setTimeout> | null = null;
+
   private logOp(op: 'read' | 'write', count = 1) {
+    // As before buffering: a call always counts at least once (a search with
+    // no hits is still one read on the Activity chart).
+    const n = Math.max(1, count);
+    const key = `${op}|${new Date().toISOString().slice(0, 19)}.000Z`;
+    this.pendingOps.set(key, (this.pendingOps.get(key) ?? 0) + n);
+    this.armOpsTimer();
+  }
+
+  private bufferReads(ids: string[]) {
+    const at = new Date().toISOString();
+    for (const id of ids) this.pendingReads.set(id, { count: (this.pendingReads.get(id)?.count ?? 0) + 1, at });
+    if (!this.readsTimer) {
+      this.readsTimer = setTimeout(() => { this.readsTimer = null; this.flushReads(); }, KnowledgeService.READS_FLUSH_MS);
+      this.readsTimer.unref?.();
+    }
+  }
+
+  private armOpsTimer() {
+    if (this.opsTimer) return;
+    this.opsTimer = setTimeout(() => { this.opsTimer = null; this.flushOperations(); }, KnowledgeService.OPS_FLUSH_MS);
+    this.opsTimer.unref?.();
+  }
+
+  /**
+   * Write the buffered operation counters (one transaction, short lock wait).
+   * A busy database keeps the counts for the next flush instead of blocking
+   * the caller (a stats request, the timer, process exit) for the full
+   * connection busy_timeout.
+   */
+  flushOperations(): void {
+    if (this.pendingOps.size === 0) return;
+    const pending = this.pendingOps;
+    const batch = Array.from(pending, ([key, count]) => {
+      const [operation, createdAt] = key.split('|');
+      return { operation: operation as 'read' | 'write', createdAt, count };
+    });
+    this.pendingOps = new Map();
     try {
-      if (count <= 1) this.repository.logOperation(op);
-      else this.repository.logOperationBatch(op, count);
-    } catch { /* silent */ }
+      this.repository.logOperationsBuffered(batch, KnowledgeService.FLUSH_BUSY_MS);
+    } catch {
+      // Merge back under anything counted meanwhile; bounded, oldest keys go first.
+      for (const [key, count] of this.pendingOps) pending.set(key, (pending.get(key) ?? 0) + count);
+      for (const key of pending.keys()) {
+        if (pending.size <= KnowledgeService.MAX_PENDING_OPS) break;
+        pending.delete(key);
+      }
+      this.pendingOps = pending;
+      this.armOpsTimer();
+    }
+  }
+
+  /** Write the buffered read marks (one transaction, short lock wait); a busy database drops them. */
+  flushReads(): void {
+    if (this.pendingReads.size === 0) return;
+    const batch = Array.from(this.pendingReads, ([id, r]) => ({ id, count: r.count, at: r.at }));
+    this.pendingReads.clear();
+    try { this.repository.markReadBatch(batch, KnowledgeService.FLUSH_BUSY_MS); } catch { /* best-effort signal */ }
+  }
+
+  /** Flush both buffers now (close, process exit, tests). */
+  flushPendingWrites(): void {
+    this.flushOperations();
+    this.flushReads();
+  }
+
+  /** Cancel the flush timers (the owner is closing the database). */
+  stopPendingWriteTimers(): void {
+    if (this.opsTimer) { clearTimeout(this.opsTimer); this.opsTimer = null; }
+    if (this.readsTimer) { clearTimeout(this.readsTimer); this.readsTimer = null; }
   }
 
   private buildEmbeddingText(title: string, content: string, tags: string[]): string {
@@ -198,15 +284,12 @@ export class KnowledgeService {
     // search) pass trackRead. Internal scans and browsing must not mark, or
     // nothing would ever qualify as unread.
     //
-    // Deferred off the response path on purpose: better-sqlite3 is synchronous
+    // Buffered off the response path on purpose: better-sqlite3 is synchronous
     // and a contended write (the MCP server and the sidecar share this DB) would
     // otherwise stall the caller for up to busy_timeout. Do NOT "fix" this into
-    // an inline await. Best-effort: a lost mark only delays a cleanup candidate.
+    // an inline write. Best-effort: a lost mark only delays a cleanup candidate.
     if (options?.trackRead && results.length > 0) {
-      const readIds = results.map((r) => r.entry.id);
-      setImmediate(() => {
-        try { this.repository.markRead(readIds); } catch { /* best-effort */ }
-      });
+      this.bufferReads(results.map((r) => r.entry.id));
     }
     const direct: SearchResult[] = results.map((r) => ({
       entry: this.toKnowledgeEntry(r.entry),
@@ -675,6 +758,7 @@ export class KnowledgeService {
    * what could be removed.
    */
   async generateCleanupReport(opts: { unreadDays?: number; dupThreshold?: number } = {}) {
+    this.flushReads(); // unread detection reads last_read_at
     const unreadDays = opts.unreadDays ?? CLEANUP_UNREAD_DAYS;
     const dupThreshold = opts.dupThreshold ?? CLEANUP_DUP_THRESHOLD;
 
@@ -1565,10 +1649,12 @@ export class KnowledgeService {
   // ─── Operations ─────────────────────────────────────────────
 
   getOperationCounts() {
+    this.flushOperations();
     return this.repository.getOperationCounts();
   }
 
   getOperationsByDay(days: number = 15) {
+    this.flushOperations();
     return this.repository.getOperationsByDay(days);
   }
 
@@ -1577,10 +1663,12 @@ export class KnowledgeService {
   }
 
   reconcileOperationsDaily() {
+    this.flushOperations();
     return this.repository.reconcileOperationsDaily();
   }
 
   cleanupOldOperations() {
+    this.flushOperations();
     return this.repository.cleanupOldOperations();
   }
 

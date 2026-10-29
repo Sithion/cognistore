@@ -131,29 +131,37 @@ export class KnowledgeRepository {
   }
 
   /**
-   * Record that these entries were actually retrieved. Feeds the cleanup cycle's
-   * "unread" detection.
+   * Record that these entries were actually retrieved, from the service's
+   * buffered read marks. Feeds the cleanup cycle's "unread" detection.
    *
    * Deliberately touches ONLY last_read_at / read_count — never updated_at or
    * version. A read is not an edit: bumping updated_at here would corrupt
    * findStaleEntries and silently reorder duplicate-group canonicals.
    *
-   * Chunked because SQLite caps bound variables per statement.
+   * ONE transaction: `read_count += count`, `last_read_at = at`. Waits at most
+   * `busyTimeoutMs` for the write lock (the caller drops the batch if it
+   * throws), then restores the connection's busy_timeout.
    */
-  markRead(ids: string[]): void {
-    if (ids.length === 0) return;
-    const now = new Date().toISOString();
-    const CHUNK = 500;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      const placeholders = chunk.map(() => '?').join(',');
-      this.sqlite
-        .prepare(
-          `UPDATE knowledge_entries
-              SET last_read_at = ?, read_count = read_count + 1
-            WHERE id IN (${placeholders})`
-        )
-        .run(now, ...chunk);
+  markReadBatch(batch: { id: string; count: number; at: string }[], busyTimeoutMs: number): void {
+    if (batch.length === 0) return;
+    const stmt = this.sqlite.prepare(
+      'UPDATE knowledge_entries SET last_read_at = ?, read_count = read_count + ? WHERE id = ?'
+    );
+    this.withBusyTimeout(busyTimeoutMs, () => {
+      this.sqlite.transaction(() => {
+        for (const r of batch) stmt.run(r.at, r.count, r.id);
+      })();
+    });
+  }
+
+  /** Run `fn` with a temporary lock wait, restoring the connection's own afterwards. */
+  private withBusyTimeout(busyTimeoutMs: number, fn: () => void): void {
+    const previous = this.sqlite.pragma('busy_timeout', { simple: true }) as number;
+    try {
+      this.sqlite.pragma(`busy_timeout = ${busyTimeoutMs}`);
+      fn();
+    } finally {
+      try { this.sqlite.pragma(`busy_timeout = ${previous}`); } catch { /* closed */ }
     }
   }
 
@@ -1167,26 +1175,25 @@ export class KnowledgeRepository {
       .run(day, reads, writes);
   }
 
-  logOperation(operation: 'read' | 'write'): void {
-    const now = new Date().toISOString();
-    const insert = this.sqlite.transaction(() => {
-      this.sqlite
-        .prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)')
-        .run(operation, now);
-      this.bumpOperationsDaily(operation, now, 1);
-    });
-    insert();
-  }
-
-  logOperationBatch(operation: 'read' | 'write', count: number): void {
-    if (count <= 0) return;
-    const now = new Date().toISOString();
+  /**
+   * Write buffered operation counts in ONE transaction: one raw row per counted
+   * operation (same rows the per-call path wrote, timestamped to the second)
+   * plus the daily rollup bump, so every stats view reads the same numbers.
+   */
+  logOperationsBuffered(
+    batch: { operation: 'read' | 'write'; createdAt: string; count: number }[],
+    busyTimeoutMs: number,
+  ): void {
+    if (batch.length === 0) return;
     const stmt = this.sqlite.prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)');
-    const insertMany = this.sqlite.transaction((n: number) => {
-      for (let i = 0; i < n; i++) stmt.run(operation, now);
-      this.bumpOperationsDaily(operation, now, n);
+    this.withBusyTimeout(busyTimeoutMs, () => {
+      this.sqlite.transaction(() => {
+        for (const b of batch) {
+          for (let i = 0; i < b.count; i++) stmt.run(b.operation, b.createdAt);
+          this.bumpOperationsDaily(b.operation, b.createdAt, b.count);
+        }
+      })();
     });
-    insertMany(count);
   }
 
   getOperationCounts(): {

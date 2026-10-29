@@ -1,10 +1,10 @@
 // One simulated agent session (an MCP server process) for the contention
 // harness (plan v2.6, item 0.5). Usage:
 //   node contention-worker.mjs <dbPath> <durationMs> <workerIndex>
-// Searches with trackRead (the read path that also writes: logOp + markRead)
+// Searches with trackRead (the read path that also writes: buffered logOp + read marks)
 // and adds an entry every 25 iterations, then prints ONE JSON line with its
 // counters on stdout and exits 0. Any thrown error exits 1.
-// `busyThrown` only sees errors that reach the caller: logOp/markRead swallow
+// `busyThrown` only sees errors that reach the caller: the buffered flushes swallow
 // theirs, so `busyErrors` (from the instrumentation) is the real busy count.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createDbClient, instrumentDatabase, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
@@ -60,8 +60,9 @@ while (Date.now() < end) {
   await sleep(5);
 }
 
-// markRead runs on setImmediate; let it flush before the handle closes.
-await sleep(50);
+// Read marks and operation counters are buffered (plan v2.6, 1A.2/1A.3):
+// write them before the handle closes, as the MCP server's exit handler does.
+service.flushPendingWrites();
 sqlite.close();
 searchMs.sort((a, b) => a - b);
 const pct = (p) => (searchMs.length ? searchMs[Math.min(searchMs.length - 1, Math.floor(p * searchMs.length))] : 0);
