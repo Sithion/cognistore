@@ -239,6 +239,9 @@ CREATE INDEX IF NOT EXISTS idx_plans_root_plan_id ON plans(root_plan_id);
  * Versioned migration runner for SQLite.
  * Uses .sql files from disk when available, falls back to embedded SQL.
  */
+/** The base schema; re-run on every open (see the bootstrap note in runMigrations). */
+const BASE_VERSION = '0.8.0';
+
 export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: string): void {
   // 1. Ensure schema_version table exists
   sqlite.exec(`
@@ -254,19 +257,17 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
       .map((r) => r.version)
   );
 
-  // 3. Bootstrap: detect existing DB from pre-migration era
+  // 3. Bootstrap: detect existing DB from pre-migration era. Until 2.6 the
+  // runner only STAMPED 0.8.0 here, without running it, but real v0.8.0
+  // installs have no operations_log, which 2.3.2 reads. So the loop below runs
+  // the 0.8.0 base schema on every open, stamped or not: it is all IF NOT
+  // EXISTS, which takes no write lock once the objects exist.
   if (applied.size === 0) {
     const tableExists = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_entries'")
       .get();
 
-    if (tableExists) {
-      sqlite
-        .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
-        .run('0.8.0', new Date().toISOString());
-      applied.add('0.8.0');
-      console.error('Migration: bootstrapped existing DB as v0.8.0');
-    }
+    if (tableExists) console.error('Migration: bootstrapping existing pre-migration DB from v0.8.0');
   }
 
   // 4. Build migration list — from disk files or embedded
@@ -292,7 +293,7 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
 
   // 5. Apply pending migrations
   for (const { version, sql } of migrations) {
-    if (applied.has(version)) continue;
+    if (applied.has(version) && version !== BASE_VERSION) continue;
 
     const cleanedSql = sql
       .split('\n')
@@ -313,6 +314,7 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
       }
     }
 
+    if (applied.has(version)) continue; // base schema re-checked, already recorded
     sqlite
       .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
       .run(version, new Date().toISOString());
