@@ -10,7 +10,7 @@ You verify that a change to the CogniStore monorepo respects its non-negotiable 
 
 1. **Schema / migrations**
    - Schema change ⇒ new `packages/core/src/db/migrations/<semver>.sql` AND identical statements in `EMBEDDED_MIGRATIONS` (`packages/core/src/db/migrate.ts`).
-   - SQL file obeys the parser contract: no `;` inside comments/strings, no trailing comment on a statement line.
+   - Runner contract: whole comment lines are stripped and SQL is split on `;`, except a migration whose first non-blank line is `-- cognistore:atomic-script`, which runs whole in one exec; each pending migration runs in its own immediate transaction with a version recheck and `INSERT OR IGNORE` into `schema_version`.
    - Additive and backward compatible (old MCP server builds from npm share the DB): defaults on new NOT NULL columns, no drop/rename of columns old code reads.
    - `documentation/database.md` updated.
 2. **PATCH-NOTES.md** has an entry for this change.

@@ -30,8 +30,16 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
   mkdirSync(dirname(resolvedPath), { recursive: true });
 
   const sqlite = new BetterSqlite3(resolvedPath);
-  sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('busy_timeout = 5000');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      sqlite.pragma('journal_mode = WAL');
+      break;
+    } catch (error: any) {
+      if (error?.code !== 'SQLITE_BUSY' || attempt >= 49) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
   sqlite.pragma('foreign_keys = ON');
   // Per-connection tuning (plan v2.6, 1A.1). NORMAL is durable with WAL: a
   // power cut can lose the last commits, never corrupt the file. The sidecar

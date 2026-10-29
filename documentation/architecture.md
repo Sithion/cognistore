@@ -348,8 +348,12 @@ skips the migration it actually needed. Consequences to respect when adding a mi
 
 - Add the `.sql` file **and** the embedded string, with identical statements (comments may differ).
   `packages/tests/src/e2e/migration-parity.test.ts` locks the two together.
-- The runner strips only whole comment lines and then splits on `;`. A semicolon inside a trailing
-  comment or a string literal cuts a statement in half and aborts DB open for *both* processes.
+- Each migration runs in an immediate transaction, including its version record.
+  The runner rechecks the version after acquiring the write lock.
+- Scripts beginning with `-- cognistore:atomic-script` execute whole after removal of whole
+  comment lines; trigger bodies and string literals are not split on semicolons.
+  Historical unmarked scripts retain semicolon splitting and duplicate-column/already-exists
+  tolerance. Do not put semicolons inside their trailing comments or string literals.
 - `EMBEDDED_MIGRATIONS` is re-exported from `@cognistore/core` solely so that parity test can see it.
   It is internal: `@cognistore/core` is a private workspace package with a single barrel export, so
   there is no published contract here — but nothing outside the test should consume it.

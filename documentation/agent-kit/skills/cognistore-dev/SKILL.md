@@ -44,7 +44,7 @@ Build before running tests after touching `packages/*` — the test package cons
 ## Hard invariants (a PR that breaks one is wrong)
 
 1. **Migrations**: new file `packages/core/src/db/migrations/<next-semver>.sql` AND identical statements in `EMBEDDED_MIGRATIONS[<ver>]` in `migrate.ts`.
-   - Parser contract: the runner drops whole `--` comment lines, then splits on `;`. Never put `;` inside a comment or string literal; never put a trailing comment on a statement line.
+   - Parser contract: the runner strips whole comment lines and splits on `;`, except a migration whose first non-blank line is `-- cognistore:atomic-script`, which runs whole in one exec; each pending migration runs in its own immediate transaction with a version recheck and `INSERT OR IGNORE` into `schema_version`.
    - Migration versions are independent of the app version; use the next unused semver.
    - Migrations must be **additive and backward compatible**: old MCP server builds (from npm) open the same DB. New columns need defaults; never rename/drop a column an old build reads.
 2. **PATCH-NOTES.md** updated for every change (grouped by version, features/fixes/improvements).
@@ -76,8 +76,8 @@ Build before running tests after touching `packages/*` — the test package cons
 
 ## Before you say "done"
 
-- [ ] `pnpm build && pnpm test` (or the relevant filtered suites) pass — once Phase T lands, `pnpm verify`
-- [ ] No new `knip` findings (unused files/exports/deps)
+- [ ] `pnpm verify` passes (Biome lint, type-check, build, unit, scripts, integration, knip — what CI's build-and-test runs)
+- [ ] No new `knip` findings (unused files/exports/deps); a real entry knip cannot see goes in `knip.json`, not an `export` kept alive
 - [ ] Migration parity test passes if schema changed
 - [ ] PATCH-NOTES.md updated
 - [ ] Docs in `documentation/` updated if behaviour/schema/API changed (`database.md`, `api-reference.md`, `mcp-server.md`, `architecture.md`)
