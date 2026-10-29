@@ -11,7 +11,8 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       // Schema DDL and the barrel files hold no logic of their own.
-      exclude: ['src/**/index.ts', 'src/db/migrations/**', 'src/db/seeds/**'],
+      // Worker entries are covered by the integration layer.
+      exclude: ['src/**/index.ts', 'src/db/migrations/**', 'src/db/seeds/**', 'src/jobs/*-worker.ts'],
       reporter: ['text-summary', 'json-summary', 'lcov'],
       reportsDirectory: 'coverage',
     },

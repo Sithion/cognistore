@@ -5,6 +5,7 @@
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
 ### Improvements
+- **Optional incremental vacuum upgrade.** Explicit opt-in enables incremental vacuum outside the sidecar event loop, including after an earlier skip; already-incremental databases are left untouched and lock/disk-space issues are reported as warnings.
 - **Permanent daily token totals.** Insert-maintained daily counters preserve lexical dates and distinct NULL/empty projects.
 - **Bounded raw token history.** Configurable 90-day retention yields between 5000-row batches; a durable whole-UTC-day cutoff prevents replay from inflating permanent totals.
 - **Indexed knowledge update times.** Migration 2.4.3 adds the updated_at maintenance index.

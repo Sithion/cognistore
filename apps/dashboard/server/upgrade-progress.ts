@@ -29,7 +29,8 @@ export type DeployStepName =
   | 'mcp-shadow-check'
   | 'skills'
   | 'hooks'
-  | 'version';
+  | 'version'
+  | 'incremental-vacuum';
 
 export type DeployStepStatus = 'success' | 'error' | 'skipped' | 'warning';
 
@@ -74,7 +75,7 @@ export type CompletedRun = {
  * the upgrade screen's Retry button permanently dead.
  */
 export function deployWentWell(steps: DeployStep[]): boolean {
-  return steps.every((s) => s.status === 'success' || s.status === 'warning');
+  return steps.every((s) => s.status === 'success' || s.status === 'warning' || (s.step === 'incremental-vacuum' && s.status === 'skipped'));
 }
 
 /**
@@ -112,6 +113,10 @@ export type UpgradeProgressStore = {
   /** End the run. The steps deliberately survive so a client that connects late
    *  can still render what happened; `running` is what says it is over. */
   finish(): void;
+  /** Publish a short opt-in operation without replacing the deploy replay record. */
+  beginTransient(fromVersion: string | null): void;
+  recordTransient(step: DeployStep): void;
+  finishTransient(): void;
 };
 
 export function createUpgradeProgress(toVersion: string): UpgradeProgressStore {
@@ -150,6 +155,15 @@ export function createUpgradeProgress(toVersion: string): UpgradeProgressStore {
       running = false;
       currentStep = null;
       last = { fromVersion, steps: [...steps] };
+    },
+    beginTransient(from) {
+      running = true; startedAt = new Date().toISOString(); fromVersion = from;
+      currentStep = null; steps = [];
+    },
+    recordTransient(step) { steps = [...steps, step]; },
+    finishTransient() {
+      running = false; currentStep = null;
+      // Keep the live snapshot visible, but do not mutate `last` used by replay.
     },
   };
 }

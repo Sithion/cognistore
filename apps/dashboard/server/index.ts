@@ -49,6 +49,7 @@ import {
   type CreatedConfigFile,
 } from './settings.js';
 import { registerCleanupRoutes, maybeGenerateReport } from './cleanup-routes.js';
+import { resolveWorkerUrl } from './worker-path.js';
 import {
   createUpgradeProgress,
   deployWentWell,
@@ -236,6 +237,13 @@ async function start() {
   let tokenRetentionDays = readSettings().tokenUsageRetentionDays;
   let pruneRunning = false;
   let pruneController: AbortController | null = null;
+  let prunePromise: Promise<void> | null = null;
+
+  const stopPruneBeforeVacuum = async () => {
+    if (!pruneRunning) return;
+    pruneController?.abort();
+    await prunePromise?.catch(() => {});
+  };
 
   // Event-loop lag + slow DB op / SQLITE_BUSY monitoring (plan v2.6, 0.2).
   // Re-attached on every (re)init because upgrade paths close and reopen the DB.
@@ -348,17 +356,31 @@ Pass an array to addKnowledge to create multiple entries at once.
   // from the still-retained raw window (MAX-merge, catches any stale/other-process
   // writer) BEFORE pruning the raw log, then cleanup + WAL checkpoint.
   setInterval(() => {
-    if (!sdkReady) return;
+    if (!sdkReady || upgradeRunning || pruneRunning) return;
     try { sdk.reconcileOperationsDaily(); sdk.cleanupOldOperations(); sdk.cleanupCompletedPlanEmbeddings(730); sdk.walCheckpoint(); sdk.optimize(); } catch { /* silent */ }
     void (async () => {
-      if (tokenRetentionDays <= 0 || pruneRunning) return;
+      if (upgradeRunning) return;
+      if (tokenRetentionDays > 0 && !pruneRunning) {
       pruneRunning = true;
       pruneController = new AbortController();
-      try {
+      prunePromise = (async () => { try {
         const cutoffDay = new Date(Date.now() - tokenRetentionDays * 86400000).toISOString().slice(0, 10);
         await sdk.pruneTokenUsageBefore(`${cutoffDay}T00:00:00.000Z`, { signal: pruneController.signal });
       } catch (e: any) { log('warn', `Token usage retention failed: ${e?.message ?? e}`); }
-      finally { pruneRunning = false; pruneController = null; }
+      finally { pruneRunning = false; pruneController = null; prunePromise = null; } })();
+      await prunePromise;
+      }
+      const raw = getRawSqlite();
+      try {
+        const mode = raw?.prepare('PRAGMA auto_vacuum').get() as { auto_vacuum?: number } | undefined;
+        const free = raw?.prepare('PRAGMA freelist_count').get() as { freelist_count?: number } | undefined;
+        const pages = raw?.prepare('PRAGMA page_count').get() as { page_count?: number } | undefined;
+        if (mode?.auto_vacuum === 2 && Number(free?.freelist_count) > Math.max(1000, Number(pages?.page_count) * 0.05)) {
+          await sdk.incrementalVacuum(resolveWorkerUrl('vacuum-worker')).catch((e: any) => {
+            log('warn', `Incremental vacuum failed: ${e?.message ?? e}`);
+          });
+        }
+      } catch (e: any) { log('warn', `Incremental vacuum check failed: ${e?.message ?? e}`); }
     })();
     // Cleanup report. Awaited inside its own async IIFE with a catch: an
     // unhandled rejection escaping a setInterval callback would crash the
@@ -374,7 +396,7 @@ Pass an array to addKnowledge to create multiple entries at once.
   const scheduleTokenScan = (delayMs: number) => {
     setTimeout(async () => {
       let next = TOKEN_SCAN_ACTIVE_MS;
-      if (sdkReady) {
+      if (sdkReady && !upgradeRunning) {
         try {
           const result = await sdk.scanTokenUsage();
           next = result.inserted > 0 ? TOKEN_SCAN_ACTIVE_MS : TOKEN_SCAN_IDLE_MS;
@@ -1271,6 +1293,13 @@ Pass an array to addKnowledge to create multiple entries at once.
   app.get('/api/upgrade/progress', async () => upgradeProgress.snapshot());
 
   app.post('/api/upgrade/run', async (request, reply) => {
+    const upgradeBody = request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+      ? request.body as Record<string, unknown> : {};
+    const hasVacuumRequest = Object.prototype.hasOwnProperty.call(upgradeBody, 'skipIncrementalVacuum');
+    if (hasVacuumRequest && typeof upgradeBody.skipIncrementalVacuum !== 'boolean') {
+      return sendError(reply, 400, 'skipIncrementalVacuum must be a boolean');
+    }
+    const skipIncrementalVacuum = !hasVacuumRequest || upgradeBody.skipIncrementalVacuum === true;
     // The UI auto-POSTs this on window load, which can land while the startup
     // self-heal is still running. Wait it out rather than 409-ing, which the
     // client would surface as a failed upgrade.
@@ -1282,10 +1311,40 @@ Pass an array to addKnowledge to create multiple entries at once.
     // thing again — re-embed probe, npx cache wipe and all.
     if (VERSION_RESOLVED && getDeployedVersion() === APP_VERSION) {
       const last = upgradeProgress.lastRun();
-      if (last === null) {
-        // Nothing ran this boot: already current. Say so explicitly rather than
-        // returning an empty list, which reads as a completed upgrade with no steps.
-        return { success: true, noop: true, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results: [] as DeployStep[] };
+      if (!skipIncrementalVacuum) {
+        upgradeRunning = true;
+        await stopPruneBeforeVacuum();
+        const ownsPruneFlag = !pruneRunning;
+        if (ownsPruneFlag) pruneRunning = true;
+        upgradeProgress.beginTransient(getDeployedVersion());
+        upgradeProgress.setStep('incremental-vacuum');
+        const from = getDeployedVersion();
+        let results: DeployStep[];
+        try {
+          const outcome = await sdk.enableIncrementalVacuum(resolveWorkerUrl('vacuum-worker'));
+          const message = outcome.alreadyIncremental ? 'Incremental vacuum already enabled' : outcome.checkpointBusy
+            ? 'Enabled incremental vacuum; the WAL will be truncated at the next checkpoint'
+            : 'Enabled incremental vacuum';
+          results = [{ step: 'incremental-vacuum', status: 'success', message }];
+        } catch (e: any) {
+          // Optional step: any failure is a warning, never a failed upgrade.
+          log('warn', `Optional incremental vacuum failed: ${e?.message ?? e}`);
+          results = [{ step: 'incremental-vacuum', status: 'warning', message: e?.message ?? String(e) }];
+        } finally {
+          upgradeProgress.recordTransient(results![0]);
+          upgradeProgress.finishTransient();
+          if (ownsPruneFlag) pruneRunning = false;
+          upgradeRunning = false;
+        }
+        return { success: deployWentWell(results), noop: false, fromVersion: from, toVersion: APP_VERSION, results };
+      }
+      // An explicit default-skip request is still a normal replay. If an
+      // earlier run (including startup self-heal) recorded its own state,
+      // preserve that response. The opt-in branch above intentionally precedes
+      // this in-memory replay guard.
+      if (last === null || (last.steps.length === 1 && last.steps[0].step === 'incremental-vacuum')) {
+        // Nothing ran this boot: already current. Report the default opt-out.
+        return { success: true, noop: true, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results: [{ step: 'incremental-vacuum', status: 'skipped', message: 'Skipped by default' }] as DeployStep[] };
       }
       if (deployWentWell(last.steps)) {
         // `last.fromVersion` is the version that run started from — re-reading
@@ -1298,6 +1357,7 @@ Pass an array to addKnowledge to create multiple entries at once.
       // boot. Fall through and genuinely run it again, which is what Retry means.
     }
     upgradeRunning = true;
+    let ownsPruneFlag = false;
     // Captured before Step 5 overwrites the marker.
     const fromVersion = getDeployedVersion();
     // Only now that this request owns the upgrade: a reset before the guard
@@ -1509,12 +1569,32 @@ Pass an array to addKnowledge to create multiple entries at once.
       } catch (e: any) {
         record({ step: 'version', status: 'error', message: e.message });
       }
+      if (skipIncrementalVacuum) {
+        record({ step: 'incremental-vacuum', status: 'skipped', message: 'Skipped by default' });
+      } else {
+        await stopPruneBeforeVacuum();
+        ownsPruneFlag = !pruneRunning;
+        if (ownsPruneFlag) pruneRunning = true;
+        upgradeProgress.setStep('incremental-vacuum');
+        try {
+          const outcome = await sdk.enableIncrementalVacuum(resolveWorkerUrl('vacuum-worker'));
+          const message = outcome.alreadyIncremental ? 'Incremental vacuum already enabled' : outcome.checkpointBusy
+            ? 'Enabled incremental vacuum; the WAL will be truncated at the next checkpoint'
+            : 'Enabled incremental vacuum';
+          record({ step: 'incremental-vacuum', status: 'success', message });
+        } catch (e: any) {
+          record({ step: 'incremental-vacuum', status: 'warning', message: e?.message ?? 'Vacuum failed' });
+        } finally {
+          if (ownsPruneFlag) { pruneRunning = false; ownsPruneFlag = false; }
+        }
+      }
     })();
 
     inFlightDeploy = run;
     try {
       await run;
     } finally {
+      if (ownsPruneFlag) pruneRunning = false;
       upgradeRunning = false;
       inFlightDeploy = null;
       upgradeProgress.finish();
@@ -2731,10 +2811,14 @@ Pass an array to addKnowledge to create multiple entries at once.
    * ~/.cognistore/settings.json on every test run.
    */
   if (process.env.COGNISTORE_MANAGED === '1') {
-    setTimeout(() => {
-      if (!sdkReady) return;
+    const scheduleStartupReport = () => setTimeout(() => {
+      if (!sdkReady || upgradeRunning || KnowledgeSDK.maintenanceRunning) {
+        scheduleStartupReport();
+        return;
+      }
       void (async () => { await maybeGenerateReport({ sdk, log }); })().catch(() => { /* logged inside */ });
     }, 60_000).unref();
+    scheduleStartupReport();
   }
 
   /**

@@ -39,7 +39,7 @@ if (Number(process.versions.node.split('.')[0]) !== REQUIRED_NODE_MAJOR) {
   process.exit(1);
 }
 
-for (const part of ['dist', 'dist-server/index.js', 'node_modules/better-sqlite3', 'node_modules/sqlite-vec', 'templates']) {
+for (const part of ['dist', 'dist-server/index.js', 'dist-server/jobs/vacuum-worker.js', 'node_modules/better-sqlite3', 'node_modules/sqlite-vec', 'templates']) {
   if (!existsSync(join(bundleDir, part))) {
     console.error(`bundle incomplete: ${join(bundleDir, part)} is missing — run scripts/bundle-sidecar.mjs first`);
     process.exit(1);
