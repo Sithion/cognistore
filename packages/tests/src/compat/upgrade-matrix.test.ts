@@ -115,6 +115,7 @@ for (const id of Object.keys(manifest)) {
       });
       await sdk.initialize();
       try {
+        await sdk.waitForFtsRepair();
         const hits = await sdk.getKnowledge('quote the term or use the vector path');
         const gotcha = (entriesBefore as { id: string; content: string }[]).find((e) => e.content.includes('c++'))!;
         expect(hits.map((h) => h.entry.id)).toContain(gotcha.id);
@@ -143,8 +144,8 @@ for (const id of Object.keys(manifest)) {
         expect(after.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_knowledge_content_hash'").get()).toBeTruthy();
         expect(after.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='knowledge_content_hash_invalidate'").get()).toBeTruthy();
         expect(after.prepare('SELECT count(*) AS c FROM knowledge_entries WHERE content_hash IS NOT NULL').get()).toEqual({ c: 0 });
-        const nonSystem = (after.prepare("SELECT count(*) AS c FROM knowledge_entries WHERE type != 'system'").get() as { c: number }).c;
-        expect(count(after, 'knowledge_fts')).toBe(nonSystem);
+        const missing = (after.prepare("SELECT count(*) AS n FROM knowledge_entries WHERE type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)").get() as { n: number }).n;
+        expect(missing).toBe(0);
         // A content word: 0.8.0 had no title column and silently dropped titles.
         expect((after.prepare("SELECT count(*) AS c FROM knowledge_fts WHERE knowledge_fts MATCH 'vector'").get() as { c: number }).c).toBe(1);
 

@@ -53,6 +53,14 @@ The index is nonunique and candidates are content-checked. An import matching a
 system entry is stored as a `pattern` entry, since imports cannot create system
 knowledge.
 
+## FTS repair coverage
+
+After SDK initialization, a background worker checks non-system knowledge IDs in
+bounded rowid pages using a list-subquery membership check. Row count alone, or a
+nonempty index, cannot establish completeness. Cancellation retains committed
+batches; a later run repairs remaining IDs. System entries stay out of the FTS
+index and remain excluded from user search and exports.
+
 ## Schema
 
 ### knowledge_entries (relational table)

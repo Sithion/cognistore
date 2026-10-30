@@ -9,6 +9,7 @@
 - **MCP `addPlanRelation` no longer crashes the server.** A missing `await` let a foreign-key rejection (unknown plan id) escape the handler and terminate the MCP process; it now returns a tool error.
 
 ### Improvements
+- **Keyword-index repair moves off startup.** Startup no longer rebuilds or scans the keyword index on the main thread; missing keyword-index rows are repaired in the background worker.
 - **Large exports moved to a worker.** Bounded snapshot serialization streams the existing chunked JSON download (without `Content-Length`), removes its temporary file and directory on completion or cancellation, and sweeps stale export directories at sidecar startup.
 - **Indexed worker import.** Imports use resumable content-hash repair and a final locked dedup check that includes intervening older-writer changes.
 - **Embedding maintenance moved to a worker.** Bounded repairs preserve progress, failures, cancellation, and protection against concurrent edits.

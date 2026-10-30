@@ -51,6 +51,13 @@ export async function dispatchJobWithConnection<K extends JobKind>(kind: K, payl
     await checkpoint?.({ phase: 'hashBackfill', done: result.changes, total: result.changes });
     return result as JobResults[K];
   }
+  if (kind === 'ftsBackfill') {
+    if (!service) throw new Error('Knowledge service unavailable');
+    const result = await service.ftsBackfill({ signal, checkpoint: async (done, total) => {
+      await checkpoint?.({ phase: 'ftsBackfill', done, total });
+    } });
+    return result as JobResults[K];
+  }
   if (kind === 'importKnowledge') {
     if (!service) throw new Error('Knowledge service unavailable');
     const entries = (payload as JobPayloads['importKnowledge']).entries;

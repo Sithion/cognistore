@@ -90,9 +90,6 @@ describe('KnowledgeService additional coverage', () => {
     expect(await resumable.embedMissing()).toEqual({ embedded: 1, failed: 1, remaining: 1, cancelled: false });
     expect(await resumable.embedMissing()).toEqual({ embedded: 0, failed: 1, remaining: 1, cancelled: false });
     expect(warn).toHaveBeenCalled();
-    ctx.sqlite.prepare("DELETE FROM knowledge_fts").run();
-    expect(ctx.service.backfillFtsIfNeeded()).toBeGreaterThanOrEqual(2);
-    expect(ctx.service.backfillFtsIfNeeded()).toBe(0);
     expect(ctx.sqlite.prepare('SELECT COUNT(*) AS n FROM plans_embeddings WHERE id = ?').get(plan.id)).toEqual({ n: 1 });
   });
 
