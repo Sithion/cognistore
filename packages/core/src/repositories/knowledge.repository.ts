@@ -625,31 +625,29 @@ export class KnowledgeRepository {
     this.sqlite.transaction(() => invalidateDuplicateScan(this.sqlite)).immediate();
   }
 
-  /**
-   * (Re)populate the FTS5 index from knowledge_entries. Used at startup when the
-   * index is empty but entries exist (e.g. after the FTS migration on an existing
-   * DB). Best-effort and idempotent (clears then re-inserts).
-   */
-  backfillFts(): number {
-    const rows = this.sqlite.prepare(
-      `SELECT id, title, content, tags FROM knowledge_entries WHERE type != 'system'`
-    ).all() as { id: string; title: string; content: string; tags: string }[];
-    let count = 0;
-    for (const r of rows) {
-      try {
-        insertFts(this.sqlite, { id: r.id, title: r.title ?? '', content: r.content ?? '', tags: ftsTags(r.tags) });
-        count++;
-      } catch { /* best-effort */ }
-    }
-    return count;
+  countMissingFts(): number {
+    return (this.sqlite.prepare(`SELECT count(*) AS n FROM knowledge_entries
+      WHERE type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)`).get() as { n: number }).n;
   }
 
-  /** Backfill the FTS index only when it's empty but entries exist (startup path). */
-  backfillFtsIfNeeded(): number {
-    try {
-      if (ftsCount(this.sqlite) > 0) return 0;
-      return this.backfillFts();
-    } catch { return 0; }
+  listFtsCoveragePage(afterRowid: number, limit = 250): { rowid: number; id: string }[] {
+    return this.sqlite.prepare(`SELECT rowid, id FROM knowledge_entries
+      WHERE rowid > ? AND type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)
+      ORDER BY rowid LIMIT ?`).all(afterRowid, limit) as { rowid: number; id: string }[];
+  }
+
+  repairFtsIds(ids: string[]): number {
+    if (!ids.length) return 0;
+    const marks = ids.map(() => '?').join(',');
+    const tx = this.sqlite.transaction(() => {
+      const current = this.sqlite.prepare(`SELECT id,title,content,tags FROM knowledge_entries
+        WHERE id IN (${marks}) AND type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)`).all(...ids) as { id: string; title: string; content: string; tags: string }[];
+      for (const row of current) {
+        insertFts(this.sqlite, { id: row.id, title: row.title ?? '', content: row.content ?? '', tags: ftsTags(row.tags) });
+      }
+      return current.length;
+    });
+    return tx.immediate();
   }
 
   async count() {

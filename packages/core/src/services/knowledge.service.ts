@@ -1272,9 +1272,39 @@ export class KnowledgeService {
     }
   }
 
-  /** (Re)populate the FTS5 index if it's empty but entries exist. Returns rows indexed. */
-  backfillFtsIfNeeded(): number {
-    return this.repository.backfillFtsIfNeeded();
+  async ftsBackfill(options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ changes: number }> {
+    const total = this.repository.countMissingFts();
+    let done = 0;
+    let changes = 0;
+    let lastCheckpoint = Date.now();
+    const checkpoint = async (force = false) => {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      if (force || Date.now() - lastCheckpoint >= 50) {
+        lastCheckpoint = Date.now();
+        await options.checkpoint?.(done, total);
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      }
+    };
+    await checkpoint(true);
+    for (let pass = 0; pass < 3; pass++) {
+      let afterRowid = 0;
+      for (;;) {
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+        const page = this.repository.listFtsCoveragePage(afterRowid, 250);
+        if (!page.length) break;
+        afterRowid = page[page.length - 1].rowid;
+        const repaired = await retryEmbeddingWrite(() => this.repository.repairFtsIds(page.map((row) => row.id)));
+        changes += repaired;
+        done += repaired;
+        await options.checkpoint?.(done, total);
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+        if (Date.now() - lastCheckpoint >= 50) await checkpoint();
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      }
+      if (this.repository.countMissingFts() === 0) break;
+    }
+    await checkpoint(true);
+    return { changes };
   }
 
   async getStats() {

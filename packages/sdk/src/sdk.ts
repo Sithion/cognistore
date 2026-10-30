@@ -63,6 +63,7 @@ export class KnowledgeSDK {
   private providerManager: ProviderManager | null = null;
   private alwaysExternal = false;
   private initialized = false;
+  private ftsRepair: Promise<void> = Promise.resolve();
   private jobs?: JobRunner;
   private duplicateCache = new Map<string, { fingerprint: string; result: unknown[] }>();
   private duplicateInFlight = new Map<string, Promise<any[]>>();
@@ -172,6 +173,13 @@ export class KnowledgeSDK {
       this.reloadProviders();
 
       this.initialized = true;
+      if (repository.countMissingFts() > 0) {
+        this.ftsRepair = this.run('ftsBackfill', {}).then(() => undefined, (error) => {
+          if (error?.code !== 'ABORT_ERR' && error?.name !== 'AbortError') {
+            console.warn('FTS background repair failed:', error);
+          }
+        });
+      }
     } catch (error) {
       await this.cleanup();
       throw error;
@@ -187,6 +195,9 @@ export class KnowledgeSDK {
     await this.cleanup();
     this.initialized = false;
   }
+
+  /** Resolves when the keyword-index repair started by initialize() has finished (or immediately if none ran). Never rejects. */
+  async waitForFtsRepair(): Promise<void> { await this.ftsRepair; }
 
   async exportToFile(options: { include: string[]; version: string; exportedAt?: string; signal?: AbortSignal }): Promise<{ path: string; bytes: number }> {
     this.ensureInitialized();
@@ -948,6 +959,9 @@ export class KnowledgeSDK {
   }
 
   private async cleanup(): Promise<void> {
+    const jobs = this.jobs;
+    this.jobs = undefined;
+    await jobs?.close();
     if (this.sqlite) {
       this.flushPendingWrites();
       this.service?.stopPendingWriteTimers();

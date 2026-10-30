@@ -57,16 +57,12 @@ describe('KnowledgeRepository', () => {
       expect(fts.map(x => x.entry.id)).toContain(local.id);
     });
 
-    it('maintains FTS index on create/update/delete and backfills an empty index idempotently', async () => {
+    it('maintains FTS index on create/update/delete', async () => {
       ctx = makeDb();
       const e = await add('Findable', { tags: ['searchtag'] });
-      expect(ctx.repository.backfillFtsIfNeeded()).toBe(0);
       expect(ctx.repository.getKnowledgeEntryRaw(e.id)?.title).toBe('Findable');
       await ctx.repository.update(e.id, { title: 'Renamed', tags: ['newtag'] });
       expect((await ctx.repository.searchBySimilarity(stubEmbedding('none'), { threshold: 1, queryText: 'Renamed' })).map(x => x.entry.id)).toContain(e.id);
-      ctx.sqlite.prepare('DELETE FROM knowledge_fts').run();
-      expect(ctx.repository.backfillFtsIfNeeded()).toBe(1);
-      expect(ctx.repository.backfillFtsIfNeeded()).toBe(0);
     });
   });
 

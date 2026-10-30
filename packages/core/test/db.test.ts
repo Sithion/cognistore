@@ -65,12 +65,12 @@ describe('database client and FTS', () => {
     c.sqlite.close(); dbs.pop(); c=createDbClient(path); dbs.push(c.sqlite);
     expect((c.sqlite.prepare('SELECT count(*) c FROM schema_version').get() as {c:number}).c).toBe(before);
   });
-  it('backfills non-system rows into empty FTS and excludes system entries', () => {
+  it('creates the FTS table without populating it when opening a database', () => {
     const ctx=makeDb(); cleanups.push(ctx.cleanup); const {sqlite}=ctx;
     sqlite.prepare("INSERT INTO knowledge_entries (id,title,content,tags,type,scope,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run('a','Findable title','blue comet','["sky"]','fact','global','test','2025','2025');
     sqlite.prepare("INSERT INTO knowledge_entries (id,title,content,tags,type,scope,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run('s','Hidden title','blue comet','[]','system','global','test','2025','2025');
-    // Fresh empty FTS is populated by the client on open; this DB's index is explicitly exercised through public helpers.
     createKnowledgeFtsTable(sqlite); insertFts(sqlite,{id:'a',title:'Findable title',content:'blue comet',tags:'sky'});
+    expect(ftsCount(sqlite)).toBe(1);
     expect(searchFts(sqlite,'comet',10).map(x=>x.id)).toEqual(['a']);
   });
   it('supports safe FTS updates, deletes, empty queries and quoted tokens', () => {

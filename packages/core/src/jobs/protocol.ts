@@ -1,4 +1,4 @@
-export type JobKind = 'health' | 'duplicates.pairs' | 'duplicates.groups' | 'reembedAll' | 'embedMissing' | 'hashBackfill' | 'importKnowledge' | 'importPlans' | 'exportToFile';
+export type JobKind = 'health' | 'duplicates.pairs' | 'duplicates.groups' | 'reembedAll' | 'embedMissing' | 'hashBackfill' | 'ftsBackfill' | 'importKnowledge' | 'importPlans' | 'exportToFile';
 export type DuplicateJobOptions = { threshold?: number; limit?: number };
 export type JobPayloads = {
   health: Record<string, unknown>;
@@ -7,6 +7,7 @@ export type JobPayloads = {
   reembedAll: Record<string, never>;
   embedMissing: Record<string, never>;
   hashBackfill: Record<string, never>;
+  ftsBackfill: Record<string, never>;
   importKnowledge: { entries: any[] };
   importPlans: { plans: any[] };
   exportToFile: { include: string[]; version: string; exportedAt?: string };
@@ -18,6 +19,7 @@ export type JobResults = {
   reembedAll: number;
   embedMissing: { embedded: number; failed: number; remaining: number; cancelled: boolean };
   hashBackfill: { changes: number };
+  ftsBackfill: { changes: number };
   importKnowledge: { imported: number; skipped: number; errors: string[] };
   importPlans: { imported: number; skipped: number; errors: string[] };
   exportToFile: { path: string; bytes: number };
@@ -29,6 +31,7 @@ export type JobProgress = {
   reembedAll: { phase: 'knowledge' | 'plans'; done: number; total: number };
   embedMissing: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number };
   hashBackfill: { phase: 'hashBackfill'; done: number; total: number };
+  ftsBackfill: { phase: 'ftsBackfill'; done: number; total: number };
   importKnowledge: { phase: 'importKnowledge'; done: number; total: number };
   importPlans: { phase: 'importPlans'; done: number; total: number };
   exportToFile: { phase: 'exportToFile'; done: number; total: number };
