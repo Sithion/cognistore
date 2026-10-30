@@ -1,6 +1,7 @@
 export { createDbClient, type Database, type SQLiteDatabase } from './db/index.js';
 export { JobRunner, type JobRunnerConfig } from './jobs/runner.js';
 export { dispatchJobWithConnection } from './jobs/dispatch.js';
+export { sweepStaleExports } from './jobs/export-files.js';
 export type { JobKind, JobPayloads, JobResults, JobProgress, DuplicateJobOptions, ParentMessage, WorkerMessage } from './jobs/protocol.js';
 export { runMigrations, EMBEDDED_MIGRATIONS } from './db/index.js';
 export { knowledgeEntries, knowledgeTypeEnum } from './db/index.js';

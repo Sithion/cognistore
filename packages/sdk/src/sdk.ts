@@ -44,6 +44,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { homedir } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { resolveConfig } from './config.js';
 import { ConnectionError, EmbeddingError, ValidationError } from './errors.js';
 
@@ -65,6 +66,7 @@ export class KnowledgeSDK {
   private jobs?: JobRunner;
   private duplicateCache = new Map<string, { fingerprint: string; result: unknown[] }>();
   private duplicateInFlight = new Map<string, Promise<any[]>>();
+  private ownedExports = new Set<string>();
 
   private getJobRunner(): JobRunner {
     if (this.jobs) return this.jobs;
@@ -180,8 +182,26 @@ export class KnowledgeSDK {
     const jobs = this.jobs;
     this.jobs = undefined;
     await jobs?.close();
+    await Promise.all([...this.ownedExports].map((path) => this.releaseExport(path).catch(() => {})));
+    this.ownedExports.clear();
     await this.cleanup();
     this.initialized = false;
+  }
+
+  async exportToFile(options: { include: string[]; version: string; exportedAt?: string; signal?: AbortSignal }): Promise<{ path: string; bytes: number }> {
+    this.ensureInitialized();
+    const { signal, ...payload } = options;
+    const result = await this.run('exportToFile', payload, { signal });
+    this.ownedExports.add(result.path);
+    return result;
+  }
+
+  async releaseExport(path: string): Promise<void> {
+    if (!this.ownedExports.has(path)) return;
+    this.ownedExports.delete(path);
+    await rm(path, { force: true });
+    // The job-created parent directory is private to this export as well.
+    await rm(dirname(path), { recursive: true, force: true });
   }
 
   async addKnowledge(input: CreateKnowledgeInput): Promise<KnowledgeEntry> {
