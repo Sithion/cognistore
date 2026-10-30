@@ -168,4 +168,23 @@ describe('embedding job dispatch', () => {
     expect(await dispatchJobWithConnection('duplicates.groups', {}, ctx.sqlite)).toEqual({ result: [], fingerprint: expect.any(String) });
     await expect(dispatchJobWithConnection('unknown' as any, {}, ctx.sqlite)).rejects.toThrow('Unknown job kind');
   });
+
+  it('dispatches hash backfill and knowledge/plans imports with progress checkpoints', async () => {
+    ctx = makeDb();
+    const progress: any[] = [];
+    const checkpoint = async (value: any) => { progress.push(value); };
+    const entry = { title: 'Import dispatch', content: 'body', tags: [], type: 'pattern', scope: 'global', source: 'test' };
+    expect(await dispatchJobWithConnection('importKnowledge', { entries: [entry] }, ctx.sqlite, checkpoint, ctx.service)).toMatchObject({ imported: 1, skipped: 0 });
+    expect(await dispatchJobWithConnection('importPlans', { plans: [] }, ctx.sqlite, checkpoint, ctx.service)).toMatchObject({ imported: 0, skipped: 0 });
+    ctx.sqlite.prepare("UPDATE knowledge_entries SET content_hash=NULL WHERE title='Import dispatch'").run();
+    expect(await dispatchJobWithConnection('hashBackfill', {}, ctx.sqlite, checkpoint, ctx.service)).toEqual({ changes: 1 });
+    expect(progress).toEqual(expect.arrayContaining([
+      { phase: 'importKnowledge', done: 1, total: 1 },
+      { phase: 'importPlans', done: 0, total: 0 },
+      { phase: 'hashBackfill', done: 1, total: 1 },
+    ]));
+    await expect(dispatchJobWithConnection('hashBackfill', {}, ctx.sqlite)).rejects.toThrow('Knowledge service unavailable');
+    await expect(dispatchJobWithConnection('importKnowledge', { entries: [] }, ctx.sqlite)).rejects.toThrow('Knowledge service unavailable');
+    await expect(dispatchJobWithConnection('importPlans', { plans: [] }, ctx.sqlite)).rejects.toThrow('Knowledge service unavailable');
+  });
 });

@@ -9,6 +9,7 @@
 - **MCP `addPlanRelation` no longer crashes the server.** A missing `await` let a foreign-key rejection (unknown plan id) escape the handler and terminate the MCP process; it now returns a tool error.
 
 ### Improvements
+- **Indexed worker import.** Imports use resumable content-hash repair and a final locked dedup check that includes intervening older-writer changes.
 - **Embedding maintenance moved to a worker.** Bounded repairs preserve progress, failures, cancellation, and protection against concurrent edits.
 - **Duplicate computation moved to a worker.** Settings duplicate scans and the cleanup report run in the JobRunner worker.
 - **Packaged background runner.** FIFO jobs use their own SQLite/sqlite-vec worker; the isolated sidecar bundle smoke executes a real health job.
@@ -16,6 +17,7 @@
 - **Permanent daily token totals.** Insert-maintained daily counters preserve lexical dates and distinct NULL/empty projects.
 - **Bounded raw token history.** Configurable 90-day retention yields between 5000-row batches; a durable whole-UTC-day cutoff prevents replay from inflating permanent totals.
 - **Indexed knowledge update times.** Migration 2.4.3 adds the updated_at maintenance index.
+- **Indexed content hashes for knowledge imports.** Migration 2.4.5 adds the nullable hash column, composite index and legacy-writer invalidation trigger.
 - **Legacy telemetry cleanup.** Migration 2.4.2 removes exactly the two obsolete consumption tables, covered by both compatibility matrices.
 - **The sidecar now measures itself.** Every 5 minutes it logs event-loop delay (p50/p99/max) and a summary of database calls: how many took 100 ms or more, how many of those were writes (usually a lock wait behind another process), how many failed with `SQLITE_BUSY`, and the slowest statements of the interval. Bound values are never logged, only the SQL text. The summary goes to `~/.cognistore/cognistore.log` with asynchronous I/O. This is the baseline for the "app freezes on large databases" work.
 - **Opening Settings no longer scans the whole base for duplicates.** The Knowledge Health panel used to run duplicate detection every time Settings opened — 41 s of a frozen sidecar on a 10,000-entry base. It now runs only when you click **Check for duplicates**, and the result is cached until an entry is added, edited or deleted (or the base is re-embedded), so checking again on an unchanged base is instant.

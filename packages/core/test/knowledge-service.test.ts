@@ -105,6 +105,13 @@ describe('KnowledgeService knowledge entries', () => {
     expect(row.source).toBe('import');
   });
 
+  it('rewrites imported system entries to pattern', async () => {
+    ctx = makeDb();
+    const result = await ctx.service.importKnowledge([input({ title: 'Imported system', content: 'ordinary imported copy', type: 'system' })] as any);
+    expect(result.imported).toBe(1);
+    expect(ctx.sqlite.prepare("SELECT type FROM knowledge_entries WHERE title='Imported system'").get()).toEqual({ type: 'pattern' });
+  });
+
   it('re-embeds existing entries and backfills missing vectors', async () => {
     ctx = makeDb();
     const entry = await ctx.service.add(input());

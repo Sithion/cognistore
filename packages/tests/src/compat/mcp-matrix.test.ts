@@ -9,6 +9,8 @@ import { gunzipSync } from 'node:zlib';
 import { KnowledgeSDK } from '@cognistore/sdk';
 import { createDbClient } from '@cognistore/core';
 import { DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
+import BetterSqlite3 from 'better-sqlite3';
+import { createRequire } from 'node:module';
 import {
   SERVER_ENTRY, TEST_TOKEN, authFetch, getFreePort, spawnSidecar, startMockOllama, stopSidecar, waitForSidecar,
 } from '../sidecar-helpers.js';
@@ -29,6 +31,8 @@ import { MCP_ENTRY, type McpLaunch, bundleLaunch, callJson, connectMcp, npxInsta
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const sqliteRequire = createRequire(import.meta.url);
+const sqliteVec = sqliteRequire('sqlite-vec');
 const FIXTURE_254 = resolve(__dirname, '../../fixtures/upgrade/2.5.4.db.gz');
 const NPM_VERSIONS = ['2.5.3', '2.5.4'];
 // Per user: a shared, predictable /tmp path could be pre-seeded by another account.
@@ -146,6 +150,36 @@ for (const v of NPM_VERSIONS) {
       return smoke(c, `legacy-npm-${v}`);
     });
     await readBackWithSdk(db, wrote);
+  });
+
+  test(`npm MCP ${v} invalidates and current import repairs legacy hashes`, async () => {
+    needNpx();
+    const db = join(work, `hash-old-${v}.db`);
+    const sdk = new KnowledgeSDK({ database: { path: db }, ollama: { host: `http://127.0.0.1:${mock.port}`, model: MODEL, dimensions: DEFAULT_EMBEDDING_DIMENSIONS } });
+    await sdk.initialize();
+    const initial = await sdk.addKnowledge({ title: `Hash original ${v}`, content: `Original body ${v}`, tags: ['mcp-matrix'], type: 'pattern', scope: scopeOf(`hash-${v}`), source: 'current-sdk' } as any);
+    try {
+      const check = new BetterSqlite3(db); sqliteVec.load(check);
+      expect(check.prepare('SELECT content_hash FROM knowledge_entries WHERE id=?').get(initial.id)).toMatchObject({ content_hash: expect.any(String) });
+      check.close();
+    } finally { await sdk.close(); }
+    const wrote = await withMcp(npxLaunch(v, NPX_SANDBOX), db, async (c) => {
+      await ok(c, 'updateKnowledge', { id: initial.id, title: `Hash edited ${v}`, content: `New writer body ${v}` });
+      return initial.id;
+    });
+    const inspect = new KnowledgeSDK({ database: { path: db }, ollama: { host: `http://127.0.0.1:${mock.port}`, model: MODEL, dimensions: DEFAULT_EMBEDDING_DIMENSIONS } });
+    await inspect.initialize();
+    try {
+      const check = new BetterSqlite3(db); sqliteVec.load(check);
+      expect(check.prepare('SELECT content_hash FROM knowledge_entries WHERE id=?').get(wrote)).toEqual({ content_hash: null });
+      const oldImport = await inspect.importKnowledge([{ title: `Hash original ${v}`, content: `Original body ${v}`, tags: ['mcp-matrix'], type: 'pattern', scope: scopeOf(`hash-${v}`), source: 'r5' }] as any);
+      expect(oldImport).toEqual({ imported: 1, skipped: 0, errors: [] });
+      const newImport = await inspect.importKnowledge([{ title: `Hash edited ${v}`, content: `New writer body ${v}`, tags: ['mcp-matrix'], type: 'pattern', scope: scopeOf(`hash-${v}`), source: 'r5' }] as any);
+      expect(newImport).toEqual({ imported: 0, skipped: 1, errors: [] });
+      expect(check.prepare("SELECT name FROM sqlite_master WHERE name IN ('idx_knowledge_content_hash','knowledge_content_hash_invalidate') ORDER BY name").all()).toHaveLength(2);
+      expect((check.pragma('table_info(knowledge_entries)') as any[]).map((c: any) => c.name)).toContain('content_hash');
+      check.close();
+    } finally { await inspect.close(); }
   });
 
   test(`npm MCP ${v} (npx) works on a 2.6 database`, async () => {

@@ -23,14 +23,14 @@ export async function startSdk(path: string) {
 }
 export async function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'r5-worker-')); const path = join(dir, 'db'); const client = createDbClient(path); const started = await startSdk(path);
-  return { dir, path, ...client, ...started, runner(workerUrl = new URL('../../sdk/dist/jobs/worker.js', import.meta.url)) { return new JobRunner({ workerUrl, databasePath: path, embeddingConfig: { host: started.mock.host, model: 'nomic-embed-text', dimensions: 256 } }); }, async close() { await started.close(); client.sqlite.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, path, ...client, ...started, mock: { port: Number(new URL(started.mock.host).port), setHook: started.mock.setHook }, runner(workerUrl = new URL('../../sdk/dist/jobs/worker.js', import.meta.url)) { return new JobRunner({ workerUrl, databasePath: path, embeddingConfig: { host: started.mock.host, model: 'nomic-embed-text', dimensions: 256 } }); }, async close() { await started.close(); client.sqlite.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
-export function forbidMain(methods: (keyof KnowledgeRepository | keyof KnowledgeService)[]) {
+export function forbidMain(methods: (keyof KnowledgeRepository | keyof KnowledgeService)[], additional: string[] = []) {
   const originals = new Map<string, { owner: any; method: (...args: any[]) => any }>();
   // Repository and service methods are patched on their prototype so SDK calls
   // fail if they fall back to the parent process implementation.
-  for (const name of methods) {
+  for (const name of [...methods, ...additional] as (keyof KnowledgeRepository | keyof KnowledgeService)[]) {
     const owner: any = name in KnowledgeRepository.prototype ? KnowledgeRepository.prototype : KnowledgeService.prototype;
     const method = owner[name];
     originals.set(name, { owner, method });

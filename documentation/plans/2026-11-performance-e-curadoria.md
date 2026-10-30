@@ -136,8 +136,8 @@ Objetivo: medir antes de mexer e ter um banco grande reprodutível para testes.
 - [x] 1C.1 Criar `packages/core/src/jobs/` com um **JobRunner**: fila de concorrência 1, cada job roda em `worker_threads` com conexão better-sqlite3 própria (+ sqlite-vec carregado); progresso via mensagens; cancelável. Garantir que o bundle do sidecar (tsup) inclui o arquivo do worker. — JobRunner merged.
 - [x] 1C.2 Reescrever detecção de duplicatas: selecionar só metadados (sem `content`), ler todos os vetores uma vez dos chunks vec0 e calcular pares exatos no worker com checkpoints cooperativos.
 - [x] 1C.3 Modo incremental: guardar watermark (`cleanup_meta.dup_scan_at`); comparar só entradas alteradas desde então contra a base inteira. — **Rodada 2** (76ef6a6 + bb065cd, merge 0307679): watermark por limiar em `cleanup_meta` (`dup_scan_state:<limiar>`), incremental 62 ms na base de 10k.
-- [ ] 1C.4 Mover para o JobRunner: `reembedAll`/`embedMissing` done; export/import + FTS backfill pending.
-- [ ] 1C.5 `importKnowledge`: deduplicar por hash usando uma coluna `content_hash` indexada (ver Fase 2) em vez de `listAll()`.
+- [ ] 1C.4 Mover para o JobRunner: `reembedAll`/`embedMissing` done; import done; export + FTS backfill pending.
+- [x] 1C.5 `importKnowledge`: deduplicar por hash usando uma coluna `content_hash` indexada, reparo paginado e rechecagem final sob lock imediato.
 
 ### 1D. FTS sem cópia
 - [ ] 1D.1 Recriar `knowledge_fts` como **external content** (`content='knowledge_entries', content_rowid='rowid'`) com triggers de insert/update/delete — economiza a cópia de ~4 MB e elimina o dual-write manual em `insertFts/updateFts`. Migration + rebuild (`INSERT INTO knowledge_fts(knowledge_fts) VALUES('rebuild')`).
@@ -286,7 +286,7 @@ Restrições: React 19 + Vite + Tailwind v4 já no projeto, webview Tauri (WebKi
 Substitui o "relatório a cada 10 dias com aprovação manual de tudo" por um **pipeline contínuo, auditável e reversível**. Reaproveita `cleanup-merge.ts` (validação de draft, tags derivadas) e `llm-merge.ts`.
 
 ### 2.1 Modelo de dados (migration nova)
-- [ ] `knowledge_entries`: `status TEXT NOT NULL DEFAULT 'active'` (`active` | `superseded` | `archived` | `trashed`), `superseded_by TEXT`, `content_hash TEXT` (indexado), `curated_at TEXT`, `trashed_at TEXT`.
+- [ ] `knowledge_entries`: `status TEXT NOT NULL DEFAULT 'active'` (`active` | `superseded` | `archived` | `trashed`), `superseded_by TEXT`, `curated_at TEXT`, `trashed_at TEXT`. `content_hash` já foi entregue na migration 2.4.5.
 - [ ] Busca, listagem, stats, KNN e FTS filtram `status='active'` (índice parcial).
 - [ ] `curation_runs(id, started_at, finished_at, trigger, model, budget, stats JSON)`.
 - [ ] `curation_actions(id, run_id, kind, entry_ids JSON, result_entry_id, reason, confidence, actor ('local-llm'|'agent:<platform>'|'user'|'rule'), before_snapshot JSON, status ('applied'|'undone'|'proposed'|'rejected'), created_at)`.
@@ -407,7 +407,11 @@ Reordenado após a Rodada 1: o congelamento tem causa concreta e barata de ataca
 
 ## Diário de execução
 
-- 2026-10-29 — 1C.4 partial: `reembedAll`/`embedMissing` moved to the worker; export/import and FTS backfill remain pending. Added retryable batched publishes, cancellation reporting, and duplicate scan invalidation in the worker.
+- 2026-10-29 — 1C.5 implementado: migration 2.4.5, hashes transacionais, reparo cancelável em páginas de 250 e importação de knowledge/plans no worker com rechecagem final bloqueada.
+- [ ] Pendente: importar `content_hash` em plans e otimizar o import de plans; hoje o worker ainda lê todos os plans de uma vez.
+- `importPlans` ainda carrega todos os plans no worker antes do loop; cancelamento/progresso não tornam essa leitura incremental.
+
+- 2026-10-29 — 1C.4 partial: `reembedAll`/`embedMissing` and import moved to the worker; export and FTS backfill remain pending. Added retryable batched publishes, cancellation reporting, and duplicate scan invalidation in the worker.
 
 > Agentes: anote aqui data, fase/item, PR/commit, números medidos e qualquer desvio do plano.
 

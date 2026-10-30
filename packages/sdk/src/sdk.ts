@@ -598,19 +598,19 @@ export class KnowledgeSDK {
     }
   }
 
-  async importKnowledge(entries: CreateKnowledgeInput[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importKnowledge(entries: CreateKnowledgeInput[], options: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     this.ensureInitialized();
     try {
-      return await this.service!.importKnowledge(entries);
+      return await this.getJobRunner().run('importKnowledge', { entries }, options);
     } catch (error) {
       throw this.wrapError(error, 'Failed to import knowledge');
     }
   }
 
-  async importPlans(plans: any[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importPlans(plans: any[], options: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     this.ensureInitialized();
     try {
-      return await this.service!.importPlans(plans);
+      return await this.getJobRunner().run('importPlans', { plans }, options);
     } catch (error) {
       throw this.wrapError(error, 'Failed to import plans');
     }

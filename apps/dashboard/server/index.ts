@@ -1594,6 +1594,12 @@ Pass an array to addKnowledge to create multiple entries at once.
       inFlightDeploy = null;
       upgradeProgress.finish();
     }
+    if (deployWentWell(upgradeProgress.lastRun()?.steps ?? [])) {
+      const raw = getRawSqlite();
+      if (raw?.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get()) {
+        void sdk.run('hashBackfill', {}).catch((e) => log('warn', `Content hash backfill failed: ${e instanceof Error ? e.message : e}`));
+      }
+    }
 
     // Read the results back from the single list that collected them.
     const completed = upgradeProgress.lastRun();
@@ -2261,6 +2267,8 @@ Pass an array to addKnowledge to create multiple entries at once.
     }
     try {
       const body = parsed.data;
+      const controller = new AbortController();
+      request.raw.once('aborted', () => controller.abort());
       const include = body.include;
       const result: Record<string, unknown> = {};
 
@@ -2268,11 +2276,11 @@ Pass an array to addKnowledge to create multiple entries at once.
         // Second guard (the schema already bounds/strips): never import a
         // privileged system entry — rewrite it to a normal pattern entry.
         const sanitized = body.knowledge.map((e) => e.type === 'system' ? { ...e, type: 'pattern' } : e);
-        result.knowledge = await sdk.importKnowledge(sanitized as any);
+        result.knowledge = await sdk.importKnowledge(sanitized as any, { signal: controller.signal });
       }
 
       if (include.includes('plans') && body.plans) {
-        result.plans = await sdk.importPlans(body.plans);
+        result.plans = await sdk.importPlans(body.plans, { signal: controller.signal });
       }
 
       if (Object.keys(result).length === 0) {
@@ -2880,6 +2888,10 @@ Pass an array to addKnowledge to create multiple entries at once.
     if (initOk) {
       log('info', 'SDK initialized successfully');
       await seedSystemKnowledge();
+      const raw = getRawSqlite();
+      if (raw?.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get()) {
+        void sdk.run('hashBackfill', {}).catch((e) => log('warn', `Startup content hash backfill failed: ${e instanceof Error ? e.message : e}`));
+      }
       void initialTokenScan();
     } else {
       log('warn', `SDK initialization failed (degraded mode): ${sdkError}`);
@@ -2888,6 +2900,10 @@ Pass an array to addKnowledge to create multiple entries at once.
         if (ok) {
           log('info', 'SDK initialized (recovered from degraded mode)');
           await seedSystemKnowledge();
+          const raw = getRawSqlite();
+          if (raw?.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get()) {
+            void sdk.run('hashBackfill', {}).catch((e) => log('warn', `Startup content hash backfill failed: ${e instanceof Error ? e.message : e}`));
+          }
           void initialTokenScan();
         }
       }, 10000);

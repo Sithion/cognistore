@@ -31,9 +31,24 @@ test('MCP bundle exercises health, token usage, plans and task error paths', asy
     const written = knowledgeWrite.body as { created: number; entries: { entry: { id: string } }[] };
     expect(written.created).toBe(2);
     const knowledgeId = written.entries[0].entry.id;
+    const duplicate = await callJson(client, 'addKnowledge', { entries: {
+      title: 'Bundle fact one', content: 'First MCP bundle knowledge item.', tags: ['bundle', 'integration'], type: 'pattern', scope: 'workspace:mcp-bundle-tools', source: 'duplicate',
+    } });
+    expect(duplicate.isError).toBe(false);
+    expect(JSON.stringify(duplicate.body)).toContain('deduplicated');
+    const invalidKnowledge = await callJson(client, 'addKnowledge', { entries: { title: '', content: '', tags: [], type: 'bogus', scope: 'global', source: 'invalid' } });
+    expect(invalidKnowledge.isError).toBe(true);
     const search = await callJson(client, 'getKnowledge', { query: 'First MCP bundle knowledge item', scope: 'workspace:mcp-bundle-tools', tags: ['bundle'], limit: 5, threshold: 0 });
     expect(search.isError).toBe(false);
     expect(JSON.stringify(search.body)).toContain(knowledgeId);
+    const queryOnly = await callJson(client, 'getKnowledge', { query: 'First MCP bundle knowledge item' });
+    expect(queryOnly.isError).toBe(false);
+    expect(JSON.stringify(queryOnly.body)).toContain(knowledgeId);
+    const emptyQuery = await callJson(client, 'getKnowledge', { query: 'zzzz-no-bundle-match-zzzz', limit: 1, threshold: 0.99 });
+    expect(emptyQuery.isError).toBe(false);
+    const recentKnowledge = await callJson(client, 'getKnowledge', { query: 'Bundle', limit: 2, scope: 'workspace:mcp-bundle-tools' });
+    expect(recentKnowledge.isError).toBe(false);
+    expect(JSON.stringify(recentKnowledge.body)).toContain('Bundle fact');
     const filteredSearch = await callJson(client, 'getKnowledge', { query: 'Second MCP bundle knowledge item', scope: 'workspace:mcp-bundle-tools', tags: ['bundle'], type: 'fix', limit: 2, threshold: 0, includePlanContext: false });
     expect(filteredSearch.isError).toBe(false);
     expect(JSON.stringify(filteredSearch.body)).toContain('Bundle fact two');

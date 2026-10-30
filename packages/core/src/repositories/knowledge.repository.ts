@@ -23,6 +23,7 @@ import { scanDuplicatePairs, invalidateDuplicateScan } from '../services/duplica
 import { groupPairs } from '../services/duplicate-pairs.js';
 import type { CreateKnowledgeInput, UpdateKnowledgeInput, SearchOptions } from '@cognistore/shared';
 import { DEFAULT_SEARCH_LIMIT, DEFAULT_SIMILARITY_THRESHOLD, isPlanStatus } from '@cognistore/shared';
+import { contentHash } from '../jobs/content-hash.js';
 
 // Retention window for the operations_log table. Must exceed the largest
 // window the dashboard can request: /api/metrics/activity clamps its range to
@@ -52,12 +53,13 @@ export class KnowledgeRepository {
     const insertTxn = this.sqlite.transaction(() => {
       this.sqlite.prepare(
         `INSERT INTO knowledge_entries
-           (id, title, content, tags, type, scope, source, version, expires_at, confidence_score, related_ids, agent_id, platform, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
+           (id, title, content, content_hash, tags, type, scope, source, version, expires_at, confidence_score, related_ids, agent_id, platform, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id,
         input.title,
         input.content,
+        contentHash(input.title, input.content),
         JSON.stringify(input.tags ?? []),
         input.type,
         input.scope,
@@ -87,27 +89,94 @@ export class KnowledgeRepository {
     return entry ?? null;
   }
 
+  findImportCandidates(hash: string): { id: string; title: string; content: string }[] {
+    return this.sqlite.prepare('SELECT id, title, content FROM knowledge_entries WHERE content_hash = ? AND type != \'system\'').all(hash) as { id: string; title: string; content: string }[];
+  }
+
+  listNullContentHashPage(afterId = '', limit = 250): { id: string; title: string; content: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT id, title, content, updated_at AS updatedAt FROM knowledge_entries
+      WHERE content_hash IS NULL AND id > ? ORDER BY id LIMIT ?`).all(afterId, limit) as { id: string; title: string; content: string; updatedAt: string }[];
+  }
+
+  publishContentHashPage(rows: { row: { id: string; title: string; content: string; updatedAt: string }; hash: string }[]): number {
+    const update = this.sqlite.prepare(`UPDATE knowledge_entries SET content_hash = ?
+      WHERE id = ? AND content_hash IS NULL AND title = ? AND content = ? AND updated_at = ?`);
+    let changes = 0;
+    this.sqlite.transaction(() => {
+      for (const item of rows) changes += update.run(item.hash, item.row.id, item.row.title, item.row.content, item.row.updatedAt).changes;
+    }).immediate();
+    return changes;
+  }
+
+  hasNullContentHash(): boolean {
+    return Boolean(this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get());
+  }
+
+  countNullContentHashes(): number {
+    return (this.sqlite.prepare('SELECT count(*) AS n FROM knowledge_entries WHERE content_hash IS NULL').get() as { n: number }).n;
+  }
+
+  finalizeKnowledgeImportBatch(items: { input: any; embedding: number[]; hash: string }[]): ('null-hash' | 'duplicate' | 'inserted')[] {
+    const results: ('null-hash' | 'duplicate' | 'inserted')[] = [];
+    this.sqlite.transaction(() => {
+      for (const { input, embedding, hash } of items) {
+        if (this.hasNullContentHash()) { results.push('null-hash'); continue; }
+        const candidates = this.findImportCandidates(hash);
+        if (candidates.some((row) => row.title.normalize('NFC').replace(/\r\n?/g, '\n').trim() === input.title.normalize('NFC').replace(/\r\n?/g, '\n').trim()
+          && row.content.normalize('NFC').replace(/\r\n?/g, '\n').trim() === input.content.normalize('NFC').replace(/\r\n?/g, '\n').trim())) {
+          results.push('duplicate'); continue;
+        }
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        this.sqlite.prepare(`INSERT INTO knowledge_entries
+          (id,title,content,content_hash,tags,type,scope,source,version,expires_at,confidence_score,related_ids,agent_id,platform,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?, ?,1,?,?,?,?,?,?,?)`).run(
+          id, input.title, input.content, hash, JSON.stringify(input.tags ?? []), input.type, input.scope,
+          input.source || 'import', input.expiresAt ? input.expiresAt.toISOString() : null,
+          input.confidenceScore ?? 1, input.relatedIds ? JSON.stringify(input.relatedIds) : null,
+          input.agentId ?? null, input.platform ?? null, now, now,
+        );
+        insertEmbedding(this.sqlite, id, embedding);
+        try { insertFts(this.sqlite, { id, title: input.title, content: input.content, tags: ftsTags(input.tags) }); } catch { /* FTS optional */ }
+        results.push('inserted');
+      }
+    }).immediate();
+    return results;
+  }
+
+
   async update(id: string, updates: UpdateKnowledgeInput & { embedding?: number[] }) {
     const { embedding, ...rest } = updates;
-
-    const values: Record<string, unknown> = {
-      ...rest,
-      updatedAt: new Date().toISOString(),
+    const columns: Record<string, string> = {
+      title: 'title', content: 'content', tags: 'tags', type: 'type', scope: 'scope', source: 'source',
+      expiresAt: 'expires_at', confidenceScore: 'confidence_score', relatedIds: 'related_ids',
+      agentId: 'agent_id', platform: 'platform',
     };
-
-    // Convert Date to ISO string for SQLite
-    if (rest.expiresAt !== undefined) {
-      values.expiresAt = rest.expiresAt ? rest.expiresAt.toISOString() : null;
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, column] of Object.entries(columns)) {
+      const value = (rest as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      sets.push(`${column} = ?`);
+      params.push(key === 'tags' || key === 'relatedIds' ? (value == null ? null : JSON.stringify(value))
+        : key === 'expiresAt' && value instanceof Date ? value.toISOString() : value);
     }
-
-    const [entry] = await this.db
-      .update(knowledgeEntries)
-      .set({
-        ...values,
-        version: sql`${knowledgeEntries.version} + 1`,
-      })
-      .where(eq(knowledgeEntries.id, id))
-      .returning();
+    const writesContent = rest.title !== undefined || rest.content !== undefined;
+    if (writesContent) {
+      const titleExpression = rest.title !== undefined ? '?' : 'title';
+      const contentExpression = rest.content !== undefined ? '?' : 'content';
+      sets.push(`content_hash = cognistore_content_hash(${titleExpression}, ${contentExpression})`);
+      if (rest.title !== undefined) params.push(rest.title);
+      if (rest.content !== undefined) params.push(rest.content);
+    }
+    sets.push('updated_at = ?', 'version = version + 1');
+    params.push(new Date().toISOString(), id);
+    const updateTxn = this.sqlite.transaction(() => {
+      const result = this.sqlite.prepare(`UPDATE knowledge_entries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      return result.changes > 0;
+    });
+    const changed = updateTxn.immediate();
+    const entry = changed ? await this.findById(id) : null;
 
     // Keep the FTS5 index in sync unconditionally — title/content/tags may change
     // even when the embedding is recomputed separately. Best-effort.
