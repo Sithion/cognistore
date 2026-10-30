@@ -37,6 +37,16 @@ Knowledge and plan imports run in the worker. Knowledge deduplication uses
 indexed hashes and bounded repair rather than loading the entire table.
 System import sanitization remains in force.
 
+## Background export
+
+`GET /api/export` preserves its JSON schema and download filename.
+The worker serializes a consistent snapshot in bounded pages, and the sidecar
+streams a private temporary file. Completion, error, disconnect, cancellation,
+and runner shutdown remove the temporary file and its directory. The response is
+streamed with chunked transfer encoding and has no `Content-Length` header. A
+startup sweep removes stale `cognistore-export-*` directories. Long read
+snapshots can delay WAL checkpoint reclamation until export completes.
+
 ## Authentication
 
 **Every route requires the sidecar token** (since v2.5.0). Loopback is not a trust boundary: any other local process, and any page served by any other local HTTP server, sits inside it — and `POST /api/uninstall` takes no body, so a body-less `fetch(..., {mode:'no-cors'})` from an ordinary web page was a CORS-simple request that ran the whole teardown.

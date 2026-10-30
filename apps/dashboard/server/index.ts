@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve, sep } from 'node:path';
 import { execSync, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync, copyFileSync, appendFileSync, renameSync, realpathSync, openSync, readSync, closeSync, fstatSync, constants as fsConstants } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync, copyFileSync, appendFileSync, renameSync, realpathSync, openSync, readSync, closeSync, fstatSync, createReadStream, constants as fsConstants } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -30,7 +30,7 @@ import {
 import { registerAuth, isAllowedOrigin, TOKEN_HEADER, type AuthConfig } from './auth.js';
 import { createPerfMonitor } from './perf-monitor.js';
 import { createDuplicatesCache } from './duplicates-cache.js';
-import { duplicateFingerprint, type SQLiteDatabase } from '@cognistore/core';
+import { duplicateFingerprint, sweepStaleExports, type SQLiteDatabase } from '@cognistore/core';
 import {
   UNKNOWN_VERSION,
   buildMcpEntry as buildMcpEntryPure,
@@ -252,6 +252,7 @@ async function start() {
   const tryInitSDK = async () => {
     try {
       await sdk.initialize();
+      void sweepStaleExports().catch(() => {});
       try {
         const raw = getRawSqlite();
         if (raw) perfMonitor.attach(raw as unknown as SQLiteDatabase);
@@ -2219,40 +2220,34 @@ Pass an array to addKnowledge to create multiple entries at once.
     const includeParam = ((request.query as any).include || 'knowledge,plans') as string;
     const include = includeParam.split(',').map(s => s.trim());
 
-    const exportData: Record<string, unknown> = {
-      version: APP_VERSION,
-      exportedAt: new Date().toISOString(),
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.raw.once('aborted', abort);
+    reply.raw.once('close', () => { if (!reply.raw.writableFinished) abort(); });
+    let file: { path: string; bytes: number } | undefined;
+    let stream: ReturnType<typeof createReadStream> | undefined;
+    let released = false;
+    const release = async () => {
+      if (released || !file) return;
+      released = true;
+      await sdk.releaseExport(file.path).catch(() => {});
     };
-
-    if (include.includes('knowledge')) {
-      const entries = await sdk.listAllKnowledge();
-      exportData.knowledge = entries.map(e => ({
-        title: e.title, content: e.content, tags: e.tags, type: e.type,
-        scope: e.scope, source: e.source, confidenceScore: e.confidenceScore,
-        agentId: e.agentId,
-        createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
-        updatedAt: e.updatedAt instanceof Date ? e.updatedAt.toISOString() : e.updatedAt,
-      }));
+    reply.raw.once('finish', () => { void release(); });
+    reply.raw.once('error', () => { void release(); });
+    reply.raw.once('close', () => { void release(); });
+    try {
+      file = await sdk.exportToFile({ include, version: APP_VERSION, signal: controller.signal });
+      if (controller.signal.aborted) { await release(); return reply; }
+      reply.header('Content-Disposition', 'attachment; filename="cognistore-export.json"');
+      reply.type('application/json');
+      stream = createReadStream(file.path);
+      stream.once('error', () => { void release(); if (!reply.raw.destroyed) reply.raw.destroy(); });
+      return reply.send(stream);
+    } catch (error) {
+      await release();
+      if (controller.signal.aborted) return reply;
+      throw error;
     }
-
-    if (include.includes('plans')) {
-      const plans = sdk.listAllPlans();
-      exportData.plans = plans.map(p => {
-        const tasks = sdk.listPlanTasks(p.id);
-        return {
-          title: p.title, content: p.content, tags: p.tags, scope: p.scope,
-          source: p.source, status: p.status,
-          createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
-          tasks: tasks.map(t => ({
-            description: t.description, status: t.status, priority: t.priority,
-            notes: t.notes, position: t.position,
-          })),
-        };
-      });
-    }
-
-    reply.header('Content-Disposition', 'attachment; filename="cognistore-export.json"');
-    return exportData;
   });
 
   // ─── Import endpoint ──────────────────────────────────────
