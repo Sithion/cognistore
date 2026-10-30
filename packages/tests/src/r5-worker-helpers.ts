@@ -1,0 +1,61 @@
+import { createServer, type ServerResponse } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createDbClient, JobRunner, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
+import { KnowledgeSDK } from '@cognistore/sdk';
+async function mockEmbedding() {
+  let hook: ((prompt: string) => Promise<void>) | undefined;
+  const server = createServer(async (req, res: ServerResponse) => {
+    if (req.url === '/api/tags') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ models: [{ name: 'nomic-embed-text' }] })); return; }
+    let body = ''; for await (const chunk of req) body += chunk; const prompt = JSON.parse(body || '{}').prompt || '';
+    try { await hook?.(prompt); } catch { res.writeHead(500); res.end('fixed embedding failure'); return; }
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ embedding: [1, ...Array(255).fill(0)] }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve)); const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('missing mock port');
+  return { host: `http://127.0.0.1:${address.port}`, setHook(fn?: (prompt: string) => Promise<void>) { hook = fn; }, async close() { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); } };
+}
+export async function startSdk(path: string) {
+  const mock = await mockEmbedding(); const sdk = new KnowledgeSDK({ database: { path }, ollama: { host: mock.host, model: 'nomic-embed-text', dimensions: 256 } });
+  try { await sdk.initialize(); } catch (error) { await mock.close(); throw error; }
+  return { sdk, mock, async close() { await sdk.close(); await mock.close(); } };
+}
+export async function fixture() {
+  const dir = mkdtempSync(join(tmpdir(), 'r5-worker-')); const path = join(dir, 'db'); const client = createDbClient(path); const started = await startSdk(path);
+  return { dir, path, ...client, ...started, mock: { port: Number(new URL(started.mock.host).port), setHook: started.mock.setHook }, runner(workerUrl = new URL('../../sdk/dist/jobs/worker.js', import.meta.url)) { return new JobRunner({ workerUrl, databasePath: path, embeddingConfig: { host: started.mock.host, model: 'nomic-embed-text', dimensions: 256 } }); }, async close() { await started.close(); client.sqlite.close(); rmSync(dir, { recursive: true, force: true }); } };
+}
+
+export function forbidMain(methods: (keyof KnowledgeRepository | keyof KnowledgeService)[], additional: string[] = []) {
+  const originals = new Map<string, { owner: any; method: (...args: any[]) => any }>();
+  // Repository and service methods are patched on their prototype so SDK calls
+  // fail if they fall back to the parent process implementation.
+  for (const name of [...methods, ...additional] as (keyof KnowledgeRepository | keyof KnowledgeService)[]) {
+    const owner: any = name in KnowledgeRepository.prototype ? KnowledgeRepository.prototype : KnowledgeService.prototype;
+    const method = owner[name];
+    originals.set(name, { owner, method });
+    owner[name] = (..._args: any[]) => {
+      throw new Error(`Parent implementation called: ${name}`);
+    };
+  }
+  return () => { for (const [name, original] of originals) original.owner[name] = original.method; };
+}
+
+export function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+export function seed(sqlite: ReturnType<typeof createDbClient>['sqlite'], count: number) {
+  const insert = sqlite.prepare(`INSERT INTO knowledge_entries
+    (id,title,content,tags,type,scope,source,version,confidence_score,created_at,updated_at)
+    VALUES(?,?,?,'[]','note','global','r5',1,1,?,?)`);
+  const tx = sqlite.transaction(() => {
+    for (let i = 0; i < count; i++) {
+      const id = `id-${String(i).padStart(5, '0')}`;
+      insert.run(id, `Title ${i}`, `Content ${i}`, '2026-10-01', '2026-10-01');
+    }
+  });
+  tx();
+}

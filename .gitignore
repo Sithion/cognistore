@@ -30,8 +30,16 @@ coverage/
 test-results/
 playwright-report/
 
-# Claude Code
-.claude/
+# Stryker mutation-testing leftovers
+.stryker-tmp/
+**/reports/mutation/
+packages/core/packages/
+packages/core/reports/
+
+# Claude Code — local settings stay private; project skills/agents are shared
+.claude/*
+!.claude/skills/
+!.claude/agents/
 
 # Plans (local development artifacts)
 .plans/
@@ -58,3 +66,6 @@ sandbox/
 id_rsa*
 .env.*
 !.env.example
+
+# Local patch files exchanged with the reviewer (carry author headers; never committed)
+documentation/plans/patches/

@@ -4,7 +4,7 @@
  *
  * Creates sidecar-bundle/ with:
  *   dist/             - Vite frontend (served by Fastify via @fastify/static)
- *   dist-server/      - Single-file bundled Fastify server (tsup)
+ *   dist-server/      - Server plus worker entries, including jobs/ (tsup)
  *   node_modules/     - Only native addons (better-sqlite3, sqlite-vec)
  *
  * Usage:

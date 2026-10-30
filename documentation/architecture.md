@@ -10,6 +10,30 @@ The system consists of three runtime subsystems:
 2. **MCP Server** — Standalone npm package consumed by AI clients (Claude Code, Copilot, OpenCode) via stdio transport
 3. **Shared Libraries** — Monorepo packages for database, embeddings, SDK, and config management
 
+## Background jobs
+
+`JobRunner` lives in `packages/core/src/jobs/runner.ts`. The SDK owns the worker
+bootstrap in `packages/sdk/src/jobs/worker.ts` and creates the runner lazily.
+The runner processes one job at a time and queues up to 32 additional jobs;
+further calls reject with `QUEUE_FULL`. Three consecutive worker startup
+failures make later calls reject with `WORKER_UNAVAILABLE` until a job succeeds.
+Progress and result payloads are `unknown` and interpreted by job kind. The
+worker opens its own connection with `createDbClient`, which checks migrations
+on startup. Shutdown flushes worker buffers, stops timers, closes resources,
+then acknowledges.
+
+Duplicate scans execute in the worker with metadata and batched vector reads.
+Parent caches remain guarded by captured fingerprints and incremental watermarks.
+
+Embedding maintenance runs in worker pages. Network calls hold no SQLite write
+transaction, and publication rechecks each source row's identity and updated_at.
+Missing-repair progress includes cumulative failure counts.
+
+FTS coverage repair runs in resumable worker transactions after the SDK becomes
+available. It uses bounded rowid pages and a list-subquery membership check
+because the standalone FTS table's id column is unindexed. Only non-system
+entries are repaired; keyword search and export also exclude system entries.
+
 ## High-Level Architecture
 
 ```
@@ -249,7 +273,7 @@ The knowledge base previously only ever grew. The retention model adds three lay
 deliberately:
 
 **1. Read tracking (signal).** `knowledge_entries.last_read_at` / `read_count` are written by
-`KnowledgeRepository.markRead()` and by nothing else — never by `update()`, so a read can never be
+`KnowledgeRepository.markReadBatch()` (buffered in the service, one transaction every 10 s with a 250 ms lock wait, v2.6) and by nothing else — never by `update()`, so a read can never be
 confused with an edit and cannot perturb `updated_at`, `version`, staleness detection or
 duplicate-group canonical ordering. Tracking is **opt-in per call** through `SearchOptions.trackRead`
 (declared on the interface *and* in `searchOptionsSchema`, since the Zod object strips unknown keys at
@@ -262,7 +286,7 @@ server contend for the same file.
 
 **2. Detection (`packages/core`).** `KnowledgeService.generateCleanupReport()` proposes three
 categories — `deprecated` (tag), `unread` (window, with the `keep` tag as an escape hatch) and
-`duplicate_group` (high-threshold KNN). It only *describes*; it deletes nothing and calls no model.
+`duplicate_group` (high-threshold exact similarity scan, see `database.md`). It only *describes*; it deletes nothing and calls no model.
 Unread detection is double-gated on a domain fact stored in the `cleanup_meta` table
 (`read_tracking_since`, written by the migration) rather than on `schema_version` — migration
 bookkeeping is not a business fact — plus a liveness check, because a user still running a pre-2.4.0
@@ -348,8 +372,12 @@ skips the migration it actually needed. Consequences to respect when adding a mi
 
 - Add the `.sql` file **and** the embedded string, with identical statements (comments may differ).
   `packages/tests/src/e2e/migration-parity.test.ts` locks the two together.
-- The runner strips only whole comment lines and then splits on `;`. A semicolon inside a trailing
-  comment or a string literal cuts a statement in half and aborts DB open for *both* processes.
+- Each migration runs in an immediate transaction, including its version record.
+  The runner rechecks the version after acquiring the write lock.
+- Scripts beginning with `-- cognistore:atomic-script` execute whole after removal of whole
+  comment lines; trigger bodies and string literals are not split on semicolons.
+  Historical unmarked scripts retain semicolon splitting and duplicate-column/already-exists
+  tolerance. Do not put semicolons inside their trailing comments or string literals.
 - `EMBEDDED_MIGRATIONS` is re-exported from `@cognistore/core` solely so that parity test can see it.
   It is internal: `@cognistore/core` is a private workspace package with a single barrel export, so
   there is no published contract here — but nothing outside the test should consume it.
@@ -382,6 +410,7 @@ skips the migration it actually needed. Consequences to respect when adding a mi
 | Plan status validation depth | Validated at the HTTP boundary (400), in the repository (throw) and by the SQL `CHECK` — all quoting one list | Deliberate layering, not duplicated policy: the boundary check owns the *HTTP contract* (naming the offending value beats an empty 200), the repository check protects `core`'s own public surface from callers that never pass through a route, and the `CHECK` is the last word for any writer of the file. Because all three read `PLAN_STATUS_VALUES` (or must be edited with it), there is one policy with three enforcement points. Rejected: trusting the route alone — `KnowledgeService` is consumed directly by the SDK and the MCP server, not only over HTTP |
 | Frontend access to workspace packages | Narrow subpath exports (`@cognistore/shared/constants`), never the root barrel | The root barrel re-exports the Zod validation module; importing it from React ships a server-side validation dependency to the browser to obtain four string literals. The subpath is a bundle boundary made explicit in `package.json` rather than left to tree-shaking luck. Rejected: duplicating the constants in the frontend (the drift this change exists to remove) and splitting `shared` into two packages (a published-package-shaped solution to a bundling problem) |
 | Embedding index repair | Incremental backfill (`SDK.embedMissing()`), never drop-and-rebuild; coverage measured with a `LEFT JOIN`, not a count subtraction | Detection and repair must range over the *same* set. Until v2.5.2 the upgrade compared `COUNT(knowledge_entries)` with `COUNT(knowledge_embeddings_rowids)` while the repair (`reembedAll()`) iterated a query excluding `type='system'`, so the counts could never agree: every upgrade dropped the whole vector index and rebuilt it, and any interruption left it empty. A subtraction is also unsound in the other direction — one orphan vector cancels one genuinely missing row and an incomplete index reports as complete. Consequences to respect: `reembedAll()` is now reserved for a real dimension migration where the vec tables were just recreated; the embedding writers are upsert-safe (`UPDATE` matching zero rows falls through to `INSERT`) so a normal edit repairs its own missing vector; the backfill is probed against Ollama first and records `skipped`, not `error`; and a *partial* backfill counts as success, because `saveDeployedVersion()` refuses to write `.version` on any `error` and one unembeddable row would otherwise re-run the whole upgrade on every launch, forever. Rejected: keeping the drop-and-rebuild and only fixing the count — an all-or-nothing rebuild over thousands of entries is unresumable by construction, and the failure it produces is a silently empty index |
+| Keyword index repair | Non-system ID anti-join in bounded rowid pages; background worker after SDK initialization | `knowledge_fts.id` is unindexed, so correlated membership checks cost a full FTS scan per entry. A list subquery is built once per statement; each repair rechecks IDs and current content under an immediate write transaction to avoid duplicate rows with concurrent older writers |
 | Offline repair placement | `scripts/repair-embeddings.mjs`, built on the **published SDK**, never on `@cognistore/core` | The sidecar rule ("knowledge data only through `@cognistore/sdk`") applies to every writer of `knowledge.db`, an out-of-band repair tool most of all: going through the SDK inherits the embedding-provider wiring and the dimension gate instead of re-deriving them. The tool therefore imports `packages/sdk/dist` and refuses to run on an unbuilt SDK, against a database outside `~/.cognistore/`, while a sidecar is alive, or with an inherited `EMBEDDING_DIMENSIONS`. Consequence to respect: it is a **developer/support** tool, not a user-facing recovery path — end users are repaired by the upgrade's `integrity` step. Rejected: opening the database directly with `better-sqlite3` from the script — a second writer with its own idea of dimensions and of what an embedding text is |
 | Upgrade progress payload | `{step, status}` only — never `message` | `GET /api/upgrade/progress` is unauthenticated, like every sidecar route (loopback bind + a local-origin CORS allow-list is the app's accepted posture). A `DeployStep.message` carries raw `e.message` text from filesystem errors — absolute paths, and with them the OS username — plus template paths and the globally-installed MCP version. The projection is what keeps the poll payload harmless; the full messages ride the `POST /api/upgrade/run` response the app already consumes. Rejected: publishing the whole step — one field's convenience against every future disclosure review |
 

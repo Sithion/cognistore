@@ -20,7 +20,7 @@ env:
 jobs:
   version-check:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Get PR version
@@ -55,7 +55,7 @@ jobs:
   # this asserts all release-driving version sources agree AND the tag is unpublished.
   release-version-guard:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -95,7 +95,7 @@ jobs:
 
   validate-dependencies:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Validate external dependency URLs
@@ -116,10 +116,10 @@ jobs:
 
   type-check:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
@@ -132,22 +132,52 @@ jobs:
 
   build-and-test:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30 # a full run takes a few minutes; a hung suite must not hold the runner for 6 h
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - name: Run tests
-        run: cd packages/tests && npx playwright test --reporter=list
+      # The Settings duplicates e2e drives the built dashboard in Chromium.
+      - name: Install Chromium for browser e2e
+        run: cd packages/tests && npx playwright install --with-deps chromium
+      # The same command as the pre-push hook (scripts/verify.mjs): lint,
+      # type-check, build, Vitest, the Playwright suites (under c8 here, which
+      # also measures the sidecar and MCP processes they spawn), then the
+      # per-package coverage gate against coverage-baseline.json.
+      - name: pnpm verify (with coverage)
+        run: pnpm verify --coverage --markdown coverage/summary.md
+      - name: Coverage table in the job summary
+        if: ${{ !cancelled() }}
+        run: '[ -f coverage/summary.md ] && cat coverage/summary.md >> "$GITHUB_STEP_SUMMARY" || echo "no coverage table (an earlier step failed)"'
+      - name: Upload coverage reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: coverage
+          path: |
+            coverage/
+            packages/core/coverage/
+            apps/dashboard/coverage/
+            !coverage/integration/.v8/
+          retention-days: 14
       - name: Dry-run npm publish (fail on warnings)
         run: |
-          OUTPUT=$(cd apps/mcp-server && npm publish --dry-run --access public 2>&1)
+          STATUS=0
+          OUTPUT=$(cd apps/mcp-server && npm publish --dry-run --access public 2>&1) || STATUS=$?
           echo "$OUTPUT"
+          # On a release branch that is not bumped yet the version is already on
+          # npm, and the dry run refuses to "publish over" it. That is the
+          # version-check job's concern (expected red until the bump), not a
+          # package.json problem; any other error still fails this step.
+          if [ "$STATUS" -ne 0 ] && ! echo "$OUTPUT" | grep -q "You cannot publish over the previously published versions"; then
+            echo "::error::npm publish dry-run failed (exit $STATUS)."
+            exit "$STATUS"
+          fi
           # "requires you to be logged in ... (dry-run)" is an inherent, benign
           # warning when publishing unauthenticated in CI — and npm's newer CLI
           # now prefixes it with the command name ("npm warn publish ..."), so it
@@ -159,13 +189,133 @@ jobs:
             exit 1
           fi
 
+  # The packaged sidecar is otherwise only built by publish.yml after a merge to
+  # main. Build it the way publish.yml does (web + native phases, better-sqlite3
+  # rebuilt for Node 24) and run it like the desktop app: ready marker, health,
+  # and an add + semantic search that needs sqlite-vec from the bundled
+  # node_modules. The AppImage/deb themselves stay in publish.yml (see
+  # documentation/ci-cd.md).
+  sidecar-bundle:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build the sidecar bundle
+        working-directory: apps/dashboard
+        run: node scripts/bundle-sidecar.mjs
+      # The bundle step compiles the per-platform agent instructions from the
+      # base template; the committed copies must match what ships.
+      - name: Compiled agent instructions are up to date
+        run: git diff --exit-code -- apps/dashboard/templates/configs
+      - name: Smoke-test the bundle
+        working-directory: apps/dashboard
+        run: node scripts/smoke-sidecar-bundle.mjs
+
+  # The Tauri shell (Rust) is otherwise only compiled by publish.yml after a
+  # merge to main: a Rust break surfaced only at release time. cargo check +
+  # cargo test on every PR, with the toolchain pinned in rust-toolchain.toml and
+  # the same Linux deps as publish.yml.
+  rust:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45 # cold tauri/webkit build ~15 min; rust-cache makes later runs fast
+    defaults:
+      run:
+        working-directory: apps/dashboard/src-tauri
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install Linux deps (same as publish.yml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Install Rust (version from rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: '1.97.0' # keep in sync with apps/dashboard/src-tauri/rust-toolchain.toml
+      - name: Rust cache
+        uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: apps/dashboard/src-tauri
+      - name: Stub the bundled resources build.rs requires
+        # tauri.conf.json lists ../sidecar-bundle/{dist,dist-server,node_modules}
+        # as resources; tauri_build fails when they are missing. The real bundle
+        # is built and smoke-tested by the sidecar-bundle job.
+        run: mkdir -p ../sidecar-bundle/dist ../sidecar-bundle/dist-server ../sidecar-bundle/node_modules
+      - run: rustc --version && cargo --version
+      - run: cargo check --locked
+      - run: cargo test --locked
+
+  # Report-only performance run (plan v2.6, T.10): the @perf suite on the
+  # seeded 10k-entry fixture, budgets scaled for a shared runner. It never
+  # fails the PR; the PERF lines land in the job summary for comparison with
+  # packages/tests/src/performance/baseline.json.
+  perf:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 30
+    env:
+      PERF_BUDGET_SCALE: '3'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Restore the perf fixture
+        id: fixture
+        # The fixture is deterministic per generator (FIXTURE_VERSION lives in
+        # generate-fixture.ts) and schema (it is built through createDbClient,
+        # so the migrations are part of the key).
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/cognistore-perf-fixture-v*
+          key: perf-fixture-${{ hashFiles('packages/tests/src/performance/fixtures/generate-fixture.ts', 'packages/core/src/db/migrations/**') }}
+      - name: Run the @perf suite (report only)
+        id: perf
+        run: |
+          set -o pipefail
+          cd packages/tests
+          pnpm test:perf --reporter=list 2>&1 | tee "$RUNNER_TEMP/perf.log"
+      - name: Save the perf fixture
+        # Saved even when a budget fails (the interesting case), unlike the
+        # combined actions/cache step, which only saves on success.
+        if: always() && steps.fixture.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/cognistore-perf-fixture-v*
+          key: perf-fixture-${{ hashFiles('packages/tests/src/performance/fixtures/generate-fixture.ts', 'packages/core/src/db/migrations/**') }}
+      - name: PERF lines to the job summary
+        if: always()
+        env:
+          PERF_OUTCOME: ${{ steps.perf.outcome }}
+        run: |
+          {
+            echo "### @perf (PERF_BUDGET_SCALE=$PERF_BUDGET_SCALE, report only)"
+            # continue-on-error shows the check green: say it here when a budget failed.
+            if [ "$PERF_OUTCOME" != "success" ]; then echo "**Perf step outcome: $PERF_OUTCOME** — see the log for the failing case."; fi
+            echo '```'
+            grep -oE 'PERF [^ ]+ [0-9.]+ms.*' "$RUNNER_TEMP/perf.log" || echo "(no PERF lines)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Free dependency vulnerability scanning via OSV-Scanner (osv.dev). Covers npm
   # (pnpm-lock.yaml) and Cargo (apps/dashboard/src-tauri/Cargo.lock) in one pass.
   # Runs on every PR/push and the weekly schedule. Self-contained (no third-party
   # Action) to respect the repo's curated Actions allowlist; the binary is
   # version-pinned and checksum-verified. This job is a required status check.
   osv-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       issues: write # only used by the scheduled-failure step below

@@ -21,7 +21,8 @@ export const knowledgeEntries = sqliteTable(
     relatedIds: text('related_ids', { mode: 'json' }).$type<string[] | null>(),
     agentId: text('agent_id'),
     platform: text('platform'),
-    // Retention signal for the cleanup cycle. Written by markRead() only —
+    contentHash: text('content_hash'),
+    // Retention signal for the cleanup cycle. Written by markReadBatch() only —
     // never by update(), so it can never be confused with an edit.
     lastReadAt: text('last_read_at'),
     readCount: integer('read_count').notNull().default(0),
@@ -36,5 +37,6 @@ export const knowledgeEntries = sqliteTable(
     index('idx_type').on(table.type),
     index('idx_scope').on(table.scope),
     index('idx_knowledge_platform').on(table.platform),
+    index('idx_knowledge_content_hash').on(table.contentHash, table.id),
   ]
 );

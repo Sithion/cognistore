@@ -6,17 +6,13 @@
         "^build"
       ],
       "outputs": [
-        "dist/**"
+        "dist/**",
+        "dist-server/**"
       ]
     },
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "lint": {
-      "dependsOn": [
-        "^build"
-      ]
     },
     "test": {
       "dependsOn": [

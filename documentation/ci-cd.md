@@ -10,17 +10,72 @@ The project uses **GitHub Actions** with two workflows:
 ## CI Workflow
 
 **File:** `.github/workflows/ci.yml`
-**Trigger:** Pull requests to `main`
+**Trigger:** Pull requests to `main`, pushes to `feature/**`, and a weekly schedule (OSV scan only)
 
-```
-Steps:
-1. Setup pnpm (version from packageManager field)
-2. Setup Node.js 24
-3. pnpm install --frozen-lockfile
-4. pnpm build (all workspace packages via Turborepo)
-5. pnpm test
-6. npm publish --dry-run (validate MCP server package)
-```
+| Job | What it does | Gate |
+|---|---|---|
+| `version-check`, `release-version-guard` | Version bumped vs `main`, release sources in sync, tag unpublished | PRs to `main`. Expected red on a WIP release PR that has not been bumped yet |
+| `validate-dependencies` | External URLs (Ollama install script, Releases API) answer 200 | Required |
+| `type-check` | `pnpm type-check`: dashboard frontend + server, MCP server, and the test package (`packages/tests`, since v2.6) | Required |
+| `build-and-test` | Chromium for the browser e2e, then `pnpm verify --coverage` (below): lint, type-check, build, the Vitest unit layer and the Playwright suites under V8 coverage, and the coverage gate. Then `npm publish --dry-run`, which fails on any `npm warn publish` or error except "cannot publish over the previously published version": on an unbumped release branch that is expected, and `version-check` owns it | Required. Also fails when a package's coverage drops below the baseline |
+| `sidecar-bundle` (v2.6) | Builds the packaged sidecar like `publish.yml` (`bundle-sidecar.mjs`: tsup single-file server, frontend, templates, native `better-sqlite3`/`sqlite-vec` rebuilt for Node 24) on `ubuntu-24.04`. Checks that the compiled agent instructions in `templates/configs/` match their base template, then runs `smoke-sidecar-bundle.mjs`: the bundle is copied to a temp `Resources/` layout and started with the env of `sidecar.rs`, except `COGNISTORE_MANAGED` (so the startup self-heal does not run) and with `OLLAMA_HOST` pointing at a stub, in a sandboxed HOME. It must print the ready marker, report the database connected on `/api/health`, and find an added entry by semantic search, which needs sqlite-vec. Same steps as `publish.yml`, but on `ubuntu-24.04`, while the release builds Linux on `ubuntu-22.04` | Required |
+| `rust` (v2.6) | `cargo check --locked` + `cargo test --locked` in `apps/dashboard/src-tauri` on `ubuntu-24.04`, toolchain from `rust-toolchain.toml` (1.97.0, also passed to `dtolnay/rust-toolchain` — keep both in sync), the same Linux deps as `publish.yml`. The `sidecar-bundle/{dist,dist-server,node_modules}` resources `tauri_build` requires are empty stubs here; the `sidecar-bundle` job builds and runs the real one | Required |
+| `perf` (v2.6) | The `@perf` suite on the cached 10k-entry fixture with `PERF_BUDGET_SCALE=3`. Its `PERF` lines go to the job summary for comparison with `packages/tests/src/performance/baseline.json` | Report only (`continue-on-error`) |
+| `osv-scan` | OSV-Scanner over the npm and Cargo lockfiles, with the ignore list in `osv-scanner.toml`. Every ignore carries a `reason`, and ignores that no longer match are removed (to list them, run the scanner with an empty config) | Required. Weekly failures open/update a tracking issue |
+
+All Linux jobs run on `ubuntu-24.04`, pinned rather than `ubuntu-latest`, so a runner image change is a deliberate edit. The exception is the Linux release build in `publish.yml`, which stays on `ubuntu-22.04` so the AppImage/deb link against an older glibc. Actions are pinned by commit SHA.
+
+### `pnpm verify` (v2.6)
+
+`scripts/verify.mjs` is the single gate, used both by CI's `build-and-test` and by the `pre-push` hook (`.husky/pre-push`). The hook skips pushes that send no new commits (branch deletions, tags only); skip any other push with `git push --no-verify`. It runs in order and stops at the first failure:
+
+1. **lint:** `pnpm lint` = Biome over `apps/`, `packages/` and `scripts/` (see *Lint* below). Errors fail; warnings do not.
+2. **type-check**
+3. **build:** the suites spawn the built sidecar and MCP server. `turbo.json` declares `dist-server/**` as a build output, so a cached build restores the sidecar too.
+4. **unit:** Vitest in `packages/core` and the sidecar's `auth.ts`/`settings.ts`.
+5. **scripts:** `pnpm test:scripts`, `node:test` for the root tooling scripts (`scripts/test/`, e.g. the coverage normalizer). The root is not a workspace package, so these use Node's built-in runner instead of pulling Vitest in.
+6. **integration:** the Playwright projects e2e, load and compat. This covers the API route inventory, the MCP contract, the MCP × database matrix and the upgrade matrix.
+7. **knip:** `pnpm knip` against `knip.json` — unused files, exports and dependencies fail the step. `knip.json` declares the entries knip cannot see on its own (the sidecar's `tsup.sidecar.ts`, the instruction compiler, the OpenCode plugin template, the tooling scripts) and the MCP server's native dependencies, which its bundle keeps external. Exports used only inside their own file are not reported (`ignoreExportsUsedInFile`).
+8. **coverage:** with `--coverage`, steps 4 and 6 run under V8 coverage and the gate below runs last. `--markdown <file>` also writes the table. When unit or integration fails, the table is still written from what ran, and verify still fails.
+
+The `@perf` suite is not part of `pnpm verify`; it runs in the `perf` job.
+
+### Lint (v2.6, B.7)
+
+`biome.json` at the root, `@biomejs/biome` pinned to an exact version. Only the linter is on (no formatter, no import sorting), so adopting it changed no code.
+
+**Why Biome and not ESLint + typescript-eslint + react-hooks:** one binary with no plugin tree (a much smaller supply-chain surface for a public repo, and one devDependency to pin and audit), fast enough for the pre-push hook (≈60 ms for the whole repo), and it ships the React hooks rules natively (`useHookAtTopLevel`, `useExhaustiveDependencies`). It does not type-check rules; `pnpm type-check` already covers that.
+
+**Baseline without rewriting the code:** the `recommended` preset, except:
+
+| Rule | Level | Findings at adoption | Why |
+|---|---|---:|---|
+| `a11y/useButtonType` | warn | 89 | Dashboard buttons without `type`; fix with the UI work (Fase U) |
+| `correctness/useExhaustiveDependencies` | warn | 31 | Each needs a behaviour check; fix one by one |
+| `a11y/useKeyWithClickEvents`, `a11y/noStaticElementInteractions` | warn | 28, 27 | Clickable `div`s; Fase U |
+| `a11y/noLabelWithoutControl` | warn | 20 | Fase U |
+| `a11y/noSvgWithoutTitle`, `a11y/noAutofocus` | warn | 6, 2 | Fase U |
+| `suspicious/noArrayIndexKey`, `noImplicitAnyLet`, `useIterableCallbackReturn`, `noAssignInExpressions`, `noControlCharactersInRegex` | warn | 6, 6, 6, 4, 2 | Real but low risk; fix when touching the file |
+| `correctness/noComponentHookFactories` | warn | 1 | Same |
+| `suspicious/noExplicitAny` | off | 297 | Too noisy to be useful as warnings; revisit with stricter types |
+| `style/noNonNullAssertion` | off | 257 | Same |
+| `style/useTemplate`, `complexity/useLiteralKeys` | off | 65, 12 | Style only |
+
+Every other recommended rule is an error, so new code cannot add, for example, a conditional hook (`useHookAtTopLevel`), an unreachable branch or a duplicate key. To tighten the baseline, fix a rule's findings and delete its line from `biome.json`.
+
+### Coverage
+
+Both test layers run under V8 coverage in `build-and-test`:
+
+- **Unit:** `pnpm coverage:unit` runs Vitest with `@vitest/coverage-v8` in `packages/core` and `apps/dashboard` (`auth.ts`, `settings.ts`).
+- **Integration:** `pnpm coverage:integration` wraps the Playwright suites in `c8` (`.c8rc.json`). The sidecar and MCP processes the tests spawn inherit `NODE_V8_COVERAGE`, so their code is measured too. c8 filters on the built `dist` files and maps them back to `src`. The MCP server is a single tsup bundle and is reported as one row, `mcp-server (bundle)`, which also contains the code it inlines.
+- **Report and gate:** `pnpm coverage:report` (`scripts/coverage-report.mjs`) prints lines and branches per package and layer. With `--markdown <file>` it also writes the table, plus the reasons when the gate fails, to a file that CI appends to the job summary. It fails when any row drops more than 1 pt below `coverage-baseline.json`, when a baseline row was not measured or measured under half its recorded lines (a source map that did not load), or when the baseline file is missing. The raw reports are uploaded as the `coverage` artifact.
+- **Normalizing the integration dumps (v2.6, B.6):** before reading the integration numbers, the report runs `scripts/coverage-normalize.mjs` on `coverage/integration/.v8` and then `c8 report` again. Why: the Playwright runner and worker processes load `packages/*/dist` through Playwright's transforming loader, so their V8 dumps carry the line lengths of the transformed code, not of the file on disk. c8 merges the `source-map-cache` of all dumps with `Object.assign` in directory order, so the last dump wins, and dump names start with the process id. When a Playwright dump won, every file of that package was remapped to a single line (`only N lines measured`), depending on nothing but PIDs: green in CI, red on another machine. The normalizer drops every cache entry whose line lengths differ from the file on disk, together with that dump's coverage of the same URL; it is idempotent. Consequence: code the Playwright tests run in-process (not in a spawned sidecar or MCP server) is not counted in the integration layer; it was being mapped onto the wrong lines anyway, and the Vitest layer covers it.
+- **Raising the bar:** after a change that adds tests, run `pnpm coverage` locally (or take the numbers from the CI artifact) and commit the result of `node scripts/coverage-report.mjs --write-baseline`. The baseline only moves up on purpose; a drop has to be explained in the PR. Take the numbers from CI when they differ: a test that reads something only a developer machine has (e.g. real agent logs) inflates a local run.
+
+**Why not the AppImage/deb in CI (decision, v2.6):** the bundle smoke covers what breaks the desktop app at runtime: the single-file server, the native ABI and sqlite-vec's loadable extension. The `rust` job compiles and tests the shell. Building the AppImage/deb as well would add the full Tauri bundling (about 15 minutes cold, plus linuxdeploy) to every PR, only to check the packaging step that `publish.yml` already runs on each release, and a packaging failure there leaves the release a draft (`verify-release`), so nothing broken reaches users. Revisit if a release fails at packaging.
+
+The perf fixture cache key is the hash of `packages/tests/src/performance/fixtures/generate-fixture.ts`, so a generator change (or a `FIXTURE_VERSION` bump) rebuilds it.
 
 ## Publish Workflow
 
@@ -30,6 +85,8 @@ Steps:
 The pipeline builds each release as a **draft**, verifies its updater manifest is complete, then promotes it to public — so updater clients never see a half-built release:
 
 `publish-mcp` → `create-release` (draft) → `build-web` → `publish-tauri` → `verify-release` → `promote-release`.
+
+When any of these fails on `main`, `alert-on-failure` opens an issue titled "Publish workflow is failing on main", or comments on the open one, with a link to the run (v2.6).
 
 ### Job 1: publish-mcp
 
@@ -187,3 +244,5 @@ The script traps EXIT and restores original MCP configs from backups, ensuring t
 | `scripts/bump-version.sh` | Cross-package version bump |
 | `scripts/test-agents.sh` | Agent test battery (local, Docker-based) |
 | `scripts/repair-embeddings.mjs` | Offline embedding-index repair — see [Recovery](./recovery.md) |
+| `scripts/clean.mjs` | Second half of `pnpm clean` (after `turbo clean`): removes coverage, Playwright reports, Stryker leftovers, the sidecar bundle and `.turbo` from a fixed list of literal paths |
+| `scripts/legacy/` | One-off scripts kept for reference, not maintained (`recover-operations-history.mjs`: pre-2.3.2 Activity history from a backup) |

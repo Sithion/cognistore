@@ -28,6 +28,7 @@ const SETTINGS_FILE = resolve(INSTALL_DIR, 'settings.json');
 
 export interface AppSettings {
   autoUpdate: boolean;
+  tokenUsageRetentionDays: number;
   dateRangePreset: '1d' | '1w' | '1m' | '1y' | '2y' | 'custom';
   lastSelectedRange: { from: string; to: string } | null;
   tokenProviderFilter: 'all' | 'claude' | 'copilot';
@@ -49,6 +50,14 @@ export interface AppSettings {
    */
   installedOllama: boolean;
 
+  /**
+   * Agent config files that setup created from nothing (it did not find them).
+   * Uninstall deletes such a file only when it is listed here AND nothing but
+   * setup's own keys are left in it; a user's own near-empty file stays.
+   * Installs set up before 2.6 have no record, so their files are only cleaned.
+   */
+  createdConfigFiles: CreatedConfigFile[];
+
   // ─── Cleanup cycle ───
   /** Master switch for the periodic cleanup report. */
   cleanupEnabled: boolean;
@@ -64,8 +73,13 @@ export interface AppSettings {
   lastCleanupReportAt: string | null;
 }
 
+/** The config files whose creation setup records (see `createdConfigFiles`). */
+export const CREATED_CONFIG_FILES = ['claude-settings', 'opencode-config'] as const;
+export type CreatedConfigFile = (typeof CREATED_CONFIG_FILES)[number];
+
 export const SETTINGS_DEFAULTS: AppSettings = {
   autoUpdate: false,
+  tokenUsageRetentionDays: 90,
   dateRangePreset: '1w',
   lastSelectedRange: null,
   tokenProviderFilter: 'all',
@@ -74,6 +88,7 @@ export const SETTINGS_DEFAULTS: AppSettings = {
   allowStdioProviders: false,
   allowInsecureProviderUrls: false,
   installedOllama: false,
+  createdConfigFiles: [],
   cleanupEnabled: true,
   cleanupIntervalDays: 10,
   cleanupUnreadDays: 180,
@@ -133,7 +148,19 @@ export function sanitizeSettings<T extends Partial<AppSettings>>(patch: T): T {
     if (key in out) out[key] = out[key] === true;
   }
 
+  if ('createdConfigFiles' in out) {
+    const v = out.createdConfigFiles;
+    out.createdConfigFiles = Array.isArray(v)
+      ? [...new Set(v.filter((f): f is CreatedConfigFile => (CREATED_CONFIG_FILES as readonly unknown[]).includes(f)))]
+      : [];
+  }
+
   if ('cleanupEnabled' in out) out.cleanupEnabled = Boolean(out.cleanupEnabled);
+  if ('tokenUsageRetentionDays' in out) {
+    const n = out.tokenUsageRetentionDays;
+    out.tokenUsageRetentionDays = typeof n === 'number' && Number.isFinite(n) && Number.isInteger(n) && n >= 0 && n <= 36500
+      ? n : SETTINGS_DEFAULTS.tokenUsageRetentionDays;
+  }
   if ('cleanupIntervalDays' in out) {
     out.cleanupIntervalDays = clampInt(out.cleanupIntervalDays, 1, 365, SETTINGS_DEFAULTS.cleanupIntervalDays);
   }

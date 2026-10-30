@@ -6,6 +6,19 @@ The MCP server (`@cognistore/mcp-server`) is the primary interface for AI coding
 
 **System knowledge guard:** Several tools enforce protection of system entries (`type=system`). System entries are seeded during setup and contain mandatory protocol instructions. They cannot be deleted or modified through MCP tools, and `addPlanRelation` silently skips them.
 
+## Node.js ABI recovery
+
+After a Node.js upgrade, the first MCP session may time out in the client while
+the MCP server rebuilds `better-sqlite3`; the next launch succeeds. The server
+runs one rebuild with a 120-second timeout from the directory containing the
+resolved native module.
+The rebuild uses the failing Node installation and discards inherited npm
+runtime/target overrides. A fresh guarded process preserves the MCP arguments.
+Diagnostics and rebuild output use stderr; stdout remains JSON-RPC.
+Failure exits 78 and recommends `npx clear-npx-cache` or
+`npm rebuild better-sqlite3 --prefix <directory containing node_modules>`.
+`COGNISTORE_ABI_REBUILT=1` prevents repeated rebuilds.
+
 ## Transport
 
 ```
@@ -13,6 +26,22 @@ AI Client ←── stdio (stdin/stdout JSON-RPC) ──→ MCP Server ──→
 ```
 
 The server is launched by AI clients via `npx -y @cognistore/mcp-server`. Communication happens over stdin/stdout using JSON-RPC messages per the MCP specification.
+
+## Performance diagnostics (opt-in)
+
+Set `COGNISTORE_PERF=1` in the MCP server's environment (the `env` block of its entry in the agent's MCP config) to make it report its own performance, as the sidecar does:
+
+| Variable | Effect |
+|---|---|
+| `COGNISTORE_PERF=1` | Every interval, one `[perf]` summary line (event-loop p50/p99/max, DB ops, ops ≥ 100 ms, slow writes, `SQLITE_BUSY` count) plus the slowest statements, and one line per slow op as it happens. SQL text only, never bound values. |
+| `COGNISTORE_PERF_LOG=<file>` | Also append those lines to this file (asynchronously). |
+| `COGNISTORE_PERF_INTERVAL_MS=<ms>` | Summary interval (default 300000, 5 minutes). |
+
+Lines go to **stderr** prefixed with `[mcp pid=<pid>]`, never to stdout, which carries the JSON-RPC stream. Unset, the server prints nothing. Wiring: `apps/mcp-server/src/index.ts` → `createPerfMonitor` (`packages/core/src/perf/monitor.ts`).
+
+## Buffered telemetry writes
+
+Operation counters (`operations_log` / `operations_daily`) and `trackRead` read marks are counted in memory and written in one transaction per flush: counters every 30 s, read marks every 10 s, on `close()`, and on process `exit`. Every flush waits at most 250 ms for the write lock instead of the connection's 5 s `busy_timeout`: a busy database keeps the counters for the next flush (bounded to 10,000 per-second keys) and drops that batch of read marks (a best-effort signal). The dashboard therefore sees an agent session's activity up to 30 s late.
 
 ## Tools
 
@@ -249,8 +278,29 @@ Tools are annotated with hints for MCP clients:
 
 | Annotation | Tools | Purpose |
 |------------|-------|---------|
-| `readOnlyHint: true` | `getKnowledge`, `listTags`, `healthCheck`, `listPlanTasks`, `getPlanChain` | Signals the tool does not modify knowledge content. `getKnowledge` still updates the `last_read_at` / `read_count` retention counters of the entries it returns — it never modifies an entry's content, tags or `version` |
+| `readOnlyHint: true` | `getKnowledge`, `listTags`, `healthCheck`, `listPlans`, `listPlanTasks`, `getPlanChain`, `getTokenUsage` | Signals the tool does not modify knowledge content. `getKnowledge` still updates the `last_read_at` / `read_count` retention counters of the entries it returns — it never modifies an entry's content, tags or `version` |
 | `destructiveHint: true` | `deleteKnowledge`, `deletePlanTask` | Signals the tool permanently removes data |
+
+
+## Version compatibility
+
+`packages/tests/src/compat/mcp-matrix.test.ts` runs the published 2.5.3 and 2.5.4 servers through real `npx` (sandboxed npm cache, HOME and cwd) against databases written by this checkout, and the reverse, plus the app and old servers writing to one database at once. Add a version to `NPM_VERSIONS` there when you publish one that agents may keep running.
+
+## Frozen contract
+
+The tool surface is a public contract: agents, injected skills and older npm builds on other machines call these tools by name. `packages/tests/src/contract/mcp-contract.test.ts` boots the bundled server (`dist/index.js`) over stdio and checks it against `mcp-contract.snapshot.json`:
+
+- **Tools**: names, input schemas and annotations must match the snapshot exactly.
+- **Responses**: every tool is called once, and each response must keep every field the snapshot recorded, with the same type. New fields are allowed.
+
+The snapshot was generated from the v2.5.4 bundle, so a passing run also shows the current build exposes the published surface. To change the contract on purpose (add an optional parameter, say), regenerate the snapshot in the same PR and review the diff structurally:
+
+```bash
+pnpm build
+cd packages/tests && UPDATE_MCP_CONTRACT=1 npx playwright test --project=compat src/contract/mcp-contract.test.ts
+```
+
+Removing or renaming a tool, a parameter or a response field is not allowed in a minor release.
 
 ## MCP Resources
 

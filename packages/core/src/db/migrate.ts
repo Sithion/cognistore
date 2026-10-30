@@ -233,12 +233,93 @@ ALTER TABLE plans ADD COLUMN root_plan_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_plans_parent_plan_id ON plans(parent_plan_id);
 CREATE INDEX IF NOT EXISTS idx_plans_root_plan_id ON plans(root_plan_id);
 `,
+  '2.4.2': `
+-- Remove obsolete pre-token_usage telemetry tables.
+DROP TABLE IF EXISTS consumption_samples;
+DROP TABLE IF EXISTS consumption_ingest_state;
+`,
+  '2.4.3': `-- cognistore:atomic-script
+CREATE TABLE IF NOT EXISTS token_usage_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+INSERT OR IGNORE INTO token_usage_meta(key, value)
+VALUES ('pruned_before', '');
+
+CREATE TABLE IF NOT EXISTS token_usage_daily (
+  day TEXT NOT NULL,
+  source TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  project TEXT NOT NULL DEFAULT '',
+  project_is_null INTEGER NOT NULL CHECK(project_is_null IN (0, 1)),
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  messages INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(day, source, model, project, project_is_null)
+) WITHOUT ROWID;
+
+INSERT INTO token_usage_daily (
+  day, source, model, project, project_is_null,
+  input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, messages
+)
+SELECT substr(occurred_at, 1, 10), source, model, COALESCE(project, ''),
+       project IS NULL,
+       SUM(input_tokens), SUM(output_tokens),
+       SUM(cache_creation_tokens), SUM(cache_read_tokens), COUNT(*)
+FROM token_usage
+GROUP BY substr(occurred_at, 1, 10), source, model,
+         COALESCE(project, ''), project IS NULL;
+
+CREATE TRIGGER IF NOT EXISTS token_usage_daily_insert
+AFTER INSERT ON token_usage
+WHEN NEW.occurred_at >= COALESCE(
+  (SELECT value FROM token_usage_meta WHERE key = 'pruned_before'), ''
+)
+BEGIN
+  INSERT INTO token_usage_daily (
+    day, source, model, project, project_is_null,
+    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, messages
+  )
+  VALUES (
+    substr(NEW.occurred_at, 1, 10), NEW.source, NEW.model,
+    COALESCE(NEW.project, ''), NEW.project IS NULL,
+    NEW.input_tokens, NEW.output_tokens,
+    NEW.cache_creation_tokens, NEW.cache_read_tokens, 1
+  )
+  ON CONFLICT(day, source, model, project, project_is_null) DO UPDATE SET
+    input_tokens = input_tokens + excluded.input_tokens,
+    output_tokens = output_tokens + excluded.output_tokens,
+    cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens,
+    cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
+    messages = messages + 1;
+END;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_updated_at
+ON knowledge_entries(updated_at);
+`,
+  '2.4.5': `-- cognistore:atomic-script
+ALTER TABLE knowledge_entries ADD COLUMN content_hash TEXT;
+CREATE INDEX IF NOT EXISTS idx_knowledge_content_hash
+ON knowledge_entries(content_hash, id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_content_hash_invalidate
+AFTER UPDATE OF title, content ON knowledge_entries
+WHEN NEW.content_hash IS OLD.content_hash AND OLD.content_hash IS NOT NULL
+BEGIN
+  UPDATE knowledge_entries SET content_hash = NULL WHERE id = NEW.id;
+END;
+`,
 };
 
 /**
  * Versioned migration runner for SQLite.
  * Uses .sql files from disk when available, falls back to embedded SQL.
  */
+/** The base schema; re-run on every open (see the bootstrap note in runMigrations). */
+const BASE_VERSION = '0.8.0';
+
 export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: string): void {
   // 1. Ensure schema_version table exists
   sqlite.exec(`
@@ -254,19 +335,18 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
       .map((r) => r.version)
   );
 
-  // 3. Bootstrap: detect existing DB from pre-migration era
+  // 3. Bootstrap: detect existing DB from pre-migration era. Until 2.6 the
+  // runner only STAMPED 0.8.0 here, without running it, but real v0.8.0
+  // installs have no operations_log, which 2.3.2 reads. So the loop below runs
+  // the 0.8.0 base schema on every open, stamped or not: it is all IF NOT
+  // EXISTS. Re-run this base schema outside a transaction on every open; an
+  // up-to-date open must not acquire a write lock.
   if (applied.size === 0) {
     const tableExists = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_entries'")
       .get();
 
-    if (tableExists) {
-      sqlite
-        .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
-        .run('0.8.0', new Date().toISOString());
-      applied.add('0.8.0');
-      console.error('Migration: bootstrapped existing DB as v0.8.0');
-    }
+    if (tableExists) console.error('Migration: bootstrapping existing pre-migration DB from v0.8.0');
   }
 
   // 4. Build migration list — from disk files or embedded
@@ -290,33 +370,68 @@ export function runMigrations(sqlite: BetterSqlite3.Database, migrationsDir: str
     console.error('Migration: using embedded migrations (bundled mode)');
   }
 
-  // 5. Apply pending migrations
+  // 5. Apply each candidate under its own write lock.
   for (const { version, sql } of migrations) {
+    const markedAtomic = /^\s*-- cognistore:atomic-script\b/.test(sql);
+    if (version === BASE_VERSION) {
+      // Repair the historically under-created base schema using its
+      // idempotent IF NOT EXISTS statements, in autocommit mode.
+      runSql(sql, sqlite, markedAtomic);
+      if (!applied.has(version)) {
+        sqlite.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)')
+          .run(version, new Date().toISOString());
+        applied.add(version);
+      }
+      continue;
+    }
     if (applied.has(version)) continue;
 
-    const cleanedSql = sql
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('--'))
-      .join('\n');
-    const statements = cleanedSql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    sqlite.exec('BEGIN IMMEDIATE');
+    let committed = false;
+    let versionIsApplied = false;
+    try {
+      versionIsApplied = Boolean(sqlite
+        .prepare('SELECT 1 AS applied FROM schema_version WHERE version = ?')
+        .get(version));
 
-    for (const stmt of statements) {
-      try {
-        sqlite.exec(stmt + ';');
-      } catch (err: any) {
-        if (err?.message?.includes('duplicate column')) continue;
-        if (err?.message?.includes('already exists')) continue;
-        throw err;
+      if (!versionIsApplied || version === BASE_VERSION) {
+        runSql(sql, sqlite, markedAtomic);
+
+        sqlite.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)')
+          .run(version, new Date().toISOString());
       }
+
+      sqlite.exec('COMMIT');
+      committed = true;
+    } finally {
+      if (!committed && sqlite.inTransaction) sqlite.exec('ROLLBACK');
     }
 
-    sqlite
-      .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
-      .run(version, new Date().toISOString());
-    console.error(`Migration: ${version} applied`);
+    applied.add(version);
+    if (!versionIsApplied) {
+      console.error(`Migration: ${version} applied`);
+    }
+  }
+}
+
+function runSql(sql: string, sqlite: BetterSqlite3.Database, markedAtomic: boolean): void {
+  const cleanedSql = sql
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
+  if (markedAtomic) {
+    sqlite.exec(cleanedSql);
+    return;
+  }
+  const statements = cleanedSql.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+  for (const stmt of statements) {
+    try {
+      sqlite.exec(stmt + ';');
+    } catch (err: any) {
+      if (err?.message?.includes('duplicate column')) continue;
+      if (err?.message?.includes('already exists')) continue;
+      throw err;
+    }
   }
 }
 

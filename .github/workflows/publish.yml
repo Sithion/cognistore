@@ -27,14 +27,14 @@ permissions:
 jobs:
   # ── MCP Server → npm ──────────────────────────────────────────
   publish-mcp:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -112,7 +112,7 @@ jobs:
   # ── Create GitHub Release (single job to avoid race condition) ──
   create-release:
     needs: publish-mcp
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     outputs:
@@ -217,11 +217,11 @@ jobs:
   build-web:
     needs: create-release
     if: needs.create-release.outputs.published != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -269,7 +269,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -327,7 +327,7 @@ jobs:
   verify-release:
     needs: [create-release, publish-tauri]
     if: needs.create-release.outputs.published != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # write (not read) because it reads a DRAFT release's assets, and draft
       # releases are only visible to a token with push access.
@@ -376,7 +376,7 @@ jobs:
   promote-release:
     needs: [create-release, verify-release]
     if: needs.create-release.outputs.published != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -387,3 +387,29 @@ jobs:
           gh release edit "v${{ needs.create-release.outputs.version }}" \
             --repo ${{ github.repository }} --draft=false
           echo "Promoted v${{ needs.create-release.outputs.version }} to public (latest)."
+
+  # ── Alert when a release run on main fails ──
+  # A failed Publish notifies at most the person who merged, and a release left
+  # as a draft is easy to miss. Keep one open issue and comment on it for each
+  # failed run; close it by hand once a release goes through.
+  alert-on-failure:
+    needs: [publish-mcp, create-release, build-web, publish-tauri, verify-release, promote-release]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Publish workflow is failing on main"
+          body="Publish run failed for ${GITHUB_SHA}: ${RUN_URL}"
+          num=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"${title}\" in:title" --json number -q '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi

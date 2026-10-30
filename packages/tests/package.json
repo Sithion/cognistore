@@ -7,8 +7,9 @@
     "test": "npx playwright test",
     "test:e2e": "npx playwright test --grep @e2e",
     "test:load": "npx playwright test --grep @load",
-    "test:perf": "npx playwright test --grep @perf",
-    "build": "echo 'No build needed for test package'"
+    "test:perf": "PERF=1 npx playwright test --project performance --grep @perf --workers=1",
+    "build": "echo 'No build needed for test package'",
+    "type-check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@cognistore/core": "workspace:*",
@@ -23,6 +24,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "zod": "^4.6.6",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "sqlite-vec": "^0.1.7"
   }
 }

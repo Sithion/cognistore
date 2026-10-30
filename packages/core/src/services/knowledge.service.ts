@@ -25,26 +25,38 @@ import { computeMergedTags, validateMergeDraft } from './cleanup-merge.js';
 import { walkAncestors, deriveRoot, isDescendant, buildChain, collectDescendants, recomputeSubtreeRoot, type ChainRow } from './plan-lineage.js';
 import { PLAN_CHAIN_MAX_ENTRIES } from '@cognistore/shared';
 import type { PlanChain } from '@cognistore/shared';
+import { contentHash } from '../jobs/content-hash.js';
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
 }
 
 /** Default window for "nobody has retrieved this" (days). */
-export const CLEANUP_UNREAD_DAYS = 180;
+const CLEANUP_UNREAD_DAYS = 180;
 /**
  * Similarity above which two entries are proposed for consolidation. High on
  * purpose: the non-canonical members are deleted, so a false positive costs
  * real knowledge.
  */
-export const CLEANUP_DUP_THRESHOLD = 0.92;
+const CLEANUP_DUP_THRESHOLD = 0.92;
 /**
  * If no read has been recorded in this many days, treat read tracking as not
  * running and suppress unread detection entirely.
  */
-export const CLEANUP_READ_LIVENESS_DAYS = 14;
+const CLEANUP_READ_LIVENESS_DAYS = 14;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function retryEmbeddingWrite<T>(write: () => T): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return write(); }
+    catch (error) {
+      const e = error as Error & { code?: string };
+      if (!(e.code?.startsWith('SQLITE_BUSY') || e.code?.startsWith('SQLITE_LOCKED')) || attempt >= 29) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(100, (attempt + 1) * 10)));
+    }
+  }
+}
 
 /**
  * Domain shapes for the cleanup queue.
@@ -122,11 +134,97 @@ export class KnowledgeService {
     private embeddingProvider: EmbeddingProvider
   ) {}
 
+  // ─── Buffered telemetry writes (plan v2.6, 1A.2 + 1A.3) ─────────
+  // Every search used to INSERT into operations_log (and bump the daily
+  // rollup) and, with trackRead, UPDATE the hits — synchronous writes on the
+  // read path of a database shared with every agent session. Both are now
+  // counted in memory and written in ONE transaction per flush: operations
+  // every 30 s, read marks every 10 s, on close, and before anything in this
+  // process reads them back. Another process sees them up to one interval late.
+
+  private static readonly OPS_FLUSH_MS = 30_000;
+  private static readonly READS_FLUSH_MS = 10_000;
+  /** Flushes wait at most this long for the write lock (timer, exit and stats reads alike). */
+  private static readonly FLUSH_BUSY_MS = 250;
+  /** Operation keys kept across failed flushes; the oldest are dropped past this. */
+  private static readonly MAX_PENDING_OPS = 10_000;
+  /** `${op}|${ISO second}` → count; one raw row per counted op is still written. */
+  private pendingOps = new Map<string, number>();
+  /** entry id → reads since the last flush, and when the latest one happened. */
+  private pendingReads = new Map<string, { count: number; at: string }>();
+  private opsTimer: ReturnType<typeof setTimeout> | null = null;
+  private readsTimer: ReturnType<typeof setTimeout> | null = null;
+
   private logOp(op: 'read' | 'write', count = 1) {
+    // As before buffering: a call always counts at least once (a search with
+    // no hits is still one read on the Activity chart).
+    const n = Math.max(1, count);
+    const key = `${op}|${new Date().toISOString().slice(0, 19)}.000Z`;
+    this.pendingOps.set(key, (this.pendingOps.get(key) ?? 0) + n);
+    this.armOpsTimer();
+  }
+
+  private bufferReads(ids: string[]) {
+    const at = new Date().toISOString();
+    for (const id of ids) this.pendingReads.set(id, { count: (this.pendingReads.get(id)?.count ?? 0) + 1, at });
+    if (!this.readsTimer) {
+      this.readsTimer = setTimeout(() => { this.readsTimer = null; this.flushReads(); }, KnowledgeService.READS_FLUSH_MS);
+      this.readsTimer.unref?.();
+    }
+  }
+
+  private armOpsTimer() {
+    if (this.opsTimer) return;
+    this.opsTimer = setTimeout(() => { this.opsTimer = null; this.flushOperations(); }, KnowledgeService.OPS_FLUSH_MS);
+    this.opsTimer.unref?.();
+  }
+
+  /**
+   * Write the buffered operation counters (one transaction, short lock wait).
+   * A busy database keeps the counts for the next flush instead of blocking
+   * the caller (a stats request, the timer, process exit) for the full
+   * connection busy_timeout.
+   */
+  flushOperations(): void {
+    if (this.pendingOps.size === 0) return;
+    const pending = this.pendingOps;
+    const batch = Array.from(pending, ([key, count]) => {
+      const [operation, createdAt] = key.split('|');
+      return { operation: operation as 'read' | 'write', createdAt, count };
+    });
+    this.pendingOps = new Map();
     try {
-      if (count <= 1) this.repository.logOperation(op);
-      else this.repository.logOperationBatch(op, count);
-    } catch { /* silent */ }
+      this.repository.logOperationsBuffered(batch, KnowledgeService.FLUSH_BUSY_MS);
+    } catch {
+      // Merge back under anything counted meanwhile; bounded, oldest keys go first.
+      for (const [key, count] of this.pendingOps) pending.set(key, (pending.get(key) ?? 0) + count);
+      for (const key of pending.keys()) {
+        if (pending.size <= KnowledgeService.MAX_PENDING_OPS) break;
+        pending.delete(key);
+      }
+      this.pendingOps = pending;
+      this.armOpsTimer();
+    }
+  }
+
+  /** Write the buffered read marks (one transaction, short lock wait); a busy database drops them. */
+  flushReads(): void {
+    if (this.pendingReads.size === 0) return;
+    const batch = Array.from(this.pendingReads, ([id, r]) => ({ id, count: r.count, at: r.at }));
+    this.pendingReads.clear();
+    try { this.repository.markReadBatch(batch, KnowledgeService.FLUSH_BUSY_MS); } catch { /* best-effort signal */ }
+  }
+
+  /** Flush both buffers now (close, process exit, tests). */
+  flushPendingWrites(): void {
+    this.flushOperations();
+    this.flushReads();
+  }
+
+  /** Cancel the flush timers (the owner is closing the database). */
+  stopPendingWriteTimers(): void {
+    if (this.opsTimer) { clearTimeout(this.opsTimer); this.opsTimer = null; }
+    if (this.readsTimer) { clearTimeout(this.readsTimer); this.readsTimer = null; }
   }
 
   private buildEmbeddingText(title: string, content: string, tags: string[]): string {
@@ -198,15 +296,12 @@ export class KnowledgeService {
     // search) pass trackRead. Internal scans and browsing must not mark, or
     // nothing would ever qualify as unread.
     //
-    // Deferred off the response path on purpose: better-sqlite3 is synchronous
+    // Buffered off the response path on purpose: better-sqlite3 is synchronous
     // and a contended write (the MCP server and the sidecar share this DB) would
     // otherwise stall the caller for up to busy_timeout. Do NOT "fix" this into
-    // an inline await. Best-effort: a lost mark only delays a cleanup candidate.
+    // an inline write. Best-effort: a lost mark only delays a cleanup candidate.
     if (options?.trackRead && results.length > 0) {
-      const readIds = results.map((r) => r.entry.id);
-      setImmediate(() => {
-        try { this.repository.markRead(readIds); } catch { /* best-effort */ }
-      });
+      this.bufferReads(results.map((r) => r.entry.id));
     }
     const direct: SearchResult[] = results.map((r) => ({
       entry: this.toKnowledgeEntry(r.entry),
@@ -317,102 +412,169 @@ export class KnowledgeService {
     return entries.map((e) => this.toKnowledgeEntry(e));
   }
 
-  /**
-   * Re-embed all knowledge entries and plans with the current embedding provider.
-   * Used when switching embedding models (e.g. all-minilm 384d → nomic-embed-text 768d).
-   * Assumes vec tables have already been dropped and recreated with new dimensions.
-   */
-  async reembedAll(): Promise<number> {
+  /** Re-embed all records through bounded, cancellation-aware worker dispatch. */
+  async reembedAll(opts?: {
+    signal?: AbortSignal;
+    checkpoint?: (phase: 'knowledge' | 'plans', done: number, total: number) => Promise<void>;
+  }): Promise<number> {
     let count = 0;
-
-    // Re-embed knowledge entries
-    const entries = await this.repository.listAll();
-    for (const entry of entries) {
-      try {
-        const tags = Array.isArray(entry.tags) ? entry.tags : JSON.parse(entry.tags ?? '[]');
-        const text = this.buildEmbeddingText(entry.title, entry.content, tags);
-        const embedding = await this.embeddingProvider.embed(text);
-        try { this.repository.insertEmbeddingById(entry.id, embedding); } catch { /* may already exist */ }
-        count++;
-      } catch (e) {
-        console.warn(`[CogniStore] Re-embed failed for entry ${entry.id}:`, e);
+    const coverage = this.repository.embeddingCoverage();
+    const totalEntries = coverage.entries;
+    const totalPlans = coverage.plans;
+    try { for (const phase of ['knowledge', 'plans'] as const) {
+      if (opts?.signal?.aborted) break;
+      let cursor = '';
+      let done = 0;
+      const total = phase === 'knowledge' ? totalEntries : totalPlans;
+      let lastCheckpoint = Date.now();
+      if (opts?.checkpoint) await opts.checkpoint(phase, 0, total);
+      const ready: { id: string; updatedAt: string; embedding: number[] }[] = [];
+      while (!opts?.signal?.aborted) {
+        const page = phase === 'knowledge'
+          ? this.repository.listKnowledgeEmbeddingPage(cursor, 250)
+          : this.repository.listPlanEmbeddingPage(cursor, 250);
+        if (!page.length) break;
+        for (const item of page) {
+          if (opts?.signal?.aborted) break;
+          cursor = item.id;
+          try {
+            if (phase === 'knowledge') {
+              const row = this.repository.getKnowledgeEntryForEmbedding(item.id);
+              if (row && row.updatedAt === item.updatedAt) {
+                const tags = Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]');
+                const embedding = await this.embeddingProvider.embed(this.buildEmbeddingText(row.title, row.content, tags));
+                ready.push({ id: item.id, updatedAt: item.updatedAt, embedding });
+              }
+            } else {
+              const row = this.repository.getPlanForEmbedding(item.id);
+              if (row && row.updatedAt === item.updatedAt) {
+                const embedding = await this.embeddingProvider.embed(`${row.title} ${row.content}`);
+                ready.push({ id: item.id, updatedAt: item.updatedAt, embedding });
+              }
+            }
+          } catch (error) { console.warn(`[CogniStore] Re-embed failed for ${phase} ${item.id}:`, error); }
+          done++;
+          if (opts?.checkpoint && Date.now() - lastCheckpoint >= 50) {
+            lastCheckpoint = Date.now();
+            try { await opts.checkpoint(phase, done, total); }
+            catch (error) { if (opts?.signal?.aborted) break; throw error; }
+          }
+        }
       }
-    }
-
-    // Re-embed plans
-    const plans = this.repository.listAllPlans();
-    for (const plan of plans) {
-      try {
-        const embedding = await this.embeddingProvider.embed(`${plan.title} ${plan.content}`);
-        try { this.repository.insertPlanEmbeddingById(plan.id, embedding); } catch { /* may already exist */ }
-        count++;
-      } catch (e) {
-        console.warn(`[CogniStore] Re-embed failed for plan ${plan.id}:`, e);
+      while (ready.length) {
+        const batch = ready.splice(0, 25);
+        try {
+          count += await retryEmbeddingWrite(() => phase === 'knowledge'
+            ? this.repository.publishKnowledgeEmbeddingBatch(batch)
+            : this.repository.publishPlanEmbeddingBatch(batch));
+        } catch (error) {
+          done += batch.length;
+          console.warn(`[CogniStore] Re-embed publish failed for ${phase}:`, error);
+        }
       }
+      if (opts?.checkpoint && done === total) await opts.checkpoint(phase, total, total);
+    } } finally {
+      if (count) await retryEmbeddingWrite(() => this.repository.invalidateDuplicateScan());
     }
-
+    if (opts?.signal?.aborted) throw Object.assign(new Error('Embedding job cancelled'), { code: 'ABORT_ERR' });
     return count;
   }
 
-  /**
-   * Incremental, resumable embedding backfill — the opposite of reembedAll():
-   * embeds only ids missing a vector (LEFT JOIN, symmetric over both tables,
-   * including type='system'), never drops a table, and yields the event loop
-   * after every item. A failed id simply stays in the missing set — that IS
-   * the resumability, there is no cursor to corrupt.
-   */
+  /** Repair missing vectors without dropping tables; failures remain resumable. */
   async embedMissing(opts?: {
     signal?: AbortSignal;
-    onProgress?: (p: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number }) => void;
-  }): Promise<{ embedded: number; failed: number; remaining: number }> {
+    onProgress?: (progress: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number }) => void;
+    workerProgress?: (progress: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number }) => Promise<void>;
+    checkpoint?: (phase: 'knowledge' | 'plans', done: number, total: number, failed: number) => Promise<void>;
+  }): Promise<{ embedded: number; failed: number; remaining: number; cancelled: boolean }> {
     let embedded = 0;
     let failed = 0;
-
-    const missingEntries = this.repository.listMissingKnowledgeEmbeddingIds();
-    let done = 0;
-    for (const { id, updatedAt } of missingEntries) {
+    const totals = this.repository.embeddingCoverage();
+    let changed = false;
+    for (const phase of ['knowledge', 'plans'] as const) {
       if (opts?.signal?.aborted) break;
-      try {
-        const row = this.repository.getKnowledgeEntryRaw(id);
-        if (!row) { done++; continue; }
-        // Skip if edited since the scan — never overwrite newer content with a stale embedding.
-        if (row.updatedAt !== updatedAt) { done++; continue; }
-        const tags = Array.isArray((row as any).tags) ? (row as any).tags : JSON.parse(row.tags ?? '[]');
-        const text = this.buildEmbeddingText(row.title, row.content, tags);
-        const embedding = await this.embeddingProvider.embed(text);
-        this.repository.upsertEmbeddingById(id, embedding);
-        embedded++;
-      } catch (e) {
-        failed++;
-        console.warn(`[CogniStore] embedMissing failed for entry ${id}:`, e);
+      let cursor = '';
+      let done = 0;
+      let lastCheckpoint = Date.now();
+      const ready: { id: string; updatedAt: string; embedding: number[] }[] = [];
+      // The total describes the initial missing set for this phase.
+      const total = phase === 'knowledge' ? totals.missingEntries : totals.missingPlans;
+      const emitProgress = async () => {
+        const progress = { phase, done, total, failed };
+        opts?.onProgress?.(progress);
+        await opts?.workerProgress?.(progress);
+      };
+      try { await emitProgress(); }
+      catch (error) { if (opts?.signal?.aborted) break; throw error; }
+      while (!opts?.signal?.aborted) {
+        const page = phase === 'knowledge'
+          ? this.repository.listMissingKnowledgeEmbeddingPage(cursor, 250)
+          : this.repository.listMissingPlanEmbeddingPage(cursor, 250);
+        if (!page.length) break;
+        for (const item of page) {
+          if (opts?.signal?.aborted) break;
+          cursor = item.id;
+          try {
+            if (phase === 'knowledge') {
+              const row = this.repository.getKnowledgeEntryForEmbedding(item.id);
+              if (row && row.updatedAt === item.updatedAt) {
+                const tags = Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]');
+                const embedding = await this.embeddingProvider.embed(this.buildEmbeddingText(row.title, row.content, tags));
+                if (opts?.signal?.aborted) {
+                  ready.push({ id: item.id, updatedAt: item.updatedAt, embedding });
+                  break;
+                }
+                ready.push({ id: item.id, updatedAt: item.updatedAt, embedding });
+              }
+            } else {
+              const row = this.repository.getPlanForEmbedding(item.id);
+              if (row && row.updatedAt === item.updatedAt) {
+                const embedding = await this.embeddingProvider.embed(`${row.title} ${row.content}`);
+                if (opts?.signal?.aborted) {
+                  ready.push({ id: item.id, updatedAt: item.updatedAt, embedding });
+                  break;
+                }
+                ready.push({ id: item.id, updatedAt: item.updatedAt, embedding });
+              }
+            }
+          } catch (error) {
+            failed++;
+            console.warn(`[CogniStore] embedMissing failed for ${phase} ${item.id}:`, error);
+          }
+          done++;
+          if (ready.length >= 25) {
+            const batch = ready.splice(0, 25);
+            try {
+              embedded += await retryEmbeddingWrite(() => phase === 'knowledge'
+                ? this.repository.publishKnowledgeEmbeddingBatch(batch)
+                : this.repository.publishPlanEmbeddingBatch(batch));
+              changed ||= embedded > 0;
+            } catch { failed += batch.length; }
+          }
+          try { await emitProgress(); }
+          catch (error) { if (opts?.signal?.aborted) { done++; break; } throw error; }
+          if (opts?.checkpoint && Date.now() - lastCheckpoint >= 50) {
+            lastCheckpoint = Date.now();
+            try { await opts.checkpoint(phase, done, total, failed); }
+            catch (error) { if (opts?.signal?.aborted) break; throw error; }
+          } else if (!opts?.checkpoint) {
+            await new Promise((resolve) => setImmediate(resolve));
+          }
+        }
       }
-      done++;
-      opts?.onProgress?.({ phase: 'knowledge', done, total: missingEntries.length, failed });
-      await new Promise((r) => setImmediate(r));
-    }
-
-    const missingPlans = opts?.signal?.aborted ? [] : this.repository.listMissingPlanEmbeddingIds();
-    done = 0;
-    for (const { id, updatedAt } of missingPlans) {
-      if (opts?.signal?.aborted) break;
-      try {
-        const plan = this.repository.getPlanRaw(id);
-        if (!plan) { done++; continue; }
-        if (plan.updatedAt !== updatedAt) { done++; continue; }
-        const embedding = await this.embeddingProvider.embed(`${plan.title} ${plan.content}`);
-        this.repository.upsertPlanEmbeddingById(id, embedding);
-        embedded++;
-      } catch (e) {
-        failed++;
-        console.warn(`[CogniStore] embedMissing failed for plan ${id}:`, e);
+      if (ready.length) {
+        const batch = ready.splice(0);
+        try {
+          embedded += await retryEmbeddingWrite(() => phase === 'knowledge'
+            ? this.repository.publishKnowledgeEmbeddingBatch(batch)
+            : this.repository.publishPlanEmbeddingBatch(batch));
+          changed ||= embedded > 0;
+        } catch { failed += batch.length; }
       }
-      done++;
-      opts?.onProgress?.({ phase: 'plans', done, total: missingPlans.length, failed });
-      await new Promise((r) => setImmediate(r));
     }
-
+    if (changed) await retryEmbeddingWrite(() => this.repository.invalidateDuplicateScan());
     const coverage = this.repository.embeddingCoverage();
-    return { embedded, failed, remaining: coverage.missingEntries + coverage.missingPlans };
+    return { embedded, failed, remaining: coverage.missingEntries + coverage.missingPlans, cancelled: !!opts?.signal?.aborted };
   }
 
   async embeddingCoverage() {
@@ -446,37 +608,93 @@ export class KnowledgeService {
     return { deleted, errors };
   }
 
-  async importKnowledge(entries: CreateKnowledgeInput[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importKnowledge(entries: CreateKnowledgeInput[], options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     let imported = 0;
     let skipped = 0;
     const errors: string[] = [];
 
-    // Build hash set of existing entries for duplicate detection
-    const existing = await this.repository.listAll();
-    const existingHashes = new Set<string>();
-    for (const e of existing) {
-      const hash = this.hashContent((e.title ?? '') + e.content);
-      existingHashes.add(hash);
-    }
-
-    for (const entry of entries) {
+    await this.hashBackfill({ signal: options.signal });
+    const batchHashes = new Set<string>();
+    const pending: { input: CreateKnowledgeInput; embedding: number[]; hash: string; index: number }[] = [];
+    const finalize = async () => {
+      if (!pending.length) return;
+      const chunk = pending.splice(0, pending.length);
+      let outcomes = await retryEmbeddingWrite(() => this.repository.finalizeKnowledgeImportBatch(chunk.map(({ input, embedding, hash }) => ({ input, embedding, hash }))));
+      let restarts = 0;
+      while (outcomes.includes('null-hash') && restarts < 5) {
+        await this.hashBackfill({ signal: options.signal });
+        outcomes = await retryEmbeddingWrite(() => this.repository.finalizeKnowledgeImportBatch(chunk.map(({ input, embedding, hash }) => ({ input, embedding, hash }))));
+        restarts++;
+      }
+      for (let i = 0; i < chunk.length; i++) {
+        const { input, index } = chunk[i];
+        if (outcomes[i] === 'null-hash') errors.push(`Failed to import "${input.title}": NULL content hashes kept appearing`);
+        else if (outcomes[i] === 'duplicate') skipped++;
+        else { imported++; this.logOp('write'); }
+        await options.checkpoint?.(index + 1, entries.length);
+      }
+    };
+    for (let index = 0; index < entries.length; index++) {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      const entry = entries[index];
       try {
-        const hash = this.hashContent((entry.title ?? '') + entry.content);
-        if (existingHashes.has(hash)) {
+        const hash = contentHash(entry.title ?? '', entry.content);
+        if (batchHashes.has(hash)) {
           skipped++;
+          await options.checkpoint?.(index + 1, entries.length);
           continue;
         }
+        batchHashes.add(hash);
         const tagsText = entry.tags.join(' ');
         const embedding = await this.embeddingProvider.embed(tagsText);
-        await this.repository.create({ ...entry, embedding });
-        existingHashes.add(hash);
-        imported++;
-        this.logOp('write');
+        pending.push({ input: { ...entry, type: entry.type === 'system' ? ('pattern' as CreateKnowledgeInput['type']) : entry.type, source: entry.source || 'import' }, embedding, hash, index });
+        if (pending.length === 25) await finalize();
       } catch (err) {
         errors.push(`Failed to import "${entry.title}": ${err instanceof Error ? err.message : String(err)}`);
       }
+      if (!pending.length) await options.checkpoint?.(index + 1, entries.length);
     }
+    await finalize();
     return { imported, skipped, errors };
+  }
+
+  async hashBackfill(options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ changes: number }> {
+    let repaired = 0;
+    let afterId = '';
+    let done = 0;
+    const total = this.repository.countNullContentHashes();
+    let restartPasses = 0;
+    for (;;) {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      const page = this.repository.listNullContentHashPage(afterId, 250);
+      if (!page.length) {
+        if (this.repository.hasNullContentHash() && restartPasses < 5) {
+          afterId = '';
+          restartPasses++;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          await options.checkpoint?.(done, total);
+          continue;
+        }
+        break;
+      }
+      const hashes = page.map((row) => ({ row, hash: contentHash(row.title, row.content) }));
+      const changes = await retryEmbeddingWrite(() => this.repository.publishContentHashPage(hashes));
+      repaired += changes;
+      done += changes;
+      afterId = page[page.length - 1].id;
+      await options.checkpoint?.(done, total);
+      if (page.length < 250) {
+        if (this.repository.hasNullContentHash() && restartPasses < 5) {
+          afterId = '';
+          restartPasses++;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
+        if (this.repository.hasNullContentHash()) break;
+        break;
+      }
+    }
+    return { changes: repaired };
   }
 
   private hashContent(text: string): string {
@@ -672,7 +890,8 @@ export class KnowledgeService {
    * The user approves each candidate individually; these methods just describe
    * what could be removed.
    */
-  async generateCleanupReport(opts: { unreadDays?: number; dupThreshold?: number } = {}) {
+  async generateCleanupReport(opts: { unreadDays?: number; dupThreshold?: number } = {}, duplicateGroups?: Awaited<ReturnType<KnowledgeRepository['findDuplicateGroups']>>) {
+    this.flushReads(); // unread detection reads last_read_at
     const unreadDays = opts.unreadDays ?? CLEANUP_UNREAD_DAYS;
     const dupThreshold = opts.dupThreshold ?? CLEANUP_DUP_THRESHOLD;
 
@@ -716,7 +935,7 @@ export class KnowledgeService {
     // (c) near-duplicate groups to consolidate into the newest member.
     let groupCount = 0;
     let groupMemberTotal = 0;
-    const groups = await this.repository.findDuplicateGroups({ threshold: dupThreshold });
+    const groups = duplicateGroups ?? await this.repository.findDuplicateGroups({ threshold: dupThreshold });
     for (const g of groups) {
       // An entry already queued for deletion must not also be merged. Drop it
       // from the group; a group that falls below two members is not a group.
@@ -1053,9 +1272,39 @@ export class KnowledgeService {
     }
   }
 
-  /** (Re)populate the FTS5 index if it's empty but entries exist. Returns rows indexed. */
-  backfillFtsIfNeeded(): number {
-    return this.repository.backfillFtsIfNeeded();
+  async ftsBackfill(options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ changes: number }> {
+    const total = this.repository.countMissingFts();
+    let done = 0;
+    let changes = 0;
+    let lastCheckpoint = Date.now();
+    const checkpoint = async (force = false) => {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      if (force || Date.now() - lastCheckpoint >= 50) {
+        lastCheckpoint = Date.now();
+        await options.checkpoint?.(done, total);
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      }
+    };
+    await checkpoint(true);
+    for (let pass = 0; pass < 3; pass++) {
+      let afterRowid = 0;
+      for (;;) {
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+        const page = this.repository.listFtsCoveragePage(afterRowid, 250);
+        if (!page.length) break;
+        afterRowid = page[page.length - 1].rowid;
+        const repaired = await retryEmbeddingWrite(() => this.repository.repairFtsIds(page.map((row) => row.id)));
+        changes += repaired;
+        done += repaired;
+        await options.checkpoint?.(done, total);
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+        if (Date.now() - lastCheckpoint >= 50) await checkpoint();
+        if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      }
+      if (this.repository.countMissingFts() === 0) break;
+    }
+    await checkpoint(true);
+    return { changes };
   }
 
   async getStats() {
@@ -1401,7 +1650,7 @@ export class KnowledgeService {
     return this.repository.archiveStaleDrafts(maxAgeHours);
   }
 
-  async importPlans(plans: (CreatePlanInput & { tasks?: { description: string; status?: string; priority?: string; notes?: string | null }[] })[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importPlans(plans: (CreatePlanInput & { tasks?: { description: string; status?: string; priority?: string; notes?: string | null }[] })[], options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     let imported = 0;
     let skipped = 0;
     const errors: string[] = [];
@@ -1413,6 +1662,7 @@ export class KnowledgeService {
     }
 
     for (const plan of plans) {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
       try {
         const hash = this.hashContent(plan.title + plan.content);
         if (existingHashes.has(hash)) {
@@ -1444,6 +1694,7 @@ export class KnowledgeService {
       } catch (err) {
         errors.push(`Failed to import plan "${plan.title}": ${err instanceof Error ? err.message : String(err)}`);
       }
+      await options.checkpoint?.(imported + skipped + errors.length, plans.length);
     }
     return { imported, skipped, errors };
   }
@@ -1563,10 +1814,12 @@ export class KnowledgeService {
   // ─── Operations ─────────────────────────────────────────────
 
   getOperationCounts() {
+    this.flushOperations();
     return this.repository.getOperationCounts();
   }
 
   getOperationsByDay(days: number = 15) {
+    this.flushOperations();
     return this.repository.getOperationsByDay(days);
   }
 
@@ -1575,10 +1828,12 @@ export class KnowledgeService {
   }
 
   reconcileOperationsDaily() {
+    this.flushOperations();
     return this.repository.reconcileOperationsDaily();
   }
 
   cleanupOldOperations() {
+    this.flushOperations();
     return this.repository.cleanupOldOperations();
   }
 

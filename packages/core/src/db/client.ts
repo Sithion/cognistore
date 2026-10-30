@@ -4,8 +4,9 @@ import * as sqliteVec from 'sqlite-vec';
 import { DEFAULT_SQLITE_PATH, DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
 import * as schema from './schema/index.js';
 import { createEmbeddingsTable } from './schema/sqlite-vec.js';
-import { createKnowledgeFtsTable, ftsCount, insertFts } from './schema/fts.js';
+import { createKnowledgeFtsTable } from './schema/fts.js';
 import { runMigrations, runSeeds } from './migrate.js';
+import { contentHash } from '../jobs/content-hash.js';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -30,9 +31,26 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
   mkdirSync(dirname(resolvedPath), { recursive: true });
 
   const sqlite = new BetterSqlite3(resolvedPath);
-  sqlite.pragma('journal_mode = WAL');
+  sqlite.function('cognistore_content_hash', (title: string, content: string) => contentHash(title, content));
   sqlite.pragma('busy_timeout = 5000');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      sqlite.pragma('journal_mode = WAL');
+      break;
+    } catch (error: any) {
+      if (error?.code !== 'SQLITE_BUSY' || attempt >= 49) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
   sqlite.pragma('foreign_keys = ON');
+  // Per-connection tuning (plan v2.6, 1A.1). NORMAL is durable with WAL: a
+  // power cut can lose the last commits, never corrupt the file. The sidecar
+  // and every MCP server go through here, so all connections match.
+  sqlite.pragma('synchronous = NORMAL');
+  sqlite.pragma('cache_size = -32000'); // 32 MB page cache
+  sqlite.pragma('mmap_size = 268435456'); // 256 MB of memory-mapped reads
+  sqlite.pragma('temp_store = MEMORY');
+  sqlite.pragma('journal_size_limit = 67108864'); // truncate the WAL back to 64 MB after checkpoints
 
   // Load sqlite-vec extension
   sqliteVec.load(sqlite);
@@ -53,13 +71,11 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
   createEmbeddingsTable(sqlite, dims);
   createPlansEmbeddingsTable(sqlite, dims);
 
-  // Ensure the FTS5 index exists (idempotent) and backfill it once if empty but
-  // entries already exist (e.g. existing DB upgrading to the FTS migration).
+  // Ensure the standalone FTS5 table exists. Full content repair runs in a worker.
   // Also ensure created_at indexes for fast ORDER BY created_at DESC LIMIT/OFFSET
   // (browse/infinite-scroll). All idempotent + best-effort — never block launch.
   try {
     createKnowledgeFtsTable(sqlite);
-    backfillFtsIfEmpty(sqlite);
     sqlite.exec('CREATE INDEX IF NOT EXISTS idx_knowledge_created_at ON knowledge_entries(created_at)');
     sqlite.exec('CREATE INDEX IF NOT EXISTS idx_plans_created_at ON plans(created_at)');
   } catch {
@@ -68,21 +84,6 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
 
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
-}
-
-function backfillFtsIfEmpty(sqlite: BetterSqlite3.Database): void {
-  if (ftsCount(sqlite) > 0) return;
-  const rows = sqlite
-    .prepare("SELECT id, title, content, tags FROM knowledge_entries WHERE type != 'system'")
-    .all() as { id: string; title: string; content: string; tags: string }[];
-  for (const r of rows) {
-    let tags = '';
-    try {
-      const parsed = JSON.parse(r.tags ?? '[]');
-      tags = Array.isArray(parsed) ? parsed.filter(Boolean).join(' ') : '';
-    } catch { tags = ''; }
-    try { insertFts(sqlite, { id: r.id, title: r.title ?? '', content: r.content ?? '', tags }); } catch { /* best-effort */ }
-  }
 }
 
 function createPlansEmbeddingsTable(sqlite: BetterSqlite3.Database, dimensions = DEFAULT_EMBEDDING_DIMENSIONS): void {

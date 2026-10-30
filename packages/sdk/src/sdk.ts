@@ -12,6 +12,12 @@ import {
   type ScanResult,
   type CleanupReport,
   type CleanupCandidate,
+  type JobKind,
+  type JobPayloads,
+  type JobResults,
+  JobRunner,
+  type DuplicateJobOptions,
+  duplicateFingerprint,
 } from '@cognistore/core';
 import { OllamaEmbeddingClient, checkOllamaHealth } from '@cognistore/embeddings';
 import {
@@ -19,7 +25,6 @@ import {
   updateKnowledgeSchema,
   searchOptionsSchema,
   createPlanSchema,
-  updatePlanSchema,
   type CreateKnowledgeInput,
   type UpdateKnowledgeInput,
   type SearchOptions,
@@ -34,10 +39,12 @@ import {
   type SDKConfig,
   type FederatedSearchResult,
 } from '@cognistore/shared';
-import { loadProviders, ProviderManager, EnvSecretStore, FileTokenStore, resolveProviderPolicy } from '@cognistore/providers';
-import { dirname, join } from 'node:path';
+import { loadProviders, type ProviderManager, EnvSecretStore, FileTokenStore, resolveProviderPolicy } from '@cognistore/providers';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { homedir } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { resolveConfig } from './config.js';
 import { ConnectionError, EmbeddingError, ValidationError } from './errors.js';
 
@@ -46,6 +53,7 @@ function expandHome(p: string): string {
 }
 
 export class KnowledgeSDK {
+  static maintenanceRunning = false;
   private config: SDKConfig;
   private db: Database | null = null;
   private sqlite: SQLiteDatabase | null = null;
@@ -55,6 +63,25 @@ export class KnowledgeSDK {
   private providerManager: ProviderManager | null = null;
   private alwaysExternal = false;
   private initialized = false;
+  private ftsRepair: Promise<void> = Promise.resolve();
+  private jobs?: JobRunner;
+  private duplicateCache = new Map<string, { fingerprint: string; result: unknown[] }>();
+  private duplicateInFlight = new Map<string, Promise<any[]>>();
+  private ownedExports = new Set<string>();
+
+  private getJobRunner(): JobRunner {
+    if (this.jobs) return this.jobs;
+    this.jobs = new JobRunner({
+      workerUrl: new URL('./jobs/worker.js', import.meta.url),
+      databasePath: this.getDatabasePath(),
+      embeddingConfig: { host: this.config.ollama.host, model: this.config.ollama.model, dimensions: this.config.ollama.dimensions },
+    });
+    return this.jobs;
+  }
+
+  run<K extends JobKind>(kind: K, payload: JobPayloads[K], options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<JobResults[K]> {
+    return this.getJobRunner().run(kind, payload, options);
+  }
 
   constructor(config?: Partial<SDKConfig>) {
     this.config = resolveConfig(config);
@@ -63,6 +90,46 @@ export class KnowledgeSDK {
       model: this.config.ollama.model,
       dimensions: this.config.ollama.dimensions,
     });
+  }
+
+  getDatabasePath(): string {
+    const path = expandHome(this.config.database.path);
+    return isAbsolute(path) ? path : resolve(path);
+  }
+
+  async enableIncrementalVacuum(workerUrl: URL): Promise<{ alreadyIncremental: boolean; checkpointBusy: boolean }> {
+    return KnowledgeSDK.runMaintenanceWorker(workerUrl, { databasePath: this.getDatabasePath(), operation: 'enable' });
+  }
+
+  async incrementalVacuum(workerUrl: URL, budgetMs = 2000): Promise<void> {
+    if (!Number.isFinite(budgetMs) || budgetMs < 1) throw new ValidationError('budgetMs must be a positive number');
+    await KnowledgeSDK.runMaintenanceWorker(workerUrl, { databasePath: this.getDatabasePath(), operation: 'reclaim', budgetMs });
+  }
+
+  private static async runMaintenanceWorker(workerUrl: URL, data: { databasePath: string; operation: 'enable' | 'reclaim'; budgetMs?: number }): Promise<{ alreadyIncremental: boolean; checkpointBusy: boolean }> {
+    if (KnowledgeSDK.maintenanceRunning) {
+      const error = new Error('Database maintenance is already running; retry shortly.') as Error & { code: string };
+      error.code = 'DATABASE_LOCKED';
+      throw error;
+    }
+    KnowledgeSDK.maintenanceRunning = true;
+    try {
+      const worker = new Worker(workerUrl, { workerData: data });
+      const result = await new Promise<{ ok: boolean; code?: string; message?: string; retryable?: boolean; alreadyIncremental?: boolean; checkpointBusy?: boolean }>((resolve, reject) => {
+        let receivedMessage = false;
+        worker.once('message', (message) => { receivedMessage = true; resolve(message); });
+        worker.once('error', reject);
+        worker.once('exit', (code) => {
+          if (code !== 0 || !receivedMessage) reject(new Error('Vacuum worker exited unexpectedly'));
+        });
+      });
+      await worker.terminate();
+      if (!result.ok) {
+        const error = new Error(result.message ?? 'Vacuum failed') as Error & { code?: string; retryable?: boolean };
+        error.code = result.code; error.retryable = result.retryable; throw error;
+      }
+      return { alreadyIncremental: result.alreadyIncremental === true, checkpointBusy: result.checkpointBusy === true };
+    } finally { KnowledgeSDK.maintenanceRunning = false; }
   }
 
   async initialize(): Promise<void> {
@@ -75,9 +142,11 @@ export class KnowledgeSDK {
         this.db = db;
         this.sqlite = sqlite;
       } catch (error) {
-        throw new ConnectionError(
+        const wrapped = new ConnectionError(
           `Failed to open database: ${error instanceof Error ? error.message : String(error)}`
         );
+        Object.defineProperty(wrapped, 'cause', { value: error, configurable: true });
+        throw wrapped;
       }
 
       // Step 2: Ensure Ollama model is available
@@ -104,6 +173,13 @@ export class KnowledgeSDK {
       this.reloadProviders();
 
       this.initialized = true;
+      if (repository.countMissingFts() > 0) {
+        this.ftsRepair = this.run('ftsBackfill', {}).then(() => undefined, (error) => {
+          if (error?.code !== 'ABORT_ERR' && error?.name !== 'AbortError') {
+            console.warn('FTS background repair failed:', error);
+          }
+        });
+      }
     } catch (error) {
       await this.cleanup();
       throw error;
@@ -111,8 +187,32 @@ export class KnowledgeSDK {
   }
 
   async close(): Promise<void> {
+    const jobs = this.jobs;
+    this.jobs = undefined;
+    await jobs?.close();
+    await Promise.all([...this.ownedExports].map((path) => this.releaseExport(path).catch(() => {})));
+    this.ownedExports.clear();
     await this.cleanup();
     this.initialized = false;
+  }
+
+  /** Resolves when the keyword-index repair started by initialize() has finished (or immediately if none ran). Never rejects. */
+  async waitForFtsRepair(): Promise<void> { await this.ftsRepair; }
+
+  async exportToFile(options: { include: string[]; version: string; exportedAt?: string; signal?: AbortSignal }): Promise<{ path: string; bytes: number }> {
+    this.ensureInitialized();
+    const { signal, ...payload } = options;
+    const result = await this.run('exportToFile', payload, { signal });
+    this.ownedExports.add(result.path);
+    return result;
+  }
+
+  async releaseExport(path: string): Promise<void> {
+    if (!this.ownedExports.has(path)) return;
+    this.ownedExports.delete(path);
+    await rm(path, { force: true });
+    // The job-created parent directory is private to this export as well.
+    await rm(dirname(path), { recursive: true, force: true });
   }
 
   async addKnowledge(input: CreateKnowledgeInput): Promise<KnowledgeEntry> {
@@ -225,7 +325,9 @@ export class KnowledgeSDK {
       if (existing?.type === 'system' && updates.type && updates.type !== 'system') {
         throw new ValidationError('System knowledge type cannot be changed');
       }
-      return await this.service!.update(id, parsed.data as UpdateKnowledgeInput);
+      const updated = await this.service!.update(id, parsed.data as UpdateKnowledgeInput);
+      this.duplicateCache.clear();
+      return updated;
     } catch (error) {
       if (error instanceof ValidationError) throw error;
       throw this.wrapError(error, 'Failed to update knowledge');
@@ -312,10 +414,10 @@ export class KnowledgeSDK {
     }
   }
 
-  async findDuplicatePairs(opts: { threshold?: number; limit?: number } = {}) {
+  async findDuplicatePairs(opts: { threshold?: number; limit?: number; signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}) {
     this.ensureInitialized();
     try {
-      return await this.service!.findDuplicatePairs(opts);
+      return await this.findDuplicates('duplicates.pairs', opts);
     } catch (error) {
       throw this.wrapError(error, 'Failed to find duplicate pairs');
     }
@@ -328,11 +430,12 @@ export class KnowledgeSDK {
   // would give the sidecar two instances on one database file.
 
   async generateCleanupReport(
-    opts: { unreadDays?: number; dupThreshold?: number } = {},
+    opts: { unreadDays?: number; dupThreshold?: number; signal?: AbortSignal } = {},
   ): Promise<{ report: CleanupReport; created: boolean }> {
     this.ensureInitialized();
     try {
-      return await this.service!.generateCleanupReport(opts);
+      const groups = await this.findDuplicates('duplicates.groups', { threshold: opts.dupThreshold, signal: opts.signal });
+      return await this.service!.generateCleanupReport(opts, groups);
     } catch (error) {
       throw this.wrapError(error, 'Failed to generate cleanup report');
     }
@@ -415,13 +518,43 @@ export class KnowledgeSDK {
     }
   }
 
-  async findDuplicateGroups(opts: { threshold?: number; limit?: number } = {}) {
+  async findDuplicateGroups(opts: { threshold?: number; limit?: number; signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}) {
     this.ensureInitialized();
     try {
-      return await this.service!.findDuplicateGroups(opts);
+      return await this.findDuplicates('duplicates.groups', opts);
     } catch (error) {
       throw this.wrapError(error, 'Failed to find duplicate groups');
     }
+  }
+
+  private async findDuplicates(kind: 'duplicates.pairs' | 'duplicates.groups', opts: DuplicateJobOptions & { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<any[]> {
+    const limit = Math.min(500, Math.max(1, Math.floor(opts.limit ?? 100)));
+    const key = `${kind}|${opts.threshold ?? 0.9}|${limit}`;
+    if (opts.signal?.aborted) throw Object.assign(new Error('The operation was aborted'), { code: 'ABORT_ERR' });
+    const inFlight = this.duplicateInFlight.get(key);
+    if (inFlight) return inFlight;
+    const fingerprint = this.currentDuplicateFingerprint(opts.threshold ?? 0.9);
+    const cached = this.duplicateCache.get(key);
+    if (cached?.fingerprint === fingerprint) return cached.result;
+    const promise = this.run(kind, { threshold: opts.threshold, limit }, { signal: opts.signal, onProgress: opts.onProgress }).then((response) => {
+      if (this.currentDuplicateFingerprint(opts.threshold ?? 0.9) === response.fingerprint) {
+        this.duplicateCache.set(key, { fingerprint: response.fingerprint, result: response.result });
+        while (this.duplicateCache.size > 8) this.duplicateCache.delete(this.duplicateCache.keys().next().value!);
+      }
+      return response.result;
+    }).finally(() => this.duplicateInFlight.delete(key));
+    this.duplicateInFlight.set(key, promise);
+    opts.signal?.addEventListener('abort', () => {
+      if (this.duplicateInFlight.get(key) === promise) this.duplicateInFlight.delete(key);
+    }, { once: true });
+    return promise;
+  }
+
+  private currentDuplicateFingerprint(threshold: number): string {
+    if (!this.sqlite) return 'unavailable';
+    try {
+      return duplicateFingerprint(this.sqlite, threshold);
+    } catch { return `${threshold}|unavailable`; }
   }
 
   async countByType(opts: { from?: string; to?: string } = {}) {
@@ -496,19 +629,19 @@ export class KnowledgeSDK {
     }
   }
 
-  async importKnowledge(entries: CreateKnowledgeInput[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importKnowledge(entries: CreateKnowledgeInput[], options: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     this.ensureInitialized();
     try {
-      return await this.service!.importKnowledge(entries);
+      return await this.getJobRunner().run('importKnowledge', { entries }, options);
     } catch (error) {
       throw this.wrapError(error, 'Failed to import knowledge');
     }
   }
 
-  async importPlans(plans: any[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importPlans(plans: any[], options: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     this.ensureInitialized();
     try {
-      return await this.service!.importPlans(plans);
+      return await this.getJobRunner().run('importPlans', { plans }, options);
     } catch (error) {
       throw this.wrapError(error, 'Failed to import plans');
     }
@@ -640,9 +773,10 @@ export class KnowledgeSDK {
    * Re-embed all knowledge entries and plans with the current embedding model.
    * Used during upgrade when switching embedding models (dimensions change).
    */
-  async reembedAll(): Promise<number> {
+  async reembedAll(opts?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<number> {
     this.ensureInitialized();
-    return this.service!.reembedAll();
+    try { return await this.run('reembedAll', {}, opts); }
+    finally { this.duplicateCache.clear(); }
   }
 
   /**
@@ -653,9 +787,14 @@ export class KnowledgeSDK {
   async embedMissing(opts?: {
     signal?: AbortSignal;
     onProgress?: (p: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number }) => void;
-  }): Promise<{ embedded: number; failed: number; remaining: number }> {
+  }): Promise<{ embedded: number; failed: number; remaining: number; cancelled: boolean }> {
     this.ensureInitialized();
-    return this.service!.embedMissing(opts);
+    try {
+      return await this.run('embedMissing', {}, {
+        signal: opts?.signal,
+        onProgress: opts?.onProgress as ((progress: unknown) => void) | undefined,
+      });
+    } finally { this.duplicateCache.clear(); }
   }
 
   async embeddingCoverage() {
@@ -695,6 +834,17 @@ export class KnowledgeSDK {
   async scanTokenUsage(): Promise<ScanResult> {
     this.ensureInitialized();
     return this.tokenService!.scan();
+  }
+
+  pruneTokenUsageBefore(cutoff: string, opts?: { signal?: AbortSignal }): Promise<number> {
+    this.ensureInitialized();
+    if (KnowledgeSDK.maintenanceRunning) {
+      const error = new Error('Database maintenance is already running; retry shortly.') as Error & { code: string };
+      error.code = 'DATABASE_LOCKED';
+      return Promise.reject(error);
+    }
+    KnowledgeSDK.maintenanceRunning = true;
+    return this.tokenService!.pruneBefore(cutoff, opts).finally(() => { KnowledgeSDK.maintenanceRunning = false; });
   }
 
   getTokenUsage(filter: TokenUsageFilter): TokenUsageAggregates {
@@ -775,6 +925,33 @@ export class KnowledgeSDK {
     this.sqlite!.pragma('wal_checkpoint(PASSIVE)');
   }
 
+  /**
+   * Instrument this SDK's database handle with a perf monitor (plan v2.6,
+   * 1A.7). Call after `initialize()`; no-op before it.
+   */
+  attachPerfMonitor(monitor: { attach(sqlite: SQLiteDatabase): void }): void {
+    if (this.sqlite) monitor.attach(this.sqlite);
+  }
+
+  /**
+   * `PRAGMA optimize`: refresh query-planner statistics where SQLite thinks they
+   * are stale. Cheap when nothing changed; run on close and by the sidecar's
+   * 6-hour maintenance (plan v2.6, 1A.1).
+   */
+  optimize(): void {
+    this.ensureInitialized();
+    this.sqlite!.pragma('optimize');
+  }
+
+  /**
+   * Write the buffered operation counters and read marks now (plan v2.6,
+   * 1A.2/1A.3). Synchronous, so it is safe in a process 'exit' handler.
+   * No-op when not initialized.
+   */
+  flushPendingWrites(): void {
+    try { this.service?.flushPendingWrites(); } catch { /* best-effort */ }
+  }
+
   private ensureInitialized(): void {
     if (!this.initialized || !this.service) {
       throw new ConnectionError('SDK not initialized. Call initialize() first.');
@@ -782,13 +959,20 @@ export class KnowledgeSDK {
   }
 
   private async cleanup(): Promise<void> {
+    const jobs = this.jobs;
+    this.jobs = undefined;
+    await jobs?.close();
     if (this.sqlite) {
+      this.flushPendingWrites();
+      this.service?.stopPendingWriteTimers();
+      try { this.sqlite.pragma('optimize'); } catch { /* read-only or busy: skip */ }
       try {
         this.sqlite.close();
       } catch {
         // Ignore cleanup errors
       }
       this.sqlite = null;
+      this.duplicateCache.clear();
     }
     this.db = null;
     this.service = null;
@@ -827,13 +1011,14 @@ export class KnowledgeSDK {
       `);
 
       // Re-embed all entries with new dimensions
-      const repository = new KnowledgeRepository(this.db!, this.sqlite!);
-      const tempService = new KnowledgeService(repository, this.ollamaClient);
-      const count = await tempService.reembedAll();
+      const count = await this.run('reembedAll', {});
+      this.duplicateCache.clear();
       console.error(`[CogniStore] Re-embedded ${count} entries at ${targetDims} dimensions`);
     } catch (error) {
       // Non-fatal: if migration fails, existing search still works (just with old dims)
       console.error(`[CogniStore] Dimension migration failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.duplicateCache.clear();
     }
   }
 

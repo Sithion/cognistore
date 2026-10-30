@@ -1,0 +1,5 @@
+# Pinned toolchain for the Tauri shell (plan v2.6, T.11). The CI `rust` job
+# builds with exactly this; >= 1.90 is required by the current dependency set.
+[toolchain]
+channel = "1.97.0"
+profile = "minimal"

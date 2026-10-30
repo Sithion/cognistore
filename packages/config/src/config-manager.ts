@@ -38,6 +38,15 @@ export interface McpSetupResult {
   path: string;
 }
 
+/**
+ * Uninstall options for files setup may have created from nothing. The caller
+ * tracks that fact (the sidecar records it in settings.json when an inject
+ * reports `created`); without it a file is never deleted, only cleaned.
+ */
+export interface RemoveConfigOptions {
+  fileCreatedBySetup?: boolean;
+}
+
 export interface McpRemoveResult {
   removed: boolean;
   path: string;
@@ -147,13 +156,15 @@ export class ConfigManager {
       await writeFile(targetPath, content + '\n' + template, 'utf-8');
       return { action: 'appended', path: targetPath };
     }
-    const newContent =
-      content.substring(0, beginIdx) +
-      template +
-      // activeEnd, NOT MARKER_END: when migrating an OLD marker block the two
-      // differ in length, and using the new one left the last characters of the
-      // old end-marker stranded in the user's file.
-      content.substring(endIdx + activeEnd.length);
+    // activeEnd, NOT MARKER_END: when migrating an OLD marker block the two
+    // differ in length, and using the new one left the last characters of the
+    // old end-marker stranded in the user's file.
+    let rest = content.substring(endIdx + activeEnd.length);
+    // The template ends with a newline and the previous injection left its own
+    // after the end marker: keeping both grew the file by a blank line on every
+    // setup and upgrade (plan v2.6, T.5).
+    if (template.endsWith('\n') && rest.startsWith('\n')) rest = rest.slice(1);
+    const newContent = content.substring(0, beginIdx) + template + rest;
     await writeFile(targetPath, newContent, 'utf-8');
     return { action: 'updated', path: targetPath };
   }
@@ -363,7 +374,7 @@ export class ConfigManager {
   /**
    * Remove the cognistore MCP server entry from OpenCode config.
    */
-  async removeOpenCodeMcp(): Promise<McpRemoveResult> {
+  async removeOpenCodeMcp(opts: RemoveConfigOptions = {}): Promise<McpRemoveResult> {
     const configPath = ConfigManager.OPENCODE_CONFIG;
     if (!(await this.fileExists(configPath))) {
       return { removed: false, path: configPath };
@@ -378,6 +389,15 @@ export class ConfigManager {
 
     await copyFile(configPath, `${configPath}.bak.${Date.now()}`);
     delete config.mcp['cognistore'];
+    // Setup adds the `mcp` key when the user had none: leaving `"mcp": {}`
+    // behind broke the setup/uninstall symmetry (plan v2.6, T.5).
+    if (Object.keys(config.mcp).length === 0) delete config.mcp;
+    // Only a file setup itself created goes away: a user's own opencode.json may
+    // hold nothing but the schema reference too.
+    if (opts.fileCreatedBySetup && Object.keys(config).every((k) => k === '$schema')) {
+      await unlink(configPath);
+      return { removed: true, path: configPath };
+    }
 
     await writeFile(
       configPath,
@@ -447,7 +467,10 @@ export class ConfigManager {
     await mkdir(dirname(settingsPath), { recursive: true });
 
     if (!(await this.fileExists(settingsPath))) {
-      const config = { permissions: { allow: allowRules } };
+      // The deny entries belong here too: without them a fresh install
+      // auto-approved the destructive tools until the first upgrade re-ran this
+      // through the merge path below (plan v2.6, T.5).
+      const config = { permissions: { allow: allowRules, deny: [...ConfigManager.COGNISTORE_DENY_TOOLS] } };
       await writeFile(settingsPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
       return { action: 'created', path: settingsPath };
     }
@@ -506,7 +529,8 @@ export class ConfigManager {
    */
   async removePermissions(
     settingsPath: string,
-    rulesToRemove: string[]
+    rulesToRemove: string[],
+    opts: RemoveConfigOptions = {}
   ): Promise<{ removed: boolean; path: string }> {
     if (!(await this.fileExists(settingsPath))) {
       return { removed: false, path: settingsPath };
@@ -538,9 +562,25 @@ export class ConfigManager {
       return { removed: false, path: settingsPath };
     }
 
+    // Lists we emptied, and a `permissions` left with nothing, are setup's own
+    // scaffolding; keeping them left a settings.json behind on a machine that
+    // had none (plan v2.6, T.5). The user's non-empty lists are never touched.
+    if (config.permissions.allow.length === 0 && before > 0) delete config.permissions.allow;
+    if (denyBefore > 0 && denyAfter === 0) delete config.permissions.deny;
+    if (Object.keys(config.permissions).length === 0) delete config.permissions;
+
     await copyFile(settingsPath, `${settingsPath}.bak.${Date.now()}`);
-    await writeFile(settingsPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    await this.writeOrRemoveEmpty(settingsPath, config, opts);
     return { removed: true, path: settingsPath };
+  }
+
+  /**
+   * Write `config` back, or delete the file when nothing but `{}` would be left
+   * AND setup created it. A user's own `{}` settings.json stays.
+   */
+  private async writeOrRemoveEmpty(path: string, config: Record<string, unknown>, opts: RemoveConfigOptions): Promise<void> {
+    if (opts.fileCreatedBySetup && Object.keys(config).length === 0) await unlink(path);
+    else await writeFile(path, JSON.stringify(config, null, 2) + '\n', 'utf-8');
   }
 
   // ─── Global enforcement hooks ──────────────────────────────────────────
@@ -606,6 +646,10 @@ export class ConfigManager {
       PostToolUse: [
         group('mcp__cognistore__getKnowledge', 'post-query-marker.sh'),
         group('mcp__cognistore__createPlan', 'post-create-plan-marker.sh'),
+        // The only writer of the -knowledge-captured marker the Stop hook reads.
+        // It was deployed but never registered, so the Stop hook reported "no
+        // knowledge captured" even right after an addKnowledge (plan v2.6, B.1).
+        group('mcp__cognistore__addKnowledge', 'post-add-knowledge-marker.sh'),
         group('ExitPlanMode', 'post-plan-check.sh'),
         group(EDIT, 'post-edit-task-sync.sh'),
         group('mcp__cognistore__updatePlanTask|mcp__cognistore__updatePlanTasks', 'post-task-update-marker.sh'),
@@ -687,7 +731,7 @@ export class ConfigManager {
    * Remove only CogniStore hook entries from a Claude settings.json. User-defined
    * hooks (different command paths) are left untouched.
    */
-  async removeHooks(settingsPath: string): Promise<{ removed: boolean; path: string }> {
+  async removeHooks(settingsPath: string, opts: RemoveConfigOptions = {}): Promise<{ removed: boolean; path: string }> {
     if (!(await this.fileExists(settingsPath))) {
       return { removed: false, path: settingsPath };
     }
@@ -711,7 +755,7 @@ export class ConfigManager {
     }
 
     await copyFile(settingsPath, `${settingsPath}.bak.${Date.now()}`);
-    await writeFile(settingsPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    await this.writeOrRemoveEmpty(settingsPath, config, opts);
     return { removed: true, path: settingsPath };
   }
 

@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const SERVER_ENTRY = resolve(__dirname, '../../../apps/dashboard/dist-server/index.js');
 
 /** nomic-embed-text native width; the server truncates to 256 via Matryoshka. */
-export const EMBED_DIMS_NATIVE = 768;
+const EMBED_DIMS_NATIVE = 768;
 
 export function getFreePort(): Promise<number> {
   return new Promise((res, rej) => {
@@ -131,10 +131,18 @@ export async function waitForSidecar(baseUrl: string, timeoutMs = 45_000): Promi
   return false;
 }
 
-/** SIGTERM, then SIGKILL if it lingers. */
+/**
+ * SIGTERM, wait for the exit (up to 5 s), then SIGKILL if it lingers. A SIGKILL
+ * skips the V8 coverage dump, so a fixed short wait lost the sidecar's coverage
+ * whenever its shutdown (closing the job worker) took longer than that wait.
+ */
 export async function stopSidecar(child: ChildProcess | undefined): Promise<void> {
-  if (!child || child.killed) return;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((res) => child.once('exit', () => res()));
   child.kill('SIGTERM');
-  await new Promise((res) => setTimeout(res, 300));
-  if (!child.killed) child.kill('SIGKILL');
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([exited, new Promise((res) => { timer = setTimeout(res, 5000); })]);
+  clearTimeout(timer);
+  // `killed` only says a signal was sent; exitCode says whether it actually exited.
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
 }

@@ -26,6 +26,7 @@ const STEP_LABELS: Record<string, string> = {
   skills: 'Skills',
   hooks: 'Hooks',
   version: 'Save Version',
+  'incremental-vacuum': 'Compact database (optional)',
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

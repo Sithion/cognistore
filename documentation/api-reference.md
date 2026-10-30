@@ -4,6 +4,49 @@
 
 The Fastify sidecar server exposes a REST API consumed by the React frontend. It binds `127.0.0.1` on a port in the 3210-3309 range.
 
+## Token usage retention setting
+
+Settings include `tokenUsageRetentionDays`: default 90, integer 0 through 36500;
+zero retains raw usage forever. Maintenance deletes at most 5000 raw rows per
+transaction and yields between batches. Invalid values use 90.
+
+Daily totals remain permanent. Hourly and session detail uses retained raw rows.
+Days follow the stored timestamp's lexical date prefix, including offsets.
+Retained partial-day edges are exact; outside retention a partial-day edge
+uses the whole rollup day and may overcount the requested hours.
+NULL and empty-string projects remain distinct groups.
+Existing token response fields are unchanged.
+
+## Optional incremental vacuum upgrade
+
+`POST /api/upgrade/run` accepts boolean `skipIncrementalVacuum`, default true.
+Explicit false opts into a pending one-time rewrite, including on an already
+current installation and after restart. Invalid types return 400 before replay
+guards. An earlier default skip does not prevent later opt-in.
+The `incremental-vacuum` progress step reports running and terminal status.
+Mode-2 databases are not rewritten. Skipping this optional step leaves an
+otherwise successful upgrade complete.
+This applies on both the current-install opt-in and full-upgrade paths. Insufficient
+free disk space or a database lock is reported as a warning; the opt-in rewrite
+holds the database write lock, so close agent sessions before opting in.
+
+## Background import
+
+`POST /api/import` retains its request and response shapes.
+Knowledge and plan imports run in the worker. Knowledge deduplication uses
+indexed hashes and bounded repair rather than loading the entire table.
+System import sanitization remains in force.
+
+## Background export
+
+`GET /api/export` preserves its JSON schema and download filename.
+The worker serializes a consistent snapshot in bounded pages, and the sidecar
+streams a private temporary file. Completion, error, disconnect, cancellation,
+and runner shutdown remove the temporary file and its directory. The response is
+streamed with chunked transfer encoding and has no `Content-Length` header. A
+startup sweep removes stale `cognistore-export-*` directories. Long read
+snapshots can delay WAL checkpoint reclamation until export completes.
+
 ## Authentication
 
 **Every route requires the sidecar token** (since v2.5.0). Loopback is not a trust boundary: any other local process, and any page served by any other local HTTP server, sits inside it — and `POST /api/uninstall` takes no body, so a body-less `fetch(..., {mode:'no-cors'})` from an ordinary web page was a CORS-simple request that ran the whole teardown.
@@ -24,7 +67,9 @@ Exempt: static assets and the SPA shell, which the webview must fetch before any
 
 `GET /api/health` no longer returns the token. The shell proves the sidecar's identity over the child process's stdout instead.
 
-**Errors:** in production, 5xx responses carry a generic message plus a `ref` correlation id; the detail is in `~/.cognistore/cognistore.log`.
+**Errors:** in production, 5xx responses carry a generic message plus a `ref` correlation id; the detail is in `~/.cognistore/cognistore.log`. Input the SDK rejects (a `ValidationError`, e.g. `POST /api/knowledge` without `source`) is a **400**, not a 500. An unknown `/api/...` path is a **404** `{ "error": "Not found" }`; only non-API paths fall back to the SPA shell.
+
+**Route inventory:** with `COGNISTORE_ROUTE_MANIFEST=<file>` the sidecar writes every route Fastify registered to that file once it listens. `packages/tests/src/api/sidecar-api.test.ts` reads it and fails on any `/api` route that no test names, and it sweeps every route for the token and Origin checks. A new route needs a test, and this file is the place for a plain call. The variable is for tests only; the shell never sets it.
 
 **File:** `apps/dashboard/server/index.ts`
 

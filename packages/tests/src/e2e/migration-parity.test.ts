@@ -43,6 +43,14 @@ test.describe('@e2e migration parity (disk .sql vs embedded)', () => {
     }
   });
 
+  test('atomic-script marker presence matches in both copies', () => {
+    const marker = /^\s*-- cognistore:atomic-script\b/;
+    for (const [version, embedded] of Object.entries(EMBEDDED_MIGRATIONS)) {
+      const disk = readFileSync(resolve(MIGRATIONS_DIR, `${version}.sql`), 'utf-8');
+      expect(marker.test(embedded), `embedded marker mismatch for ${version}`).toBe(marker.test(disk));
+    }
+  });
+
   test('no statement-splitting hazard: a semicolon inside a comment or literal', () => {
     // The runner strips only WHOLE comment lines and then splits on ';'. A
     // semicolon in a trailing comment or a string literal cuts a statement in
