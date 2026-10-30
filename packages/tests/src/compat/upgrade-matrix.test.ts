@@ -88,7 +88,7 @@ test('the matrix covers every published schema version', () => {
     ['0.8.0', '0.8.0-via-2.1.0', '0.9.0', '1.3.0', '1.3.0-legacy', '2.0.0', '2.1.0', '2.3.5', '2.4.0', '2.4.1', '2.5.4'].sort(),
   );
   const published = ['0.8.0', '0.9.0', '1.3.0', '2.0.0', '2.1.0', '2.3.0', '2.3.2', '2.4.0', '2.4.1'];
-  const unreleased = ['2.4.2', '2.4.3'];
+  const unreleased = ['2.4.2', '2.4.3', '2.4.5'];
   const shipped = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).map((f) => f.replace('.sql', '')).sort();
   expect([...manifest['2.5.4'].schemaVersions].sort()).toEqual([...published].sort());
   expect(shipped).toEqual([...published, ...unreleased].sort());
@@ -139,6 +139,10 @@ for (const id of Object.keys(manifest)) {
           .toEqual(entriesBefore);
 
         const n = count(after, 'knowledge_entries');
+        expect(after.pragma('table_info(knowledge_entries)') as any).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'content_hash' })]));
+        expect(after.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_knowledge_content_hash'").get()).toBeTruthy();
+        expect(after.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='knowledge_content_hash_invalidate'").get()).toBeTruthy();
+        expect(after.prepare('SELECT count(*) AS c FROM knowledge_entries WHERE content_hash IS NOT NULL').get()).toEqual({ c: 0 });
         const nonSystem = (after.prepare("SELECT count(*) AS c FROM knowledge_entries WHERE type != 'system'").get() as { c: number }).c;
         expect(count(after, 'knowledge_fts')).toBe(nonSystem);
         // A content word: 0.8.0 had no title column and silently dropped titles.

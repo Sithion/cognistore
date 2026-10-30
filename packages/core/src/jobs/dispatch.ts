@@ -37,5 +37,37 @@ export async function dispatchJobWithConnection<K extends JobKind>(kind: K, payl
       },
     })) as JobResults[K];
   }
+  if (kind === 'hashBackfill') {
+    if (!service) throw new Error('Knowledge service unavailable');
+    const result = await service.hashBackfill({ signal, checkpoint: async (done, total) => {
+      await checkpoint?.({ phase: 'hashBackfill', done, total });
+    } });
+    await checkpoint?.({ phase: 'hashBackfill', done: result.changes, total: result.changes });
+    return result as JobResults[K];
+  }
+  if (kind === 'importKnowledge') {
+    if (!service) throw new Error('Knowledge service unavailable');
+    const entries = (payload as JobPayloads['importKnowledge']).entries;
+    let lastCheckpoint = Date.now();
+    const result = await service.importKnowledge(entries, { signal, checkpoint: async (done, total) => {
+      if (done !== 0 && done !== total && Date.now() - lastCheckpoint < 50) return;
+      lastCheckpoint = Date.now();
+      await checkpoint?.({ phase: 'importKnowledge', done, total });
+    } });
+    await checkpoint?.({ phase: 'importKnowledge', done: entries.length, total: entries.length });
+    return result as JobResults[K];
+  }
+  if (kind === 'importPlans') {
+    if (!service) throw new Error('Knowledge service unavailable');
+    const plans = (payload as JobPayloads['importPlans']).plans;
+    let lastCheckpoint = Date.now();
+    const result = await service.importPlans(plans, { signal, checkpoint: async (done, total) => {
+      if (done !== 0 && done !== total && Date.now() - lastCheckpoint < 50) return;
+      lastCheckpoint = Date.now();
+      await checkpoint?.({ phase: 'importPlans', done, total });
+    } });
+    await checkpoint?.({ phase: 'importPlans', done: plans.length, total: plans.length });
+    return result as JobResults[K];
+  }
   throw new Error(`Unknown job kind: ${String(kind)}`);
 }

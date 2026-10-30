@@ -6,6 +6,7 @@ import * as schema from './schema/index.js';
 import { createEmbeddingsTable } from './schema/sqlite-vec.js';
 import { createKnowledgeFtsTable, ftsCount, insertFts } from './schema/fts.js';
 import { runMigrations, runSeeds } from './migrate.js';
+import { contentHash } from '../jobs/content-hash.js';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -30,6 +31,7 @@ export function createDbClient(dbPath?: string): { db: Database; sqlite: SQLiteD
   mkdirSync(dirname(resolvedPath), { recursive: true });
 
   const sqlite = new BetterSqlite3(resolvedPath);
+  sqlite.function('cognistore_content_hash', (title: string, content: string) => contentHash(title, content));
   sqlite.pragma('busy_timeout = 5000');
   for (let attempt = 0; ; attempt++) {
     try {

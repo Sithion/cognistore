@@ -30,6 +30,13 @@ This applies on both the current-install opt-in and full-upgrade paths. Insuffic
 free disk space or a database lock is reported as a warning; the opt-in rewrite
 holds the database write lock, so close agent sessions before opting in.
 
+## Background import
+
+`POST /api/import` retains its request and response shapes.
+Knowledge and plan imports run in the worker. Knowledge deduplication uses
+indexed hashes and bounded repair rather than loading the entire table.
+System import sanitization remains in force.
+
 ## Authentication
 
 **Every route requires the sidecar token** (since v2.5.0). Loopback is not a trust boundary: any other local process, and any page served by any other local HTTP server, sits inside it — and `POST /api/uninstall` takes no body, so a body-less `fetch(..., {mode:'no-cors'})` from an ordinary web page was a CORS-simple request that ran the whole teardown.

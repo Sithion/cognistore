@@ -1,4 +1,4 @@
-export type JobKind = 'health' | 'duplicates.pairs' | 'duplicates.groups' | 'reembedAll' | 'embedMissing';
+export type JobKind = 'health' | 'duplicates.pairs' | 'duplicates.groups' | 'reembedAll' | 'embedMissing' | 'hashBackfill' | 'importKnowledge' | 'importPlans';
 export type DuplicateJobOptions = { threshold?: number; limit?: number };
 export type JobPayloads = {
   health: Record<string, unknown>;
@@ -6,6 +6,9 @@ export type JobPayloads = {
   'duplicates.groups': DuplicateJobOptions;
   reembedAll: Record<string, never>;
   embedMissing: Record<string, never>;
+  hashBackfill: Record<string, never>;
+  importKnowledge: { entries: any[] };
+  importPlans: { plans: any[] };
 };
 export type JobResults = {
   health: { database: true; sqliteVec: true; threadId: number };
@@ -13,6 +16,9 @@ export type JobResults = {
   'duplicates.groups': { result: unknown[]; fingerprint: string };
   reembedAll: number;
   embedMissing: { embedded: number; failed: number; remaining: number; cancelled: boolean };
+  hashBackfill: { changes: number };
+  importKnowledge: { imported: number; skipped: number; errors: string[] };
+  importPlans: { imported: number; skipped: number; errors: string[] };
 };
 export type JobProgress = {
   health: { phase: string; done: number; total: number };
@@ -20,6 +26,9 @@ export type JobProgress = {
   'duplicates.groups': { phase: 'duplicates.groups'; done: number; total: number };
   reembedAll: { phase: 'knowledge' | 'plans'; done: number; total: number };
   embedMissing: { phase: 'knowledge' | 'plans'; done: number; total: number; failed: number };
+  hashBackfill: { phase: 'hashBackfill'; done: number; total: number };
+  importKnowledge: { phase: 'importKnowledge'; done: number; total: number };
+  importPlans: { phase: 'importPlans'; done: number; total: number };
 };
 
 export type ParentMessage =

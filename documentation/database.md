@@ -41,6 +41,18 @@ failures are recorded as warnings and do not block indefinitely.
 Periodic reclaim runs independently of token retention and only starts when
 `freelist_count` exceeds `max(1000, page_count * 0.05)`.
 
+## Content hashes
+
+Migration 2.4.5 adds nullable `content_hash` and its composite index.
+SHA-256 encodes the NFC/newline/outer-whitespace-normalized title/content JSON
+pair. Current writers maintain hashes transactionally. Old inserts leave NULL
+and old content edits invalidate hashes. Bounded worker repair fills them.
+Import rechecks NULL hashes and dedup candidates under its final immediate
+lock after embedding; interference triggers bounded repair and retry.
+The index is nonunique and candidates are content-checked. An import matching a
+system entry is stored as a `pattern` entry, since imports cannot create system
+knowledge.
+
 ## Schema
 
 ### knowledge_entries (relational table)
@@ -52,6 +64,7 @@ Periodic reclaim runs independently of token retention and only starts when
 | `id` | TEXT PK | UUIDv4 | Unique identifier |
 | `title` | TEXT NOT NULL | `''` | Short descriptive title |
 | `content` | TEXT NOT NULL | — | Knowledge content (free text) |
+| `content_hash` | TEXT | NULL | SHA-256 of normalized title/content pair (migration `2.4.5.sql`) |
 | `tags` | TEXT NOT NULL | `'[]'` | JSON array of string tags |
 | `type` | TEXT NOT NULL | — | One of: `decision`, `pattern`, `fix`, `constraint`, `gotcha`, `system` |
 | `scope` | TEXT NOT NULL | — | `global` or `workspace:<project-name>` |
@@ -70,6 +83,10 @@ Periodic reclaim runs independently of token retention and only starts when
 **Indices:**
 - `idx_type` on `type`
 - `idx_scope` on `scope`
+- `idx_knowledge_content_hash` on `(content_hash, id)` (migration `2.4.5.sql`)
+
+**Trigger:** `knowledge_content_hash_invalidate` clears a populated hash after
+an older writer changes title/content without changing the hash itself.
 
 **System entries (`type=system`):** Mandatory protocol entries seeded during setup. These entries are protected at the application layer:
 - `deleteKnowledge` rejects deletion requests for system entries
@@ -202,7 +219,9 @@ For pre-migration databases (existing databases with no `schema_version` table b
 packages/core/src/db/migrations/
 ├── 0.8.0.sql   # Base schema: knowledge_entries, operations_log
 ├── 0.9.0.sql   # Plans: plans, plan_relations, plan_tasks, title column
-├── 1.0.0.sql   # System knowledge type support
+├── 2.4.2.sql   # Remove obsolete consumption tables
+├── 2.4.3.sql   # Token usage rollups and updated_at index
+├── 2.4.5.sql   # Knowledge content hashes and composite index
 └── meta/
     └── _journal.json
 ```

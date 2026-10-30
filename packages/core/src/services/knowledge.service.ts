@@ -25,6 +25,7 @@ import { computeMergedTags, validateMergeDraft } from './cleanup-merge.js';
 import { walkAncestors, deriveRoot, isDescendant, buildChain, collectDescendants, recomputeSubtreeRoot, type ChainRow } from './plan-lineage.js';
 import { PLAN_CHAIN_MAX_ENTRIES } from '@cognistore/shared';
 import type { PlanChain } from '@cognistore/shared';
+import { contentHash } from '../jobs/content-hash.js';
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
@@ -607,39 +608,93 @@ export class KnowledgeService {
     return { deleted, errors };
   }
 
-  async importKnowledge(entries: CreateKnowledgeInput[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importKnowledge(entries: CreateKnowledgeInput[], options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     let imported = 0;
     let skipped = 0;
     const errors: string[] = [];
 
-    // Build hash set of existing entries for duplicate detection
-    const existing = await this.repository.listAll();
-    const existingHashes = new Set<string>();
-    for (const e of existing) {
-      const hash = this.hashContent((e.title ?? '') + e.content);
-      existingHashes.add(hash);
-    }
-
-    for (const entry of entries) {
+    await this.hashBackfill({ signal: options.signal });
+    const batchHashes = new Set<string>();
+    const pending: { input: CreateKnowledgeInput; embedding: number[]; hash: string; index: number }[] = [];
+    const finalize = async () => {
+      if (!pending.length) return;
+      const chunk = pending.splice(0, pending.length);
+      let outcomes = await retryEmbeddingWrite(() => this.repository.finalizeKnowledgeImportBatch(chunk.map(({ input, embedding, hash }) => ({ input, embedding, hash }))));
+      let restarts = 0;
+      while (outcomes.includes('null-hash') && restarts < 5) {
+        await this.hashBackfill({ signal: options.signal });
+        outcomes = await retryEmbeddingWrite(() => this.repository.finalizeKnowledgeImportBatch(chunk.map(({ input, embedding, hash }) => ({ input, embedding, hash }))));
+        restarts++;
+      }
+      for (let i = 0; i < chunk.length; i++) {
+        const { input, index } = chunk[i];
+        if (outcomes[i] === 'null-hash') errors.push(`Failed to import "${input.title}": NULL content hashes kept appearing`);
+        else if (outcomes[i] === 'duplicate') skipped++;
+        else { imported++; this.logOp('write'); }
+        await options.checkpoint?.(index + 1, entries.length);
+      }
+    };
+    for (let index = 0; index < entries.length; index++) {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      const entry = entries[index];
       try {
-        const hash = this.hashContent((entry.title ?? '') + entry.content);
-        if (existingHashes.has(hash)) {
+        const hash = contentHash(entry.title ?? '', entry.content);
+        if (batchHashes.has(hash)) {
           skipped++;
+          await options.checkpoint?.(index + 1, entries.length);
           continue;
         }
+        batchHashes.add(hash);
         const tagsText = entry.tags.join(' ');
         const embedding = await this.embeddingProvider.embed(tagsText);
-        // The import schema leaves `source` optional (exports from other tools
-        // omit it), but the column is NOT NULL: such entries failed one by one.
-        await this.repository.create({ ...entry, source: entry.source || 'import', embedding });
-        existingHashes.add(hash);
-        imported++;
-        this.logOp('write');
+        pending.push({ input: { ...entry, type: entry.type === 'system' ? ('pattern' as CreateKnowledgeInput['type']) : entry.type, source: entry.source || 'import' }, embedding, hash, index });
+        if (pending.length === 25) await finalize();
       } catch (err) {
         errors.push(`Failed to import "${entry.title}": ${err instanceof Error ? err.message : String(err)}`);
       }
+      if (!pending.length) await options.checkpoint?.(index + 1, entries.length);
     }
+    await finalize();
     return { imported, skipped, errors };
+  }
+
+  async hashBackfill(options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ changes: number }> {
+    let repaired = 0;
+    let afterId = '';
+    let done = 0;
+    const total = this.repository.countNullContentHashes();
+    let restartPasses = 0;
+    for (;;) {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
+      const page = this.repository.listNullContentHashPage(afterId, 250);
+      if (!page.length) {
+        if (this.repository.hasNullContentHash() && restartPasses < 5) {
+          afterId = '';
+          restartPasses++;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          await options.checkpoint?.(done, total);
+          continue;
+        }
+        break;
+      }
+      const hashes = page.map((row) => ({ row, hash: contentHash(row.title, row.content) }));
+      const changes = await retryEmbeddingWrite(() => this.repository.publishContentHashPage(hashes));
+      repaired += changes;
+      done += changes;
+      afterId = page[page.length - 1].id;
+      await options.checkpoint?.(done, total);
+      if (page.length < 250) {
+        if (this.repository.hasNullContentHash() && restartPasses < 5) {
+          afterId = '';
+          restartPasses++;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
+        if (this.repository.hasNullContentHash()) break;
+        break;
+      }
+    }
+    return { changes: repaired };
   }
 
   private hashContent(text: string): string {
@@ -1565,7 +1620,7 @@ export class KnowledgeService {
     return this.repository.archiveStaleDrafts(maxAgeHours);
   }
 
-  async importPlans(plans: (CreatePlanInput & { tasks?: { description: string; status?: string; priority?: string; notes?: string | null }[] })[]): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  async importPlans(plans: (CreatePlanInput & { tasks?: { description: string; status?: string; priority?: string; notes?: string | null }[] })[], options: { signal?: AbortSignal; checkpoint?: (done: number, total: number) => Promise<void> } = {}): Promise<{ imported: number; skipped: number; errors: string[] }> {
     let imported = 0;
     let skipped = 0;
     const errors: string[] = [];
@@ -1577,6 +1632,7 @@ export class KnowledgeService {
     }
 
     for (const plan of plans) {
+      if (options.signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ABORT_ERR' });
       try {
         const hash = this.hashContent(plan.title + plan.content);
         if (existingHashes.has(hash)) {
@@ -1608,6 +1664,7 @@ export class KnowledgeService {
       } catch (err) {
         errors.push(`Failed to import plan "${plan.title}": ${err instanceof Error ? err.message : String(err)}`);
       }
+      await options.checkpoint?.(imported + skipped + errors.length, plans.length);
     }
     return { imported, skipped, errors };
   }
