@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { authFetch, TEST_TOKEN } from '../sidecar-helpers.js';
+import { authFetch, TEST_TOKEN, stopSidecar } from '../sidecar-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -140,7 +140,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  child?.kill();
+  await stopSidecar(child);
   mock?.server.close();
   if (tmpRoot) { try { rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* ignore */ } }
 });

@@ -13,7 +13,7 @@ import {
 } from '@cognistore/core';
 import { KnowledgeType } from '@cognistore/shared';
 import { createControlledContext, destroyTestContext, type TestContext } from '../test-helpers.js';
-import { startMockOllama } from '../sidecar-helpers.js';
+import { startMockOllama, stopSidecar } from '../sidecar-helpers.js';
 
 /**
  * Plan v2.6 quick wins 1A.1–1A.4 and 1A.7 (1A.6 lives in cleanup-settings,
@@ -220,8 +220,7 @@ test.describe('@e2e 1A.7 MCP server perf lines', () => {
       await new Promise((r) => setTimeout(r, 100)); // async append
       expect(readFileSync(logFile, 'utf8')).toMatch(/\[perf\] eventloop/);
     } finally {
-      child.kill('SIGTERM');
-      await new Promise((r) => setTimeout(r, 300));
+      await stopSidecar(child);
       await new Promise<void>((r) => mock.server.close(() => r()));
       rmSync(dir, { recursive: true, force: true });
     }
@@ -248,8 +247,7 @@ test.describe('@e2e 1A.7 MCP server perf lines', () => {
       await new Promise((r) => setTimeout(r, 1500));
       expect(out).not.toContain('[perf]');
     } finally {
-      child.kill('SIGTERM');
-      await new Promise((r) => setTimeout(r, 300));
+      await stopSidecar(child);
       await new Promise<void>((r) => mock.server.close(() => r()));
       rmSync(dir, { recursive: true, force: true });
     }
