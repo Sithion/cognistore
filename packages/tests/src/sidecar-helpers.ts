@@ -131,11 +131,18 @@ export async function waitForSidecar(baseUrl: string, timeoutMs = 45_000): Promi
   return false;
 }
 
-/** SIGTERM, then SIGKILL if it lingers. */
+/**
+ * SIGTERM, wait for the exit (up to 5 s), then SIGKILL if it lingers. A SIGKILL
+ * skips the V8 coverage dump, so a fixed short wait lost the sidecar's coverage
+ * whenever its shutdown (closing the job worker) took longer than that wait.
+ */
 export async function stopSidecar(child: ChildProcess | undefined): Promise<void> {
-  if (!child || child.exitCode !== null) return;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((res) => child.once('exit', () => res()));
   child.kill('SIGTERM');
-  await new Promise((res) => setTimeout(res, 300));
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([exited, new Promise((res) => { timer = setTimeout(res, 5000); })]);
+  clearTimeout(timer);
   // `killed` only says a signal was sent; exitCode says whether it actually exited.
   if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
 }
