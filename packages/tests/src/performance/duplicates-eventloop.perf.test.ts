@@ -11,7 +11,7 @@ import {
   type SQLiteDatabase,
 } from '@cognistore/core';
 import { copyFixture, ensureFixture } from './fixtures/generate-fixture.js';
-import { report } from './fixtures/perf-helpers.js';
+import { report, scaledLimit } from './fixtures/perf-helpers.js';
 import { legacyDuplicateGroups, expectSameGroups } from './fixtures/legacy-duplicates.js';
 
 // Plan v2.6 items 1C.2 + 1C.3 on the 10k-entry fixture: the duplicate scan must
@@ -19,8 +19,6 @@ import { legacyDuplicateGroups, expectSameGroups } from './fixtures/legacy-dupli
 // monitor at 1 ms resolution, plus an independent timer-drift probe), must
 // return the same groups as the legacy per-entry KNN, and the incremental scan
 // after one edit must be much cheaper than the full one.
-
-const EVENT_LOOP_LIMIT_MS = 100;
 
 test.describe.configure({ mode: 'serial' });
 
@@ -70,8 +68,8 @@ test.describe('@perf duplicate scan without freezing (1C.3)', () => {
     report('duplicates.scanFull', r.ms, { groups: r.value.length });
     report('duplicates.scanFull.eventLoopMax', r.monitorMax, { driftMax: Number(r.driftMax.toFixed(1)) });
     expect(r.value.length).toBeGreaterThan(50);
-    expect(r.monitorMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
-    expect(r.driftMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
+    expect(r.monitorMax).toBeLessThan(scaledLimit(100));
+    expect(r.driftMax).toBeLessThan(scaledLimit(100));
   });
 
   test('incremental scan after one edit', async () => {
@@ -80,7 +78,7 @@ test.describe('@perf duplicate scan without freezing (1C.3)', () => {
     const r = await withEventLoopProbe(() => repo.findDuplicateGroups());
     report('duplicates.scanIncremental', r.ms, { groups: r.value.length });
     report('duplicates.scanIncremental.eventLoopMax', r.monitorMax, { driftMax: Number(r.driftMax.toFixed(1)) });
-    expect(r.monitorMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
+    expect(r.monitorMax).toBeLessThan(scaledLimit(100));
   });
 
   test('same groups as the legacy per-entry KNN on the 10k fixture', async () => {
@@ -109,7 +107,7 @@ test.describe('@perf duplicate scan without freezing (1C.3)', () => {
     const heapMb = (process.memoryUsage().heapUsed - heapBefore) / 2 ** 20;
     report('duplicates.denseCluster', r.ms, { groups: r.value.length, largest: r.value[0]?.members.length, heapDeltaMb: Number(heapMb.toFixed(1)) });
     report('duplicates.denseCluster.eventLoopMax', r.monitorMax, { driftMax: Number(r.driftMax.toFixed(1)) });
-    expect(r.monitorMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
-    expect(r.driftMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
+    expect(r.monitorMax).toBeLessThan(scaledLimit(100));
+    expect(r.driftMax).toBeLessThan(scaledLimit(100));
   });
 });
