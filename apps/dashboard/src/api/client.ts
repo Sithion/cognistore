@@ -449,6 +449,7 @@ export interface AppSettings {
   dateRangePreset: '1d' | '1w' | '1m' | '1y' | '2y' | 'custom';
   lastSelectedRange: { from: string; to: string } | null;
   tokenProviderFilter: ProviderFilter;
+  tokenUsageRetentionDays?: number;
   alwaysSearchExternalProviders: boolean;
   cleanupEnabled: boolean;
   cleanupIntervalDays: number;
