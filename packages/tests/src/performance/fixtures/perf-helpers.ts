@@ -50,6 +50,11 @@ const baseline: Baseline = JSON.parse(readFileSync(new URL('../baseline.json', i
 /** Slower machines than the baseline's set PERF_BUDGET_SCALE (e.g. 2.5 on a 2-vCPU runner). */
 const BUDGET_SCALE = Number(process.env.PERF_BUDGET_SCALE ?? 1) || 1;
 
+/** A fixed millisecond limit scaled for slower machines (CI sets PERF_BUDGET_SCALE=3). */
+export function scaledLimit(ms: number): number {
+  return ms * BUDGET_SCALE;
+}
+
 /** Budget = max(4 × the recorded baseline, 50 ms) × PERF_BUDGET_SCALE. Catches regressions of ~4×, not noise. */
 export function budgetFor(name: PerfCase): number {
   return Math.max(BUDGET_FACTOR * baseline.cases[name], BUDGET_FLOOR_MS) * BUDGET_SCALE;

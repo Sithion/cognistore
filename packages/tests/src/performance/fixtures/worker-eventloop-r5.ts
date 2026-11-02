@@ -6,7 +6,7 @@ import { createDbClient, TokenUsageRepository, TokenUsageService, ClaudeCodeAdap
   startEventLoopMonitor, invalidateDuplicateScan } from '@cognistore/core';
 import { startSdk, forbidMain } from '../../r5-worker-helpers.js';
 import { ensureFixture, copyFixture, generateTokenJsonlDir } from './generate-fixture.js';
-import { report } from './perf-helpers.js';
+import { report, scaledLimit } from './perf-helpers.js';
 import { performance as nodePerformance } from 'node:perf_hooks';
 
 async function probe<T>(fn: () => Promise<T>) {
@@ -99,7 +99,8 @@ export async function exercise(kind: 'duplicates' | 'reembed') {
     expect(overlappingScans).toBeGreaterThan(0);
     expect(progressMessages).toBeLessThan(500);
     expect(result.max).toBeLessThanOrEqual(100);
-    expect(result.drift).toBeLessThanOrEqual(100);
+    // Drift is the scheduler's lateness, so it grows with a slow shared runner; max stays strict.
+    expect(result.drift).toBeLessThanOrEqual(scaledLimit(100));
     report(`${kind}.worker`, result.ms, {
       parentP99: result.p99, parentMax: result.max, driftMax: result.drift, overlappingScans, progressMessages, mainThreadElu: elu, concurrentWriterBusyErrors: lockContentionErrors,
     });
