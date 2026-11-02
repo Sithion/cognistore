@@ -11,6 +11,7 @@
 - **MCP `addPlanRelation` no longer crashes the server.** A missing `await` let a foreign-key rejection (unknown plan id) escape the handler and terminate the MCP process; it now returns a tool error.
 
 ### Improvements
+- **tsup 9 (L.8b).** The sidecar and MCP bundles are built with tsup 9; both configs already set `target`, `format` and `splitting` explicitly. The packaged sidecar smoke and the MCP bundle tests pass unchanged.
 - **better-sqlite3 13 (L.8b).** The native SQLite binding moves to 13 (SQLite 3.53) in core, the MCP server and the tests, with `@types/better-sqlite3` 9. The packaged sidecar smoke (including the worker-thread health job with sqlite-vec), the MCP bundle tools and both compatibility matrices against the published 2.5.x packages pass; the database file format is unchanged.
 - **i18next 26 and react-i18next 17 (L.8b).** Translation keys, interpolation and the `Trans` link keep working in English, Spanish and Portuguese; no UI change.
 - **Vite 8 and @vitejs/plugin-react 6 (L.8b).** The dashboard builds with Vite 8 (Rolldown). The root `vite` override moved from `>=6.4.4 <7` to `>=8.3.5 <9`; Vitest 5.1 and the Tailwind plugin accept it. Build output keeps the same five HTML entries and no UI change.
