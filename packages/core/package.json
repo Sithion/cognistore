@@ -12,6 +12,7 @@
     }
   },
   "scripts": {
+    "clean-assets": "rm -rf dist/db/migrations dist/db/seeds",
     "build": "tsc && rm -rf dist/db/migrations dist/db/seeds && cp -r src/db/migrations dist/db/migrations && cp -r src/db/seeds dist/db/seeds",
     "clean": "rm -rf dist",
     "test": "vitest run",
