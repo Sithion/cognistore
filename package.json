@@ -37,7 +37,7 @@
   "pnpm": {
     "overrides": {
       "shell-quote": ">=1.11.0",
-      "vite": ">=6.4.4 <7",
+      "vite": ">=8.3.5 <9",
       "hono": ">=4.13.11",
       "@babel/core": "7.29.6",
       "esbuild@0.27.7": "0.28.1",

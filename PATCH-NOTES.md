@@ -11,6 +11,7 @@
 - **MCP `addPlanRelation` no longer crashes the server.** A missing `await` let a foreign-key rejection (unknown plan id) escape the handler and terminate the MCP process; it now returns a tool error.
 
 ### Improvements
+- **Vite 8 and @vitejs/plugin-react 6 (L.8b).** The dashboard builds with Vite 8 (Rolldown). The root `vite` override moved from `>=6.4.4 <7` to `>=8.3.5 <9`; Vitest 5.1 and the Tailwind plugin accept it. Build output keeps the same five HTML entries and no UI change.
 - **Safe dependency batch (L.8a).** Minor and patch updates only: fastify, @fastify/cors, Playwright (1.64, needs `playwright install chromium`), Redux Toolkit, react and react-redux, Tailwind, vitest, knip, tsx, turbo, drizzle-orm/kit and sqlite-vec. No major version changes.
 - **Token history notice.** The Tokens screen explains that the heatmap and top sessions use the configured raw-history retention window while daily totals preserve the full history.
 - **Keyword-index repair moves off startup.** Startup no longer rebuilds or scans the keyword index on the main thread; missing keyword-index rows are repaired in the background worker.
