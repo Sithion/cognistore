@@ -13,6 +13,7 @@
 - **MCP `addPlanRelation` no longer crashes the server.** A missing `await` let a foreign-key rejection (unknown plan id) escape the handler and terminate the MCP process; it now returns a tool error.
 
 ### Improvements
+- **MCP installation needs no compiler (B.13).** The CI installs the packed MCP package in `node:24-slim` without Python, make or g++, then exercises `addKnowledge`, `getKnowledge`, `createPlan` and `updatePlanTask`. pnpm skips `better-sqlite3`'s build script and the sidecar keeps only the matching platform's N-API prebuild.
 - **tsup 9 (L.8b).** The sidecar and MCP bundles are built with tsup 9; both configs already set `target`, `format` and `splitting` explicitly. The packaged sidecar smoke and the MCP bundle tests pass unchanged.
 - **better-sqlite3 13 (L.8b).** The native SQLite binding moves to 13 (SQLite 3.53) in core, the MCP server and the tests, with `@types/better-sqlite3` 9. The packaged sidecar smoke (including the worker-thread health job with sqlite-vec), the MCP bundle tools and both compatibility matrices against the published 2.5.x packages pass; the database file format is unchanged.
 - **i18next 26 and react-i18next 17 (L.8b).** Translation keys, interpolation and the `Trans` link keep working in English, Spanish and Portuguese; no UI change.
