@@ -12,19 +12,19 @@
     "type-check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@cognistore/core": "workspace:*",
-    "@cognistore/shared": "workspace:*",
-    "@cognistore/sdk": "workspace:*",
-    "@cognistore/providers": "workspace:*",
     "@cognistore/config": "workspace:*",
+    "@cognistore/core": "workspace:*",
+    "@cognistore/providers": "workspace:*",
+    "@cognistore/sdk": "workspace:*",
+    "@cognistore/shared": "workspace:*",
     "better-sqlite3": "^12.8.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "zod": "^4.6.6",
+    "@playwright/test": "^1.64.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "sqlite-vec": "^0.1.9",
     "typescript": "^5.7.0",
-    "sqlite-vec": "^0.1.7"
+    "zod": "^4.6.6"
   }
 }
