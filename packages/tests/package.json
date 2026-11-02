@@ -17,12 +17,12 @@
     "@cognistore/providers": "workspace:*",
     "@cognistore/sdk": "workspace:*",
     "@cognistore/shared": "workspace:*",
-    "better-sqlite3": "^12.8.0"
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@playwright/test": "^1.64.1",
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/better-sqlite3": "^9.6.0",
     "sqlite-vec": "^0.1.9",
     "typescript": "^5.7.0",
     "zod": "^4.6.6"
