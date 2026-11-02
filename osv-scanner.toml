@@ -35,9 +35,6 @@ reason = "glib 0.18 pinned by Tauri 2.x's GTK3 bindings; the 0.20 fix needs an u
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0194" # quick-xml < 0.41 — transitive via plist (Tauri); fix needs an upstream Tauri/plist upgrade
 reason = "quick-xml 0.38 via plist (Tauri); 0.41 unreachable until Tauri bumps plist; only parses trusted local .plist files."
-# Re-checked 2026-11-02 (L.8): keyring 4.2.0 keeps Linux Secret Service but depends on
-# secret-service 5 -> zbus 5.19, which still pulls zvariant/zbus_names/zvariant_derive.
-# These three ignores can only go once keyring/secret-service move to zbus 6.
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0195" # quick-xml < 0.41 — transitive via plist (Tauri); fix needs an upstream Tauri/plist upgrade
 reason = "Same path as RUSTSEC-2026-0194: quick-xml 0.38 via plist (Tauri), trusted local .plist input only."
@@ -48,6 +45,9 @@ reason = "Same path as RUSTSEC-2026-0194: quick-xml 0.38 via plist (Tauri), trus
 # keyring 3 (`sync-secret-service`, the Linux Secret Service backend for the
 # external-provider secrets). Not a vulnerability; removal needs keyring 4 /
 # zbus 6 (tracked in the v2.6 plan, item L.8).
+# Re-checked 2026-11-02 (L.8): keyring 4.2.0 keeps Linux Secret Service but depends on
+# secret-service 5 -> zbus 5.19, which still pulls zvariant/zbus_names/zvariant_derive.
+# These three ignores can only go once keyring/secret-service move to zbus 6.
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0370" # zvariant — unmaintained (merged into zbus 6); via keyring 3 → secret-service 4 → zbus 4
 reason = "Unmaintained (merged into zbus 6), no patched version; via keyring 3 -> secret-service 4 -> zbus 4. Removal tracked in v2.6 plan L.8 (keyring 4)."
