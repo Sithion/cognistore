@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, Legend,
 } from 'recharts';
@@ -127,6 +128,7 @@ export function TokenConsumptionPage() {
   const [data, setData] = useState<TokenUsageAggregates | null>(null);
   const [scanning, setScanning] = useState(false);
   const [provider, setProvider] = useState<ProviderFilter>('all');
+  const [retentionDays, setRetentionDays] = useState(90);
   const [hydrated, setHydrated] = useState(false);
   const snapshotRef = useRef<string | null>(null);
 
@@ -143,7 +145,11 @@ export function TokenConsumptionPage() {
   // Hydrate the persisted provider filter once (shared with the widget via settings.json).
   useEffect(() => {
     api.getSettings()
-      .then((s) => setProvider(s.tokenProviderFilter ?? 'all'))
+      .then((s) => {
+        setProvider(s.tokenProviderFilter ?? 'all');
+        const days = s.tokenUsageRetentionDays;
+        setRetentionDays(typeof days === 'number' && Number.isFinite(days) && days > 0 ? days : 90);
+      })
       .catch(() => { /* keep default */ })
       .finally(() => setHydrated(true));
   }, []);
@@ -296,6 +302,13 @@ export function TokenConsumptionPage() {
           </div>
 
           {/* Cache efficiency + time-of-day */}
+          <p style={{ color: 'var(--text-secondary)', fontSize: 12, margin: '0 0 12px' }}>
+            <Trans
+              i18nKey="tokens.retentionNotice"
+              values={{ days: retentionDays }}
+              components={{ settingsLink: <Link to="/settings" style={{ color: 'var(--text-secondary)' }} /> }}
+            />
+          </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 24, marginBottom: 24 }}>
             <WidgetCard title={t('tokens.cacheEfficiency')} state="loaded">
               <CacheGauge ratio={data?.cacheEfficiency ?? 0} />
