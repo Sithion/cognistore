@@ -1,6 +1,42 @@
 import { test, expect } from '@playwright/test';
 import { fixture, seed, forbidMain, deferred } from '../r5-worker-helpers.js';
 
+type Progress = { phase: string; done: number; total: number; failed: number };
+
+// Progress is throttled and timing dependent: an intermediate event (for example
+// done:1 of 2) may or may not be delivered. Assert what the contract guarantees —
+// the first and last events, monotonic counters and phase order — never the
+// exact sequence.
+function expectProgress(events: Progress[], expected: { total: number; failed: number; finished: boolean }) {
+  expect(events.length).toBeGreaterThanOrEqual(1);
+  expect(events[0]).toEqual({ phase: 'knowledge', done: 0, total: expected.total, failed: 0 });
+  let phaseSeen = 'knowledge';
+  let done = 0;
+  let failed = 0;
+  for (const e of events) {
+    if (e.phase !== phaseSeen) {
+      expect(phaseSeen).toBe('knowledge');
+      expect(e.phase).toBe('plans');
+      phaseSeen = e.phase;
+      done = 0;
+    }
+    expect(e.done).toBeGreaterThanOrEqual(done);
+    expect(e.done).toBeLessThanOrEqual(e.total);
+    expect(e.failed).toBeGreaterThanOrEqual(failed);
+    done = e.done;
+    failed = e.failed;
+  }
+  const knowledge = events.filter((e) => e.phase === 'knowledge');
+  const last = events[events.length - 1];
+  if (expected.finished) {
+    expect(knowledge[knowledge.length - 1]).toMatchObject({ done: expected.total, total: expected.total, failed: expected.failed });
+    expect(last).toMatchObject({ phase: 'plans', failed: expected.failed });
+  } else {
+    expect(events.some((e) => e.phase === 'plans')).toBe(false);
+    expect(last.done).toBeLessThan(last.total);
+  }
+}
+
 test('missing repair preserves failed progress and cancellation, then resumes', async () => {
   const f = await fixture();
   let restore = () => {};
@@ -9,35 +45,25 @@ test('missing repair preserves failed progress and cancellation, then resumes', 
     f.sqlite.prepare("UPDATE knowledge_entries SET title='FAIL',type='system' WHERE id='id-00001'").run();
     f.mock.setHook(async (prompt) => { if (prompt.includes('FAIL')) throw new Error('fixed'); });
     restore = forbidMain(['embedMissing', 'reembedAll']);
-    const progress: unknown[] = [];
+    const progress: Progress[] = [];
     expect(await f.sdk.embedMissing({ onProgress: (p) => progress.push(p) }))
       .toEqual({ embedded: 1, failed: 1, remaining: 1, cancelled: false });
-    expect(progress).toEqual([
-      { phase: 'knowledge', done: 0, total: 2, failed: 0 },
-      { phase: 'knowledge', done: 2, total: 2, failed: 1 },
-      { phase: 'plans', done: 0, total: 0, failed: 1 },
-    ]);
+    expectProgress(progress, { total: 2, failed: 1, finished: true });
     f.mock.setHook();
-    const resumed: unknown[] = [];
+    const resumed: Progress[] = [];
     expect(await f.sdk.embedMissing({ onProgress: (p) => resumed.push(p) }))
       .toEqual({ embedded: 1, failed: 0, remaining: 0, cancelled: false });
-    expect(resumed).toEqual([
-      { phase: 'knowledge', done: 0, total: 1, failed: 0 },
-      { phase: 'knowledge', done: 1, total: 1, failed: 0 },
-      { phase: 'plans', done: 0, total: 0, failed: 0 },
-    ]);
+    expectProgress(resumed, { total: 1, failed: 0, finished: true });
     f.sqlite.exec('DELETE FROM knowledge_embeddings');
     f.mock.setHook(async () => new Promise((resolve) => setTimeout(resolve, 60)));
     const controller = new AbortController();
-    const cancelled: unknown[] = [];
+    const cancelled: Progress[] = [];
     await expect(f.sdk.embedMissing({
       signal: controller.signal,
       onProgress: (p) => { cancelled.push(p); if (p.done > 0) controller.abort(); },
     })).resolves.toMatchObject({ embedded: 1, cancelled: true });
-    expect(cancelled).toEqual([
-      { phase: 'knowledge', done: 0, total: 2, failed: 0 },
-      { phase: 'knowledge', done: 1, total: 2, failed: 0 },
-    ]);
+    expectProgress(cancelled, { total: 2, failed: 0, finished: false });
+    expect(cancelled.some((e) => e.done > 0)).toBe(true);
   } finally { restore(); await f.close(); }
 });
 
