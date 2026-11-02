@@ -24,14 +24,14 @@
   "dependencies": {
     "@cognistore/shared": "workspace:*",
     "better-sqlite3": "^12.8.0",
-    "drizzle-orm": "^0.45.0",
-    "sqlite-vec": "^0.1.7"
+    "drizzle-orm": "^0.45.4",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@vitest/coverage-v8": "5.0.4",
-    "drizzle-kit": "^0.31.0",
+    "@vitest/coverage-v8": "5.1.0",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^5.7.0",
-    "vitest": "5.0.4"
+    "vitest": "5.1.0"
   }
 }
