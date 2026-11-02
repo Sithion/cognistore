@@ -26,6 +26,18 @@
       "dependsOn": [
         "^build"
       ]
+    },
+    "@cognistore/core#clean-assets": {
+      "cache": false
+    },
+    "@cognistore/core#build": {
+      "dependsOn": [
+        "^build",
+        "@cognistore/core#clean-assets"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     }
   }
 }
