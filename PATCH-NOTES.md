@@ -5,6 +5,7 @@
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
 ### Fixes
+- **`pnpm audit` clean (L.8d).** `glob` 13 and `minimatch` 10, pulled by `c8` and `@fastify/static` (no newer release of either), are overridden to `glob` 14.0.2+ and `minimatch` 11.0.1+ (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249). The esbuild 0.18 advisory reached only through drizzle-kit's build-time loader stays ignored, now also in `pnpm.auditConfig`, with the justification already in `osv-scanner.toml`.
 - **Worker event-loop drift limit follows the CI budget scale (B.10).** The 100 ms drift limit of the reembed and duplicate worker perf tests was fixed and failed on a shared runner (213/198 ms) while the parent event-loop maximum stayed at ~85 ms. The drift limit now multiplies by `PERF_BUDGET_SCALE` (3 on CI); the parent maximum stays strict.
 - **Stale migration files no longer survive a branch switch (B.11).** A turbo cache hit restores `dist/` over whatever is already there and never deletes extras, so an `.sql` left by another branch stayed in `dist/db/migrations` and was applied. The core build now depends on an uncached `clean-assets` task that empties `dist/db/migrations` and `dist/db/seeds` first.
 - **Cleanup report cancellation detection.** The route now listens for request `aborted` instead of `close`, so a fully read request body no longer marks the report as cancelled.

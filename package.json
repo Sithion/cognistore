@@ -55,7 +55,14 @@
       "proxy-addr": ">=2.0.8",
       "source-map-js": ">=1.2.2",
       "browserslist": ">=4.28.7",
-      "baseline-browser-mapping": ">=2.11.0"
+      "baseline-browser-mapping": ">=2.11.0",
+      "glob@13": "^14.0.2",
+      "minimatch@10": "^11.0.1"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-67mh-4wv8-2f99"
+      ]
     }
   }
 }
