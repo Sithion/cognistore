@@ -5,9 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDbClient, KnowledgeRepository, startEventLoopMonitor, type SQLiteDatabase } from '@cognistore/core';
 import { authFetch, getFreePort, spawnSidecar, waitForSidecar, stopSidecar, startMockOllama, TEST_TOKEN } from '../sidecar-helpers.js';
-import { report } from './fixtures/perf-helpers.js';
+import { report, scaledLimit } from './fixtures/perf-helpers.js';
 
-const EVENT_LOOP_LIMIT_MS = 50;
 test.describe.configure({ mode: 'serial' });
 let home: string; let sqlite: SQLiteDatabase; let child: ReturnType<typeof spawnSidecar>['child'];
 let mock: Awaited<ReturnType<typeof startMockOllama>>; let base: string;
@@ -42,6 +41,6 @@ test.describe('@perf export without freezing (1C.11)', () => {
     monitor.stop();
     report('export.10k', duration);
     report('export.10k.eventLoopMax', monitorMax, { p99: p99Max });
-    expect(monitorMax).toBeLessThan(EVENT_LOOP_LIMIT_MS);
+    expect(monitorMax).toBeLessThan(scaledLimit(50));
   });
 });

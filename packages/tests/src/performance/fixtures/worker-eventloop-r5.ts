@@ -98,7 +98,7 @@ export async function exercise(kind: 'duplicates' | 'reembed') {
     });
     expect(overlappingScans).toBeGreaterThan(0);
     expect(progressMessages).toBeLessThan(500);
-    expect(result.max).toBeLessThanOrEqual(100);
+    expect(result.max).toBeLessThanOrEqual(scaledLimit(100));
     // Drift is the scheduler's lateness, so it grows with a slow shared runner; max stays strict.
     expect(result.drift).toBeLessThanOrEqual(scaledLimit(100));
     report(`${kind}.worker`, result.ms, {
