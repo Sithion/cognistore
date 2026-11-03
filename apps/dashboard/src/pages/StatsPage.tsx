@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Label,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, Label, type BarProps,
   AreaChart, Area, ResponsiveContainer, Legend, Line, LineChart, ReferenceLine,
 } from 'recharts';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
@@ -303,6 +303,11 @@ function TopTagsChart({ data }: { data: { tag: string; count: number }[] }) {
   const goToTag = (tag?: string) => {
     if (tag) navigate('/?tag=' + encodeURIComponent(tag));
   };
+  const handleBarClick: BarProps['onClick'] = (_data, _index, event) => {
+    const tag = (event as unknown as { tag?: string; payload?: { tag?: string } } | undefined)?.tag
+      ?? (event as unknown as { payload?: { tag?: string } } | undefined)?.payload?.tag;
+    goToTag(tag);
+  };
 
   return (
     <div ref={ref}>
@@ -326,7 +331,7 @@ function TopTagsChart({ data }: { data: { tag: string; count: number }[] }) {
               radius={[0, 4, 4, 0]}
               barSize={16}
               cursor="pointer"
-              onClick={(d: any) => goToTag(d?.tag ?? d?.payload?.tag)}
+              onClick={handleBarClick}
             />
           </BarChart>
         </ResponsiveContainer>
@@ -363,6 +368,11 @@ function ProvenanceChart({ data, color, linkParam }: { data: { name: string; cou
   const go = (name?: string) => {
     if (name) navigate(`/?${linkParam}=` + encodeURIComponent(name));
   };
+  const handleBarClick: BarProps['onClick'] = (_data, _index, event) => {
+    const name = (event as unknown as { name?: string; payload?: { name?: string } } | undefined)?.name
+      ?? (event as unknown as { payload?: { name?: string } } | undefined)?.payload?.name;
+    go(name);
+  };
 
   return (
     <div ref={ref}>
@@ -378,7 +388,7 @@ function ProvenanceChart({ data, color, linkParam }: { data: { name: string; cou
               radius={[0, 4, 4, 0]}
               barSize={16}
               cursor="pointer"
-              onClick={(d: any) => go(d?.name ?? d?.payload?.name)}
+              onClick={handleBarClick}
             />
           </BarChart>
         </ResponsiveContainer>
@@ -732,8 +742,8 @@ export function PlanStatsPage() {
                   if (planDistribution.length <= 1) return null;
                   const RADIAN = Math.PI / 180;
                   const radius = or + 16;
-                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                  const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
+                  const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
                   return <text x={x} y={y} fill="var(--text-secondary)" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={10}>{value}</text>;
                 }}>
                   {planDistribution.map((d) => (
@@ -768,8 +778,8 @@ export function PlanStatsPage() {
                   if (taskDistribution.length <= 1) return null;
                   const RADIAN = Math.PI / 180;
                   const radius = or + 16;
-                  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                  const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
+                  const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
                   return <text x={x} y={y} fill="var(--text-secondary)" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={10}>{value}</text>;
                 }}>
                   {taskDistribution.map((d) => (
