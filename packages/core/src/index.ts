@@ -13,6 +13,7 @@ export {
   searchKnn,
 } from './db/index.js';
 export { KnowledgeRepository } from './repositories/index.js';
+export { CurationRepository, type CurationSnapshotV1 } from './repositories/curation.repository.js';
 export { KnowledgeService, type EmbeddingProvider } from './services/index.js';
 export type { CleanupReport, CleanupCandidate } from './services/knowledge.service.js';
 

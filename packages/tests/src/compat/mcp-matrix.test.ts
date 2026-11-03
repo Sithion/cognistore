@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { KnowledgeSDK } from '@cognistore/sdk';
 import { createDbClient } from '@cognistore/core';
+import { runMigrations } from '../../../core/src/db/migrate.js';
 import { DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
 import BetterSqlite3 from 'better-sqlite3';
 import { createRequire } from 'node:module';
@@ -211,6 +212,27 @@ test('MCP 2.6 works on a 2.5.4 database, and 2.5.4 still reads it afterwards', a
     const tasks = await ok(c, 'listPlanTasks', { planId: from26.planId });
     expect(tasks.tasks[0].status).toBe('in_progress');
   });
+});
+
+test('published 2.5.x can read and write after curation migration', async () => {
+  needNpx();
+  const db = join(work, 'curation-migrated.db');
+  await withMcp(bundleLaunch(), db, async (current) => {
+    await smoke(current, 'curation-storage');
+  });
+  const { sqlite } = createDbClient(db);
+  try {
+    runMigrations(sqlite, resolve(__dirname, '../../../core/src/db/migrations'));
+    sqlite.exec("UPDATE knowledge_entries SET status='archived' WHERE type != 'system';");
+    sqlite.exec("INSERT INTO curation_activity(singleton,last_seen_at) VALUES(1,'2026-01-01') ON CONFLICT(singleton) DO UPDATE SET last_seen_at=excluded.last_seen_at;");
+  } finally { sqlite.close(); }
+  for (const v of NPM_VERSIONS) {
+    await withMcp(npxLaunch(v, NPX_SANDBOX), db, async (client) => {
+      const result = await addEntry(client, `after-curation-${v}`);
+      expect(result).toBeTruthy();
+      expect(JSON.stringify(await ok(client, 'getKnowledge', { query: `Written by npm ${v}` }))).toContain(result);
+    });
+  }
 });
 
 test('the 2.6 app and the 2.5.x servers write to one database at the same time', async () => {

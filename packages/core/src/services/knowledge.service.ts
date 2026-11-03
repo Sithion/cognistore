@@ -1869,6 +1869,10 @@ export class KnowledgeService {
       readCount: row.readCount ?? row.read_count ?? 0,
       createdAt: new Date(row.createdAt ?? row.created_at),
       updatedAt: new Date(row.updatedAt ?? row.updated_at),
+      status: row.status ?? 'active',
+      supersededBy: row.supersededBy ?? row.superseded_by ?? null,
+      curatedAt: row.curatedAt ?? row.curated_at ? new Date(row.curatedAt ?? row.curated_at) : null,
+      trashedAt: row.trashedAt ?? row.trashed_at ? new Date(row.trashedAt ?? row.trashed_at) : null,
     };
   }
 

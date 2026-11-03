@@ -16,6 +16,31 @@ describe('KnowledgeRepository', () => {
   }
 
   describe('entries and search', () => {
+    it('inactive entries never enter active lists statistics semantic FTS or plan context', async () => {
+      ctx = makeDb(); const active=await add('active item',{tags:['shown']}), inactive=await add('inactive item',{tags:['hidden']});
+      ctx.repository.transitionStatus(inactive.id,'archived');
+      expect((await ctx.repository.listAll()).map(x=>x.id)).toContain(active.id);
+      expect((await ctx.repository.listAll()).map(x=>x.id)).not.toContain(inactive.id);
+      expect(await ctx.repository.count()).toBe(1); expect(await ctx.repository.listTags()).not.toContain('hidden');
+      expect((await ctx.repository.searchBySimilarity(stubEmbedding('inactive item'),{threshold:0,queryText:'inactive'})).map(x=>x.entry.id)).not.toContain(inactive.id);
+    });
+
+    it('inactive nearest neighbours do not starve active top-k', async () => {
+      ctx=makeDb();
+      for(let i=0;i<20;i++){const e=await add(`near ${i}`,{content:`near-${i}`,embedding:stubEmbedding('needle')});ctx.repository.transitionStatus(e.id,'trashed');}
+      const active=await add('active needle',{content:'needle',embedding:stubEmbedding('needle')});
+      const results=await ctx.repository.searchBySimilarity(stubEmbedding('needle'),{limit:1,threshold:0});
+      expect(results[0]?.entry.id).toBe(active.id);
+    });
+
+    it('status transitions invalidate duplicate scan state', async () => {
+      ctx=makeDb();const e=await add('to archive');
+      ctx.sqlite.prepare("INSERT INTO cleanup_meta(key,value) VALUES('dup_scan_state:0.9','{}')").run();
+      ctx.repository.transitionStatus(e.id,'archived');
+      expect(ctx.sqlite.prepare("SELECT value FROM cleanup_meta WHERE key='dup_scan_generation'").get()).toBeDefined();
+      expect(ctx.sqlite.prepare("SELECT value FROM cleanup_meta WHERE key='dup_scan_state:0.9'").get()).toBeUndefined();
+    });
+
     it('creates entry and embedding atomically, reads it, updates version and removes both', async () => {
       ctx = makeDb();
       const created = await add('Alpha', { tags: ['alpha'], agentId: 'agent-a', platform: 'cli' });

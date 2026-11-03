@@ -14,6 +14,9 @@ export enum KnowledgeStatus {
   ARCHIVED = 'archived',
 }
 
+/** Lifecycle of a stored knowledge entry, independent of plan status. */
+export type KnowledgeEntryStatus = 'active' | 'superseded' | 'archived' | 'trashed';
+
 export enum TaskStatus {
   PENDING = 'pending',
   IN_PROGRESS = 'in_progress',
@@ -53,6 +56,10 @@ export interface KnowledgeEntry {
   readCount: number;
   createdAt: Date;
   updatedAt: Date;
+  status?: KnowledgeEntryStatus;
+  supersededBy?: string | null;
+  curatedAt?: Date | null;
+  trashedAt?: Date | null;
 }
 
 export interface CreateKnowledgeInput {

@@ -60,8 +60,8 @@ export function duplicateFingerprint(sqlite: Database.Database, threshold: numbe
   try {
     const row = sqlite.prepare(`SELECT
       (SELECT COALESCE(MAX(rowid), 0) FROM knowledge_embeddings_rowids) AS maxRowid,
-      (SELECT COALESCE(MAX(updated_at), '') FROM knowledge_entries WHERE type != 'system') AS maxUpdated,
-      (SELECT COUNT(*) FROM knowledge_entries WHERE type != 'system') AS entries,
+      (SELECT COALESCE(MAX(updated_at), '') FROM knowledge_entries WHERE type != 'system' AND status = 'active') AS maxUpdated,
+      (SELECT COUNT(*) FROM knowledge_entries WHERE type != 'system' AND status = 'active') AS entries,
       (SELECT COUNT(*) FROM knowledge_embeddings_rowids) AS embeddings`).get() as { maxRowid: number; maxUpdated: string; entries: number; embeddings: number };
     const generation = sqlite.prepare('SELECT value FROM cleanup_meta WHERE key = ?').get('dup_scan_generation') as { value: string } | undefined;
     return `${threshold}|${row.maxRowid}|${row.maxUpdated}|${row.entries}|${row.embeddings}|${generation?.value ?? '0'}`;
@@ -160,11 +160,11 @@ async function runScan(
 
   const meta = new Map<string, GroupMember>();
   let metadataDone = 0;
-  const metadataTotal = sqlite.prepare("SELECT COUNT(*) AS total FROM knowledge_entries WHERE type != 'system'").get() as { total: number };
+  const metadataTotal = sqlite.prepare("SELECT COUNT(*) AS total FROM knowledge_entries WHERE type != 'system' AND status = 'active'").get() as { total: number };
   let maxUpdated = '';
   const page = sqlite.prepare(
     `SELECT id, title, scope, type, version, updated_at AS updatedAt FROM knowledge_entries
-      WHERE type != 'system' AND id > ? ORDER BY id LIMIT ${META_PAGE}`,
+      WHERE type != 'system' AND status = 'active' AND id > ? ORDER BY id LIMIT ${META_PAGE}`,
   );
   for (let after = ''; ;) {
     const rows = page.all(after) as GroupMember[];

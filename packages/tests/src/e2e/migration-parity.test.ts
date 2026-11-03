@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EMBEDDED_MIGRATIONS } from '@cognistore/core';
+import { EMBEDDED_MIGRATIONS } from '../../../core/src/db/migrate.js';
 
 /**
  * The same migration exists twice: as a .sql file (run by the dashboard sidecar,
@@ -69,5 +69,9 @@ test.describe('@e2e migration parity (disk .sql vs embedded)', () => {
         }
       }
     }
+  });
+
+  test('2.4.6 disk and embedded bytes are identical', () => {
+    expect(EMBEDDED_MIGRATIONS['2.4.6']).toBe(readFileSync(resolve(MIGRATIONS_DIR, '2.4.6.sql'), 'utf-8'));
   });
 });

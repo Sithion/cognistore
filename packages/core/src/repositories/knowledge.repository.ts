@@ -1,4 +1,4 @@
-import { eq, ne, sql, and, or, isNull } from 'drizzle-orm';
+import { eq, ne, sql, and, or, isNull, type SQL } from 'drizzle-orm';
 import { type Database, type SQLiteDatabase } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema/knowledge.js';
 import {
@@ -6,6 +6,7 @@ import {
   updateEmbedding,
   deleteEmbedding,
   searchKnn,
+  readEmbeddingBatch,
   insertPlanEmbedding,
   updatePlanEmbedding,
   deletePlanEmbedding,
@@ -15,7 +16,7 @@ import {
   insertFts,
   updateFts,
   deleteFts,
-  searchFts,
+  searchFtsActive,
   ftsCount,
   type FtsResult,
 } from '../db/schema/fts.js';
@@ -87,6 +88,14 @@ export class KnowledgeRepository {
       .from(knowledgeEntries)
       .where(eq(knowledgeEntries.id, id));
     return entry ?? null;
+  }
+
+  transitionStatus(id: string, status: 'active' | 'superseded' | 'archived' | 'trashed', supersededBy: string | null = null): boolean {
+    const now = new Date().toISOString();
+    const changed = this.sqlite.transaction(() => this.sqlite.prepare(`UPDATE knowledge_entries SET status = ?, superseded_by = ?, curated_at = ?, trashed_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND status != ?`)
+      .run(status, supersededBy, status === 'superseded' ? now : null, status === 'trashed' ? now : null, now, id, status).changes > 0).immediate();
+    if (changed) invalidateDuplicateScan(this.sqlite);
+    return changed;
   }
 
   findImportCandidates(hash: string): { id: string; title: string; content: string }[] {
@@ -257,9 +266,27 @@ export class KnowledgeRepository {
     const limit = options?.limit ?? DEFAULT_SEARCH_LIMIT;
     const threshold = options?.threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
 
-    // Fetch more candidates than needed to account for metadata filtering
-    const candidateLimit = limit * 5;
-    const knnResults = searchKnn(this.sqlite, queryEmbedding, candidateLimit);
+    const candidateLimit = Math.max(limit * 5, limit);
+    const filters: string[] = ["status = 'active'", "type != 'system'", '(expires_at IS NULL OR expires_at > ?)'];
+    const filterParams: unknown[] = [new Date().toISOString()];
+    if (options?.scope) { filters.push("(scope = 'global' OR scope = ?)"); filterParams.push(options.scope); }
+    if (options?.tags?.length) { filters.push(`(${options.tags.map(() => "EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = ?)").join(' OR ')})`); filterParams.push(...options.tags); }
+    if (options?.type) { filters.push('type = ?'); filterParams.push(options.type); }
+    const activeIds = (this.sqlite.prepare(`SELECT id FROM knowledge_entries WHERE ${filters.join(' AND ')} ORDER BY id`).all(...filterParams) as {id:string}[]).map(r=>r.id);
+    const knnResults: { id: string; distance: number }[] = [];
+    for (let from = 0; from < activeIds.length; from += 128) {
+      const batch = readEmbeddingBatch(this.sqlite, activeIds.slice(from, from + 128));
+      for (const row of batch) {
+        const dims = row.embedding.byteLength / 4;
+        const vector = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, dims);
+        if (dims !== queryEmbedding.length) continue;
+        let dot = 0, a = 0, b = 0;
+        for (let i=0;i<dims;i++) { dot += vector[i]*queryEmbedding[i]; a += vector[i]*vector[i]; b += queryEmbedding[i]*queryEmbedding[i]; }
+        knnResults.push({ id: row.id, distance: 1 - (dot / (Math.sqrt(a*b) || 1)) });
+      }
+    }
+    knnResults.sort((a,b)=>a.distance-b.distance);
+    knnResults.splice(candidateLimit);
 
     // Build a distance lookup map (cosine distance from sqlite-vec)
     const distanceMap = new Map(knnResults.map((r) => [r.id, r.distance]));
@@ -269,7 +296,7 @@ export class KnowledgeRepository {
     // pure semantic so search never breaks.
     let ftsResults: FtsResult[] = [];
     if (options?.queryText) {
-      try { ftsResults = searchFts(this.sqlite, options.queryText, candidateLimit); } catch { ftsResults = []; }
+      try { ftsResults = searchFtsActive(this.sqlite, options.queryText, candidateLimit); } catch { ftsResults = []; }
     }
     const bm25Map = new Map(ftsResults.map((r) => [r.id, r.bm25]));
 
@@ -281,7 +308,7 @@ export class KnowledgeRepository {
     const candidateIds = [...new Set([...knnResults.map((r) => r.id), ...ftsResults.map((r) => r.id)])];
 
     // Fetch full entries for candidates
-    const conditions = [];
+    const conditions: SQL[] = [sql`${knowledgeEntries.status} = 'active'`];
 
     // Filter to only candidates from KNN
     conditions.push(
@@ -293,12 +320,11 @@ export class KnowledgeRepository {
 
     // Scope filter: always include global + specific scope
     if (options?.scope) {
-      conditions.push(
-        or(
-          eq(knowledgeEntries.scope, 'global'),
-          eq(knowledgeEntries.scope, options.scope)
-        )
+      const scopeCondition = or(
+        eq(knowledgeEntries.scope, 'global'),
+        eq(knowledgeEntries.scope, options.scope)
       );
+      if (scopeCondition) conditions.push(scopeCondition);
     }
 
     // Tag filter: check if any requested tag is in the JSON tags array
@@ -306,7 +332,8 @@ export class KnowledgeRepository {
       const tagConditions = options.tags.map(
         (tag) => sql`EXISTS (SELECT 1 FROM json_each(${knowledgeEntries.tags}) WHERE value = ${tag})`
       );
-      conditions.push(or(...tagConditions));
+      const tagCondition = or(...tagConditions);
+      if (tagCondition) conditions.push(tagCondition);
     }
 
     // Type filter
@@ -318,12 +345,11 @@ export class KnowledgeRepository {
     conditions.push(ne(knowledgeEntries.type, 'system'));
 
     // Exclude expired entries
-    conditions.push(
-      or(
-        isNull(knowledgeEntries.expiresAt),
-        sql`${knowledgeEntries.expiresAt} > ${new Date().toISOString()}`
-      )
+    const expirationCondition = or(
+      isNull(knowledgeEntries.expiresAt),
+      sql`${knowledgeEntries.expiresAt} > ${new Date().toISOString()}`
     );
+    if (expirationCondition) conditions.push(expirationCondition);
 
     const whereClause = and(...conditions);
 
@@ -356,7 +382,7 @@ export class KnowledgeRepository {
     filters?: { type?: string; scope?: string; tags?: string[]; agent?: string; platform?: string },
     offset = 0,
   ) {
-    const conditions: any[] = [ne(knowledgeEntries.type, 'system')];
+    const conditions: any[] = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (filters?.type) conditions.push(sql`${knowledgeEntries.type} = ${filters.type}`);
     if (filters?.scope) conditions.push(sql`${knowledgeEntries.scope} = ${filters.scope}`);
     // Provenance filters round-trip the chart sentinel labels back to the stored
@@ -399,14 +425,14 @@ export class KnowledgeRepository {
     if (from && to) {
       const result = await this.db.all<{ value: string }>(
         sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags)
-            WHERE knowledge_entries.type != 'system'
+            WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active'
               AND knowledge_entries.created_at >= ${from}
               AND knowledge_entries.created_at < ${to}`
       );
       return result.map((r) => r.value);
     }
     const result = await this.db.all<{ value: string }>(
-      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system'`
+      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active'`
     );
     return result.map((r) => r.value);
   }
@@ -416,7 +442,7 @@ export class KnowledgeRepository {
     if (from && to) {
       const result = await this.db.all<{ tag: string; count: number }>(
         sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags)
-            WHERE knowledge_entries.type != 'system'
+            WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active'
               AND knowledge_entries.created_at >= ${from}
               AND knowledge_entries.created_at < ${to}
             GROUP BY value ORDER BY count DESC LIMIT ${limit}`
@@ -424,7 +450,7 @@ export class KnowledgeRepository {
       return result;
     }
     const result = await this.db.all<{ tag: string; count: number }>(
-      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' GROUP BY value ORDER BY count DESC LIMIT ${limit}`
+      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active' GROUP BY value ORDER BY count DESC LIMIT ${limit}`
     );
     return result;
   }
@@ -432,7 +458,7 @@ export class KnowledgeRepository {
   /** Usage count for every tag (no limit/range) — feeds merge-keeper defaults. */
   async tagCounts() {
     const result = await this.db.all<{ tag: string; count: number }>(
-      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' GROUP BY value`
+      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active' GROUP BY value`
     );
     return result;
   }
@@ -476,7 +502,7 @@ export class KnowledgeRepository {
     const rows = this.sqlite.prepare(
       `SELECT id, title, type, scope, confidence_score AS confidenceScore, updated_at AS updatedAt, expires_at AS expiresAt
          FROM knowledge_entries
-        WHERE type != 'system'
+        WHERE type != 'system' AND status = 'active'
           AND (updated_at < @cutoff OR (expires_at IS NOT NULL AND expires_at < @now) OR confidence_score < @minConfidence)
         ORDER BY updated_at ASC
         LIMIT @limit`
@@ -498,7 +524,7 @@ export class KnowledgeRepository {
     return this.sqlite.prepare(
       `SELECT id, title, type, scope, updated_at AS updatedAt, last_read_at AS lastReadAt
          FROM knowledge_entries
-        WHERE type != 'system'
+        WHERE type != 'system' AND status = 'active'
           AND EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'deprecated')
         ORDER BY updated_at ASC
         LIMIT @limit`
@@ -522,7 +548,7 @@ export class KnowledgeRepository {
       `SELECT id, title, type, scope, updated_at AS updatedAt, last_read_at AS lastReadAt
          FROM knowledge_entries
         WHERE type != 'system'
-          AND created_at < @cutoff
+          AND status = 'active' AND created_at < @cutoff
           AND COALESCE(last_read_at, created_at) < @cutoff
           AND NOT EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'keep')
         ORDER BY COALESCE(last_read_at, created_at) ASC
@@ -542,7 +568,7 @@ export class KnowledgeRepository {
     if (category === 'deprecated') {
       const row = this.sqlite.prepare(
         `SELECT 1 AS ok FROM knowledge_entries
-          WHERE id = @id AND type != 'system'
+          WHERE id = @id AND status = 'active' AND type != 'system'
             AND EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'deprecated')`
       ).get({ id }) as { ok: number } | undefined;
       return row?.ok === 1;
@@ -550,7 +576,7 @@ export class KnowledgeRepository {
     const cutoff = new Date(Date.now() - unreadDays * 24 * 60 * 60 * 1000).toISOString();
     const row = this.sqlite.prepare(
       `SELECT 1 AS ok FROM knowledge_entries
-        WHERE id = @id AND type != 'system'
+        WHERE id = @id AND status = 'active' AND type != 'system'
           AND created_at < @cutoff
           AND COALESCE(last_read_at, created_at) < @cutoff
           AND NOT EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'keep')`
@@ -627,12 +653,12 @@ export class KnowledgeRepository {
 
   countMissingFts(): number {
     return (this.sqlite.prepare(`SELECT count(*) AS n FROM knowledge_entries
-      WHERE type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)`).get() as { n: number }).n;
+      WHERE type != 'system' AND status = 'active' AND id NOT IN (SELECT id FROM knowledge_fts)`).get() as { n: number }).n;
   }
 
   listFtsCoveragePage(afterRowid: number, limit = 250): { rowid: number; id: string }[] {
     return this.sqlite.prepare(`SELECT rowid, id FROM knowledge_entries
-      WHERE rowid > ? AND type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)
+      WHERE rowid > ? AND type != 'system' AND status = 'active' AND id NOT IN (SELECT id FROM knowledge_fts)
       ORDER BY rowid LIMIT ?`).all(afterRowid, limit) as { rowid: number; id: string }[];
   }
 
@@ -641,7 +667,7 @@ export class KnowledgeRepository {
     const marks = ids.map(() => '?').join(',');
     const tx = this.sqlite.transaction(() => {
       const current = this.sqlite.prepare(`SELECT id,title,content,tags FROM knowledge_entries
-        WHERE id IN (${marks}) AND type != 'system' AND id NOT IN (SELECT id FROM knowledge_fts)`).all(...ids) as { id: string; title: string; content: string; tags: string }[];
+        WHERE id IN (${marks}) AND type != 'system' AND status = 'active' AND id NOT IN (SELECT id FROM knowledge_fts)`).all(...ids) as { id: string; title: string; content: string; tags: string }[];
       for (const row of current) {
         insertFts(this.sqlite, { id: row.id, title: row.title ?? '', content: row.content ?? '', tags: ftsTags(row.tags) });
       }
@@ -654,7 +680,7 @@ export class KnowledgeRepository {
     const [result] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(knowledgeEntries)
-      .where(ne(knowledgeEntries.type, 'system'));
+      .where(and(ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`));
     return Number(result.count);
   }
 
@@ -667,7 +693,7 @@ export class KnowledgeRepository {
 
   async countByType(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -685,7 +711,7 @@ export class KnowledgeRepository {
 
   async countByScope(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -708,7 +734,7 @@ export class KnowledgeRepository {
    */
   async countByAgent(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -730,7 +756,7 @@ export class KnowledgeRepository {
    */
   async countByPlatform(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -748,7 +774,7 @@ export class KnowledgeRepository {
     return this.db
       .select()
       .from(knowledgeEntries)
-      .where(ne(knowledgeEntries.type, 'system'))
+      .where(and(ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`))
       .orderBy(sql`${knowledgeEntries.createdAt} DESC`);
   }
 
@@ -906,7 +932,7 @@ export class KnowledgeRepository {
 
   async listScopes(): Promise<string[]> {
     const rows = this.sqlite.prepare(
-      `SELECT DISTINCT scope FROM knowledge_entries
+      `SELECT DISTINCT scope FROM knowledge_entries WHERE status = 'active'
        UNION
        SELECT DISTINCT scope FROM plans
        ORDER BY scope`
