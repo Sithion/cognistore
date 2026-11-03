@@ -25,7 +25,7 @@ export function RetentionField({ value, onSave }: { value: number; onSave: (days
     <label htmlFor="retention-days">Raw token history (days)</label>
     <p>Default: 90 days. Set 0 to keep raw history indefinitely. Daily rollups are retained. Previously pruned raw history cannot be recovered; shortening retention can permanently prune older records.</p>
     <input id="retention-days" data-testid="retention-days" type="number" min={0} max={36500} step={1}
-      value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} aria-describedby="retention-error" />
+      value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} aria-describedby={error ? 'retention-error' : undefined} />
     <button data-testid="retention-save" disabled={saving} onClick={() => void submit()}>{saving ? 'Saving…' : 'Save'}</button>
     {error && <p id="retention-error" role="alert">{error}</p>}
   </div>;

@@ -21,13 +21,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar data-testid="app-sidebar">
         <SidebarHeader>
-          <span style={{ flex: 1, display: collapsed ? 'none' : undefined, fontWeight: 700, color: 'var(--accent)' }}>🧠 {t('app.title')}</span>
+          <span style={{ flex: 1, display: collapsed ? 'none' : undefined, fontWeight: 700, color: 'var(--accent)' }}><span aria-hidden="true">🧠</span> {t('app.title')}</span>
           <SidebarTrigger onClick={() => setCollapsed((value) => !value)}>{collapsed ? '→' : '←'}</SidebarTrigger>
         </SidebarHeader>
         <SidebarContent><nav aria-label="Primary"><SidebarMenu>
-          {navItems.map((item) => { const scope = new URLSearchParams(location.search).get('scope'); return <SidebarMenuItem key={item.path}><Link to={{ pathname: item.path, search: scope ? `?${new URLSearchParams({ scope })}` : '' }} aria-current={activePath(location.pathname, item.path) ? 'page' : undefined} className={`sidebar-link${activePath(location.pathname, item.path) ? ' is-active' : ''}`} title={t(`nav.${item.key}`)}><span>{item.icon}</span>{!collapsed && <span>{t(`nav.${item.key}`)}</span>}</Link></SidebarMenuItem>; })}
+          {navItems.map((item) => { const scope = new URLSearchParams(location.search).get('scope'); return <SidebarMenuItem key={item.path}><Link to={{ pathname: item.path, search: scope ? `?${new URLSearchParams({ scope })}` : '' }} aria-current={activePath(location.pathname, item.path) ? 'page' : undefined} className={`sidebar-link${activePath(location.pathname, item.path) ? ' is-active' : ''}`} title={t(`nav.${item.key}`)} aria-label={t(`nav.${item.key}`)}><span aria-hidden="true">{item.icon}</span>{!collapsed && <span>{t(`nav.${item.key}`)}</span>}</Link></SidebarMenuItem>; })}
         </SidebarMenu></nav></SidebarContent>
-        {!collapsed && <div style={{ padding: 12, fontSize: 10, color: 'var(--text-secondary)', opacity: .6, textAlign: 'center' }}>v{__APP_VERSION__}</div>}
+        {!collapsed && <div style={{ padding: 12, fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center' }}>v{__APP_VERSION__}</div>}
       </Sidebar>
       <SidebarInset className="shell-main"><div data-testid="route-content">{children}</div></SidebarInset>
     </div>

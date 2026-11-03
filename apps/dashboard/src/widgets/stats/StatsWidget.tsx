@@ -58,11 +58,11 @@ export function StatsWidget() {
   }, [fetchData]);
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       {/* Drag region */}
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>CogniStore</span>
-        <button className="widget-close" onClick={handleClose} title="Close">
+        <h1 className="widget-title" data-tauri-drag-region>CogniStore</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close">
           ×
         </button>
       </div>
@@ -114,6 +114,6 @@ export function StatsWidget() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

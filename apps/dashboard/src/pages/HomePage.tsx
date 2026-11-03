@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { markdownHeadings } from '../lib/markdownHeadings.js';
 import { api, type ExternalSection } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
@@ -321,7 +322,8 @@ function KnowledgeBase() {
             {detailFailed ? <p role="alert">{t('errors.actionFailed')}</p> : !detail ? <p role="status">{t('stats.loading')}</p> : editing ?
               <KnowledgeEditor key={detail.id} entry={detail} onSaved={save} onCancel={() => setEditing(false)} /> : <>
                 <div className="prose max-w-none break-words dark:prose-invert [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_code]:font-mono">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                  <ReactMarkdown remarkPlugins={[remarkGfm, [markdownHeadings, { level: 3 }]]} components={{
+                    input: ({ node: _node, ...props }) => <input {...props} aria-label="Task completion" />,
                     a: ({ href, children }) => isSafeHttpUrl(href) ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>,
                     img: ({ alt }) => <span>{alt}</span>,
                   }}>{detail.content}</ReactMarkdown>

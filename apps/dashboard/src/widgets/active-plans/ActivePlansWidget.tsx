@@ -100,6 +100,7 @@ function PlanRow({ plan, onDelete, expanded, onToggle }: {
           <button
             onClick={handleDelete}
             title="Delete plan"
+            aria-label={`Delete plan ${plan.title}`}
             style={{
               width: 18, height: 18, borderRadius: '50%', border: 'none',
               background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444',
@@ -222,10 +223,10 @@ export function ActivePlansWidget() {
   }, [plans, loading, expandedPlan, maxContentHeight]);
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>Active Plans</span>
-        <button className="widget-close" onClick={handleClose} title="Close"><X size={13} /></button>
+        <h1 className="widget-title" data-tauri-drag-region>Active Plans</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close"><X size={13} /></button>
       </div>
 
       <div ref={contentRef} className="widget-content" style={{ overflowY: 'auto', maxHeight: maxContentHeight }}>
@@ -258,6 +259,6 @@ export function ActivePlansWidget() {
           ))
         )}
       </div>
-    </div>
+    </main>
   );
 }

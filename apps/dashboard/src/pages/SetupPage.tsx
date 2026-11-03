@@ -64,7 +64,7 @@ export function SetupPage({ onComplete }: { onComplete: () => void }) {
 
   const completed = steps.filter(step => step.status === 'done').length;
   const failed = steps.find(step => step.status === 'error');
-  return <div className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
+  return <main className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
     <div className="w-full max-w-xl space-y-6">
       <header className="text-center"><h1 className="text-3xl font-semibold tracking-tight">CogniStore setup</h1><p className="mt-2 text-sm text-muted-foreground">Version {__APP_VERSION__} · Prepare your local environment</p></header>
       <Card><CardHeader><CardTitle>Setup progress</CardTitle></CardHeader><CardContent className="space-y-4">
@@ -78,5 +78,5 @@ export function SetupPage({ onComplete }: { onComplete: () => void }) {
       </CardContent></Card>
       {activeStep && <p className="sr-only" aria-live="polite">Working on {activeStep}</p>}
     </div>
-  </div>;
+  </main>;
 }

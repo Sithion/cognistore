@@ -321,7 +321,7 @@ export function UpdateChecker() {
               {t('update.viewRelease')}
             </a>
           )}
-          <button onClick={() => setDismissed(true)} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }} title="Dismiss">×</button>
+          <button aria-label="Dismiss update notification" onClick={() => setDismissed(true)} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }} title="Dismiss">×</button>
         </>
       )}
 
@@ -342,7 +342,7 @@ export function UpdateChecker() {
       {state === 'error' && (
         <>
           <span style={{ color: '#fca5a5' }}>Update failed: {error}</span>
-          <button onClick={() => { broadcastState('idle'); setDismissed(true); }} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+          <button aria-label="Dismiss update error" onClick={() => { broadcastState('idle'); setDismissed(true); }} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
         </>
       )}
     </div>

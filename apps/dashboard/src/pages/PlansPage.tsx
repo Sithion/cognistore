@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { markdownHeadings } from '../lib/markdownHeadings.js';
 // Subpath import on purpose: the package root barrel pulls zod in, which the
 // browser bundle has no other reason to carry.
 import { PLAN_STATUS_VALUES, type PlanStatus } from '@cognistore/shared/constants';
@@ -215,7 +216,6 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
         display: 'flex', gap: 8, padding: '8px 10px',
         borderLeft: `3px solid ${PRIORITY_COLORS[task.priority] || '#6b7280'}`,
         backgroundColor: 'var(--bg-main)', borderRadius: '0 6px 6px 0',
-        opacity: task.status === 'completed' ? 0.6 : 1,
         position: 'relative',
       }}
     >
@@ -225,6 +225,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
       <div style={{ flex: 1, minWidth: 0 }}>
         {editingDesc && onUpdateTask ? (
           <input
+            aria-label="Task description"
             autoFocus
             value={editDesc}
             onChange={(e) => setEditDesc(e.target.value)}
@@ -295,6 +296,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
             {expandedNotes && (
               editingNotes && onUpdateTask ? (
                 <textarea
+                  aria-label={t('plans.notes')}
                   autoFocus
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
@@ -333,7 +335,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
             backgroundColor: '#ef4444', border: 'none', borderRadius: 4, cursor: 'pointer',
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
@@ -423,8 +425,8 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
   return (
       <div className="rounded-xl border bg-card p-5 text-card-foreground mb-5">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h2>
-        <button onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+        <h1 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h1>
+        <button aria-label={t('actions.cancel')} onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
       </div>
 
       {/* Template Selector */}
@@ -440,7 +442,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
               onClick={() => applyTemplate(tpl)}
               className="shrink-0"
             >
-              {tpl.icon} {tpl.name}
+              <span aria-hidden="true">{tpl.icon}</span> {tpl.name}
             </Button>
           ))}
         </div>
@@ -484,6 +486,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
             {t('knowledge.tags')}
           </label>
           <Input
+            aria-label={t('knowledge.tags')}
             value={tagsInput} onChange={(e) => setTagsInput(e.target.value)}
             placeholder={t('plans.tagsPlaceholder')}
             className="h-auto py-2.5"
@@ -509,12 +512,14 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
           {newTasks.map((task, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <Input
+                aria-label={`Task ${i + 1} description`}
                 value={task.description}
                 onChange={(e) => updateTask(i, 'description', e.target.value)}
                 placeholder={`${t('plans.taskPlaceholder')} ${i + 1}`}
                 className="flex-1"
               />
               <select
+                aria-label={`Task ${i + 1} priority`}
                 value={task.priority}
                 onChange={(e) => updateTask(i, 'priority', e.target.value)}
                 style={{ ...inputStyle, width: 100, flex: 'none' }}
@@ -524,7 +529,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
                 <option value="low">Low</option>
               </select>
               {newTasks.length > 1 && (
-                <button onClick={() => removeTask(i)} style={{
+                <button aria-label={`Remove task ${i + 1}`} onClick={() => removeTask(i)} style={{
                   background: 'none', border: 'none', color: 'var(--text-secondary)',
                   cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1,
                 }}>×</button>
@@ -934,6 +939,7 @@ export function PlansPage() {
               <button
                 onClick={() => navigator.clipboard?.writeText(selectedPlan.planFilePath!)}
                 title={t('planFile.copyPath')}
+                aria-label={t('planFile.copyPath')}
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}
               >
                 ⧉
@@ -955,7 +961,7 @@ export function PlansPage() {
                   </p>
                 ) : (
                   <>
-                    <Markdown remarkPlugins={[remarkGfm]}>{filePreview.content || ''}</Markdown>
+                    <Markdown components={{ input: ({ node: _node, ...props }) => <input {...props} aria-label="Task completion" /> }} remarkPlugins={[remarkGfm, [markdownHeadings, { level: 2 }]]}>{filePreview.content || ''}</Markdown>
                     {filePreview.truncated && (
                       <p style={{ color: 'var(--text-secondary)', fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>{t('planFile.truncated')}</p>
                     )}
@@ -969,9 +975,9 @@ export function PlansPage() {
         {/* Tasks */}
         {tasks.length > 0 && (
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.tasks')}
-            </h3>
+            </h2>
             {taskError && (
               <p style={{ fontSize: 12, color: 'var(--error, #ef4444)', marginBottom: 8 }}>{taskError}</p>
             )}
@@ -993,7 +999,7 @@ export function PlansPage() {
 
         {/* Content */}
         <div className="plan-markdown" style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-          <Markdown remarkPlugins={[remarkGfm]}>{selectedPlan.content}</Markdown>
+          <Markdown components={{ input: ({ node: _node, ...props }) => <input {...props} aria-label="Task completion" /> }} remarkPlugins={[remarkGfm, [markdownHeadings, { level: 2 }]]}>{selectedPlan.content}</Markdown>
           <div style={{ display: 'flex', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
             {selectedPlan.tags.map((tag) => (
               <span key={tag} style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, backgroundColor: 'var(--bg-input)', color: 'var(--accent)' }}>
@@ -1032,9 +1038,9 @@ export function PlansPage() {
         {/* Plan chain — hidden for a standalone plan, where the chain is just itself. */}
         {chain.length > 1 && (
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.chain.title')}
-            </h3>
+            </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {chain.map((node) => (
                 <button
@@ -1076,9 +1082,9 @@ export function PlansPage() {
         {/* Relations */}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 250 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.input')}
-            </h3>
+            </h2>
             {inputRelations.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
             ) : (
@@ -1088,9 +1094,9 @@ export function PlansPage() {
             )}
           </div>
           <div style={{ flex: 1, minWidth: 250 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.output')}
-            </h3>
+            </h2>
             {outputRelations.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
             ) : (
@@ -1266,7 +1272,7 @@ export function PlansPage() {
                 padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
                 border: on ? '1px solid var(--accent)' : '1px solid var(--border)',
                 backgroundColor: on ? 'var(--accent)' : 'var(--bg-card)',
-                color: on ? '#fff' : 'var(--text-secondary)',
+                color: on ? 'var(--primary-foreground)' : 'var(--text-secondary)',
                 cursor: 'pointer',
               }}
             >
@@ -1275,6 +1281,7 @@ export function PlansPage() {
           );
         })}
         <select
+          aria-label="Filter plans by scope"
           value={scopeFilter}
           onChange={(e) => { route.setScope(e.target.value); setSelectedPlan(null); }}
           style={{
@@ -1329,9 +1336,9 @@ export function PlansPage() {
                       <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{plan.scope}</span>
                       {plan.parentPlanId && <OriginChip parentPlanId={plan.parentPlanId} onOpenParent={selectPlanById} />}
                     </div>
-                    <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                    <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
                       {plan.title || 'Untitled Plan'}
-                    </h3>
+                    </h2>
                     <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       {plan.tags.slice(0, 5).map((tag) => (
                         <span key={tag} style={{ padding: '1px 6px', borderRadius: 3, fontSize: 10, backgroundColor: 'var(--bg-input)', color: 'var(--text-secondary)' }}>

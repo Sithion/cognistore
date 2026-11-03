@@ -171,7 +171,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
   const pct = done ? 100 : Math.min(95, Math.round((steps.length / total) * 100));
 
   return (
-    <div style={{
+    <main style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       height: '100vh', background: 'var(--bg-main)',
       flexDirection: 'column', gap: 0,
@@ -194,7 +194,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
             <span style={{ color: 'var(--accent)', fontSize: 18 }}>→</span>
             <span style={{
               padding: '4px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              backgroundColor: 'var(--accent)', color: '#fff',
+              backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
             }}>
               v{__APP_VERSION__}
             </span>
@@ -267,6 +267,6 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

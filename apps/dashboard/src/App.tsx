@@ -165,15 +165,15 @@ export function App() {
     // Loading
     if (state === 'loading') {
       return (
-        <div style={{
+        <main style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           height: '100vh', background: 'var(--bg-main)', color: 'var(--text-secondary)',
           flexDirection: 'column', gap: 8,
         }}>
-          <div style={{ fontSize: 36 }}>🧠</div>
-          <span>{loadingPhase}</span>
+          <div aria-hidden="true" style={{ fontSize: 36 }}>🧠</div>
+          <h1 style={{ fontSize: 'inherit', fontWeight: 'inherit', margin: 0 }}>{loadingPhase}</h1>
           <span style={{ fontSize: 10, opacity: 0.5 }}>v{__APP_VERSION__}</span>
-        </div>
+        </main>
       );
     }
 

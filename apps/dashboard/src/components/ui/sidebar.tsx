@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
 const SidebarContext = React.createContext<{ open: boolean; toggle: () => void } | null>(null);
@@ -19,5 +20,5 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<'div'>) { re
 function SidebarGroupLabel({ className, ...props }: React.ComponentProps<'div'>) { return <div className={cn('px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/60', className)} {...props} />; }
 function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) { return <ul className={cn('flex w-full min-w-0 flex-col gap-1', className)} {...props} />; }
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) { return <li className={cn('group/menu-item relative', className)} {...props} />; }
-function SidebarMenuButton({ className, active, ...props }: React.ComponentProps<'button'> & { active?: boolean }) { return <button data-active={active || undefined} className={cn('flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-sidebar-accent data-[active]:bg-sidebar-accent data-[active]:font-medium data-[active]:text-sidebar-primary [&_svg]:size-4', className)} {...props} />; }
+function SidebarMenuButton({ className, active, asChild = false, ...props }: React.ComponentProps<'button'> & { active?: boolean; asChild?: boolean }) { const Component = asChild ? Slot : 'button'; return <Component data-active={active || undefined} className={cn('flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-sidebar-accent data-[active]:bg-sidebar-accent data-[active]:font-medium data-[active]:text-sidebar-primary [&_svg]:size-4', className)} {...props} />; }
 export { Sidebar, SidebarProvider, SidebarTrigger, SidebarInset, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, useSidebar };

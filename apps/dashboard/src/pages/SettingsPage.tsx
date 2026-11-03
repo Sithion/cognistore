@@ -93,7 +93,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
       padding: 20, flex: 1, minWidth: 200,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 20 }}>{ok ? '🟢' : '🔴'}</span>
+        <span aria-hidden="true" style={{ fontSize: 20 }}>{ok ? '🟢' : '🔴'}</span>
         <span style={{ fontSize: 16, fontWeight: 600 }}>{title}</span>
       </div>
       <span style={{ color: ok ? 'var(--success)' : 'var(--error)', fontSize: 13 }}>
@@ -138,7 +138,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
             padding: 20, flex: 1, minWidth: 200,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 20 }}>💾</span>
+              <span aria-hidden="true" style={{ fontSize: 20 }}>💾</span>
               <span style={{ fontSize: 16, fontWeight: 600 }}>{t('stats.dbSize')}</span>
             </div>
             <span style={{ color: 'var(--accent)', fontSize: 20, fontWeight: 700 }}>
@@ -161,7 +161,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
         border: `1px solid ${allHealthy ? 'var(--success)' : 'var(--border)'}`,
         padding: 16, marginBottom: 24, textAlign: 'center',
       }}>
-        <span style={{ fontSize: 32 }}>{allHealthy ? '✅' : health ? '⚠️' : '⏳'}</span>
+        <span aria-hidden="true" style={{ fontSize: 32 }}>{allHealthy ? '✅' : health ? '⚠️' : '⏳'}</span>
         <p style={{ fontSize: 14, fontWeight: 600, marginTop: 8, color: allHealthy ? 'var(--success)' : 'var(--warning)' }}>
           {allHealthy ? t('monitoring.allReady') : health ? t('monitoring.degraded') : healthFailed ? 'Unknown' : t('monitoring.checking')}
         </p>
@@ -272,7 +272,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
                 padding: '8px 16px', borderRadius: 6,
                 border: i18n.language === lang.code ? '1px solid var(--accent)' : '1px solid var(--border)',
                 backgroundColor: i18n.language === lang.code ? 'var(--accent)' : 'var(--bg-card)',
-                color: i18n.language === lang.code ? '#fff' : 'var(--text-primary)',
+                color: i18n.language === lang.code ? 'var(--primary-foreground)' : 'var(--text-primary)',
                 cursor: 'pointer', fontSize: 13, fontWeight: 500,
               }}
             >
@@ -292,7 +292,6 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
       <div style={{
         backgroundColor: 'var(--bg-card)', borderRadius: 10,
         border: '1px solid var(--error)', padding: 20,
-        opacity: 0.8,
       }}>
         {uninstallStep === 3 ? (
           <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('settings.uninstallingMsg')}</p>
@@ -411,7 +410,7 @@ function LogSection() {
           {t('settings.logs.title')}
         </h2>
         {total > 0 && (
-          <span style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.6 }}>({total} lines)</span>
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>({total} lines)</span>
         )}
       </div>
       {expanded && (
@@ -524,7 +523,7 @@ function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }
             {redeploying ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
             ) : (
-              <span style={{ fontSize: 14 }}>🔄</span>
+              <span aria-hidden="true" style={{ fontSize: 14 }}>🔄</span>
             )}
             {t('settings.redeploy')}
           </button>
@@ -550,7 +549,7 @@ function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }
             {cleaning ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
             ) : (
-              <span style={{ fontSize: 14 }}>🗑</span>
+              <span aria-hidden="true" style={{ fontSize: 14 }}>🗑</span>
             )}
             {t('settings.removeEmbeddings')}
           </button>
@@ -711,7 +710,7 @@ function DataManagementSection() {
                 disabled={exporting || (!exportKnowledge && !exportPlans)}
                 style={{
                   padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                  border: 'none', backgroundColor: 'var(--accent)', color: '#fff',
+                  border: 'none', backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
                   cursor: (!exportKnowledge && !exportPlans) ? 'not-allowed' : 'pointer',
                   opacity: (!exportKnowledge && !exportPlans) ? 0.5 : 1,
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -750,7 +749,7 @@ function DataManagementSection() {
                 disabled={importing || (!importKnowledge && !importPlansFlag)}
                 style={{
                   padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                  border: 'none', backgroundColor: 'var(--accent)', color: '#fff',
+                  border: 'none', backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
                   cursor: (!importKnowledge && !importPlansFlag) ? 'not-allowed' : 'pointer',
                   opacity: (!importKnowledge && !importPlansFlag) ? 0.5 : 1,
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -911,6 +910,7 @@ function TagSuggestionsSection() {
             return (
               <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', opacity: applying ? 0.6 : 1 }}>
                 <input
+                  aria-label={`Select tag group: ${g.members.map(m => m.tag).join(', ')}`}
                   type="checkbox"
                   checked={isSelected}
                   onChange={() => toggleGroup(g.key)}
@@ -930,6 +930,7 @@ function TagSuggestionsSection() {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                     <span style={{ color: 'var(--text-secondary)' }}>{t('tagSuggestions.keepLabel')}</span>
                     <select
+                      aria-label={t('tagSuggestions.keepLabel')}
                       value={keep}
                       disabled={applying}
                       onChange={(e) => setKeeper((prev) => ({ ...prev, [g.key]: (e.target as HTMLSelectElement).value }))}

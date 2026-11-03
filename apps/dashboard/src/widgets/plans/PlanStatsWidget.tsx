@@ -70,10 +70,10 @@ export function PlanStatsWidget() {
     : 0;
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>Plan Stats</span>
-        <button className="widget-close" onClick={handleClose} title="Close">×</button>
+        <h1 className="widget-title" data-tauri-drag-region>Plan Stats</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close">×</button>
       </div>
 
       <div className="widget-content">
@@ -141,6 +141,6 @@ export function PlanStatsWidget() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

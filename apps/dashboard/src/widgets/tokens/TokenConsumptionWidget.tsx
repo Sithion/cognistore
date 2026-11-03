@@ -80,10 +80,10 @@ export function TokenConsumptionWidget() {
   const total = totals ? totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheCreationTokens : 0;
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>Tokens · 7d</span>
-        <button className="widget-close" onClick={handleClose} title="Close">×</button>
+        <h1 className="widget-title" data-tauri-drag-region>Tokens · 7d</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close">×</button>
       </div>
 
       <div className="widget-content">
@@ -143,6 +143,6 @@ export function TokenConsumptionWidget() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

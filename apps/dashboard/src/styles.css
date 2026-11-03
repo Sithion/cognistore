@@ -17,7 +17,8 @@
   --sidebar-foreground: var(--design-sidebar-foreground);
   --sidebar-border: var(--design-sidebar-border);
   --sidebar-accent: var(--design-sidebar-accent);
-  --sidebar-primary: var(--design-sidebar-primary);
+  --sidebar-primary: var(--design-sidebar-primary-background);
+  --sidebar-primary-foreground: #ffffff;
   --bg-main: var(--background);
   --bg-sidebar: var(--sidebar);
   --bg-card: var(--card);
@@ -27,6 +28,7 @@
   --accent-hover: var(--design-ring);
   --success: var(--design-success);
   --error: var(--design-destructive);
+  --destructive-background: var(--design-destructive-background);
   --warning: var(--design-warning);
   --text-primary: var(--foreground);
   --text-secondary: var(--muted-foreground);
@@ -78,6 +80,11 @@ select:not([data-radix-select-trigger]):not([role='combobox']) option {
   color: var(--text-primary);
 }
 
+input::placeholder, textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
 .command-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding: min(15vh, 120px) 16px 16px; background: rgb(15 23 42 / 45%); }
 .command-palette { width: min(640px, 100%); max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); box-shadow: 0 24px 80px rgb(0 0 0 / 24%); }
 .command-palette input { width: 100%; padding: 18px 20px; border: 0; border-bottom: 1px solid var(--border); outline: none; background: transparent; color: var(--text-primary); font: inherit; }
@@ -90,7 +97,7 @@ select:not([data-radix-select-trigger]):not([role='combobox']) option {
 .shell-main > main { min-height: 100%; padding: 24px; }
 .sidebar-link { display: flex; align-items: center; gap: 10px; margin: 2px 0; padding: 10px 12px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; font-size: 14px; }
 .sidebar-link:hover { background: var(--sidebar-accent); color: var(--text-primary); }
-.sidebar-link.is-active { background: var(--accent); color: #fff; }
+.sidebar-link.is-active { background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); }
 .screen-state { display: grid; justify-items: start; gap: 8px; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); }
 .screen-state h2, .screen-state p { margin: 0; }
 .shell-main > main [style*="10, 10, 26"] { background-color: var(--bg-card) !important; }
@@ -101,8 +108,8 @@ select:not([data-radix-select-trigger]):not([role='combobox']) option {
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
 
 /* Markdown rendering */
-.plan-markdown h1, .plan-markdown h2, .plan-markdown h3 { color: var(--text-primary); margin-top: 16px; margin-bottom: 8px; }
-.plan-markdown h1 { font-size: 18px; } .plan-markdown h2 { font-size: 16px; } .plan-markdown h3 { font-size: 14px; }
+.plan-markdown [data-markdown-heading="h1"], .plan-markdown [data-markdown-heading="h2"], .plan-markdown [data-markdown-heading="h3"] { color: var(--text-primary); margin-top: 16px; margin-bottom: 8px; }
+.plan-markdown [data-markdown-heading="h1"] { font-size: 18px; } .plan-markdown [data-markdown-heading="h2"] { font-size: 16px; } .plan-markdown [data-markdown-heading="h3"] { font-size: 14px; }
 .plan-markdown p { font-size: inherit; line-height: 1.7; color: var(--text-primary); margin-bottom: 8px; }
 .plan-markdown ul, .plan-markdown ol { padding-left: 20px; margin-bottom: 8px; color: var(--text-primary); font-size: inherit; line-height: 1.7; }
 .plan-markdown li { margin-bottom: 4px; }
@@ -124,8 +131,8 @@ select:not([data-radix-select-trigger]):not([role='combobox']) option {
   --rdp-accent-background-color: rgba(99, 102, 241, 0.22);
   --rdp-range_middle-background-color: rgba(99, 102, 241, 0.22);
   --rdp-range_middle-color: var(--text-primary);
-  --rdp-range_start-color: #fff;
-  --rdp-range_end-color: #fff;
+  --rdp-range_start-color: var(--primary-foreground);
+  --rdp-range_end-color: var(--primary-foreground);
   --rdp-today-color: var(--accent-hover);
   --rdp-day_button-border-radius: 8px;
   margin: 0;
@@ -137,7 +144,7 @@ select:not([data-radix-select-trigger]):not([role='combobox']) option {
 .rdp-dark .rdp-weekday { color: var(--text-secondary); font-weight: 500; }
 .rdp-dark .rdp-day_button { color: var(--text-primary); }
 .rdp-dark .rdp-day_button:hover:not(:disabled) { background-color: var(--border); }
-.rdp-dark .rdp-outside .rdp-day_button { color: var(--text-secondary); opacity: 0.5; }
+.rdp-dark .rdp-outside .rdp-day_button { color: var(--text-secondary); opacity: 1; }
 .rdp-dark .rdp-disabled { opacity: 0.35; }
 .rdp-dark .rdp-today:not(.rdp-selected) .rdp-day_button { color: var(--accent-hover); font-weight: 600; }
 .rdp-dark .rdp-chevron { fill: var(--text-secondary); }

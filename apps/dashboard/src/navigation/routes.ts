@@ -1,17 +1,10 @@
 export type RouteMeta = { id: string; path: string; label: string; group: string; sidebar?: boolean; palette?: boolean; hidden?: boolean; pattern?: RegExp };
 
-export const destinations = {
+const destinations = {
   knowledge: '/', plans: '/plans', curation: '/curation', insights: '/insights/knowledge',
   settings: '/settings/general', agents: '/integrations/agents', providers: '/integrations/providers',
   system: '/system/health', widgets: '/integrations/widgets',
 } as const;
-
-export const routeGroups = [
-  { id: 'work', label: 'Work', routes: ['knowledge', 'plans', 'curation'] },
-  { id: 'insights', label: 'Insights', routes: ['insights'] },
-  { id: 'integrations', label: 'Integrations', routes: ['agents', 'providers', 'widgets'] },
-  { id: 'settings', label: 'Settings', routes: ['settings', 'system'] },
-] as const;
 
 export const applicationRoutes: RouteMeta[] = [
   { id: 'knowledge', path: '/', label: 'Knowledge', group: 'work', sidebar: true },
@@ -37,7 +30,3 @@ export const compatibilityRedirects: Record<string, string> = {
   '/stats': '/insights/knowledge', '/stats/plans': '/insights/plans', '/tokens': '/insights/tokens',
   '/providers': '/integrations/providers', '/widgets': '/integrations/widgets', '/settings': '/settings/general',
 };
-
-export function getRouteMeta(pathname: string): RouteMeta | undefined {
-  return applicationRoutes.find((route) => route.path === pathname || route.pattern?.test(pathname));
-}

@@ -130,9 +130,9 @@ export function ProvidersSection() {
 
   return (
     <div style={{ marginBottom: 32 }}>
-      <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
+      <h1 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
         {t('providers.section')}
-      </h2>
+      </h1>
       <Button type="button" className="mb-3" onClick={() => { setDraft(emptyStdio()); setSecret(''); setError(''); }}>Add provider</Button>
 
       <Card className="mb-3"><CardContent className="flex items-center justify-between gap-4 p-4">

@@ -52,7 +52,7 @@ export function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confi
           padding: 24, maxWidth: 400, width: '90%',
         }}
       >
-        <h3 id={titleId} style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{title}</h3>
+        <h2 id={titleId} style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>{title}</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>{message}</p>
         {errorText && (
           <p style={{ fontSize: 13, color: 'var(--error, #ef4444)', marginBottom: 16 }}>{errorText}</p>
@@ -75,7 +75,7 @@ export function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confi
             disabled={loading}
             style={{
               padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: 'none', backgroundColor: 'var(--error, #ef4444)',
+              border: 'none', backgroundColor: 'var(--destructive-background)',
               color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.6 : 1,
               display: 'flex', alignItems: 'center', gap: 6,
