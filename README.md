@@ -13,7 +13,7 @@ Store, search, and retrieve knowledge using local vector embeddings — directly
 
 [Download](#quick-start) · [Features](#features) · [MCP Integration](#mcp-integration) · [External Providers](#external-knowledge-providers) · [Dashboard](#dashboard) · [Development](#development) · [Patch Notes](PATCH-NOTES.md)
 
-![CogniStore Dashboard](screenshot.png)
+![CogniStore Dashboard](documentation/plans/reports/assets/rodada-8/knowledge-dark.png)
 
 </div>
 
@@ -261,7 +261,7 @@ Full documentation: [Plug in MCP](documentation/providers/plug-mcp.md) · [Confi
 
 ## Dashboard
 
-The desktop app includes a full dashboard with seven pages:
+The desktop app includes grouped navigation for Knowledge, Work, Insights, Integrations, and System. Entries, plans, filters, and Settings sections have shareable URLs. Open the command palette with Cmd+K or Ctrl+K.
 
 ### Knowledge (Home)
 
