@@ -21,6 +21,7 @@
       "entry": [
         "tsup.sidecar.ts",
         "scripts/*.mjs",
+        "src/components/ui/*.tsx",
         "templates/configs/compile-instructions.mjs",
         "templates/plugins/opencode/*.ts"
       ],
@@ -36,7 +37,8 @@
     },
     "packages/tests": {
       "entry": [
-        "scripts/*.mjs"
+        "scripts/*.mjs",
+        "scripts/**/*.ts"
       ],
       "ignoreDependencies": [
         "tsx"

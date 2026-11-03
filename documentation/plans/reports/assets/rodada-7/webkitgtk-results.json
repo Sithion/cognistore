@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Gallery heading renders",
+    "pass": true,
+    "detail": "Component gallery visible"
+  },
+  {
+    "name": "Dark screenshot",
+    "pass": true,
+    "detail": "written"
+  },
+  {
+    "name": "Theme switch and light screenshot",
+    "pass": true,
+    "detail": "theme switched and screenshot written"
+  },
+  {
+    "name": "Backdrop filter support",
+    "pass": true,
+    "detail": "[true,true]"
+  },
+  {
+    "name": "Select opens, picks, closes and restores focus",
+    "pass": true,
+    "detail": "combobox"
+  },
+  {
+    "name": "Dialog escape closes and restores focus",
+    "pass": true,
+    "detail": "Open dialog"
+  },
+  {
+    "name": "Toast appears",
+    "pass": true,
+    "detail": "Your changes have been saved\n"
+  },
+  {
+    "name": "Proof detail and route",
+    "pass": true,
+    "detail": "/_design/k/2ecf8354-3b63-4b6e-811d-7bffe893c46e"
+  },
+  {
+    "name": "Palette filters and navigates",
+    "pass": true,
+    "detail": "filtered, navigated, screenshot written"
+  },
+  {
+    "name": "Filter input shows a focus ring (box-shadow changes on keyboard focus)",
+    "pass": true,
+    "detail": "{\"before\":\"rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px\",\"after\":\"rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(129, 140, 248) 0px 0px 0px 2px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px\",\"focusVisible\":true}"
+  }
+]

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 
 declare const __APP_VERSION__: string;
@@ -14,6 +14,8 @@ import { SetupPage } from './pages/SetupPage.js';
 import { UpgradePage } from './pages/UpgradePage.js';
 import { api } from './api/client.js';
 import { UpdateChecker } from './components/UpdateChecker.js';
+
+const DesignPage = lazy(() => import('./pages/DesignPage.js').then((module) => ({ default: module.DesignPage })));
 
 const isTauri = !!(window as any).__TAURI_INTERNALS__ || !!(window as any).__TAURI__;
 
@@ -117,10 +119,13 @@ export function App() {
   // Normal dashboard
   return (
     <BrowserRouter>
-      <UpdateChecker />
-      <WidgetEventListener />
-      <Layout>
-        <Routes>
+      <Routes>
+        <Route path="/_design/*" element={<Suspense fallback={<div>Loading…</div>}><DesignPage /></Suspense>} />
+        <Route path="*" element={<>
+          <UpdateChecker />
+          <WidgetEventListener />
+          <Layout>
+            <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/plans" element={<PlansPage />} />
           <Route path="/tokens" element={<TokenConsumptionPage />} />
@@ -129,8 +134,10 @@ export function App() {
           <Route path="/stats/plans" element={<PlanStatsPage />} />
           <Route path="/widgets" element={<WidgetsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </Layout>
+            </Routes>
+          </Layout>
+        </>} />
+      </Routes>
     </BrowserRouter>
   );
 }
