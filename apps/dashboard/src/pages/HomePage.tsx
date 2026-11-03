@@ -1,762 +1,355 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api, type ExternalSection } from '../api/client.js';
-import { useInfiniteList, PAGE_SIZE } from '../hooks/useInfiniteScroll.js';
-import { KnowledgeCard } from '../components/KnowledgeCard.js';
-import { TagBar } from '../components/TagBar.js';
-import { KnowledgeModal } from '../components/KnowledgeModal.js';
-import { FloatingAddButton } from '../components/FloatingAddButton.js';
-import { ConfirmModal } from '../components/ConfirmModal.js';
+import { Button } from '../components/ui/button.js';
+import { Input } from '../components/ui/input.js';
+import { Checkbox } from '../components/ui/checkbox.js';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../components/ui/sheet.js';
+import { KnowledgeEditor, type KnowledgeEntry } from '../knowledge/KnowledgeEditor.js';
+import { useKnowledgeRoute } from '../knowledge/useKnowledgeRoute.js';
+import { registerKnowledgeResources } from '../i18n/round8-knowledge.js';
 
-/**
- * External provider results carry a `url` chosen by a remote MCP server. React
- * does not block `javascript:` in an href — it only warns — so a hostile or
- * compromised provider could otherwise land one-click script execution inside
- * the app's own webview. Anything that is not plain http(s) renders as text.
- */
-function isSafeHttpUrl(u: unknown): u is string {
-  if (typeof u !== 'string') return false;
-  try {
-    const { protocol } = new URL(u);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+const PAGE_SIZE = 40;
+const SEARCH_LIMIT = 100;
+const types = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'];
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: '#6b7280',
-  active: '#3b82f6',
-  completed: '#22c55e',
-  archived: '#a78bfa',
-};
-
-const POLL_INTERVAL_MS = 5_000;
-
-interface RelatedPlan {
-  planId: string;
-  relationType: string;
-  title: string;
-  status: string;
+/** Provider URLs are untrusted. Never turn an arbitrary scheme into a link. */
+function isSafeHttpUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); }
+  catch { return false; }
 }
 
 export function HomePage() {
-  const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
-
-  // Search state
-  const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [scopeFilter, setScopeFilter] = useState('');
-  // Provenance filters — set via deep-link from the Stats charts (?agent=/?platform=).
-  const [agentFilter, setAgentFilter] = useState('');
-  const [platformFilter, setPlatformFilter] = useState('');
-
-  // External knowledge providers (additive federated search; local list is unaffected)
-  const [externalSections, setExternalSections] = useState<ExternalSection[]>([]);
-  const [externalEnabled, setExternalEnabled] = useState(false);
-  const [searchingExt, setSearchingExt] = useState(false);
-
-  // Tag state
-  const [allTags, setAllTags] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-
-  // Available scopes (from stats API)
-  const [allScopes, setAllScopes] = useState<string[]>([]);
-
-  // Modal state
-  const [showModal, setShowModal] = useState(false);
-  const [editingEntry, setEditingEntry] = useState<Record<string, unknown> | null>(null);
-
-  // Polling state — track both count and lastUpdatedAt for cross-process detection
-  const lastSnapshotRef = useRef<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const types = ['decision', 'pattern', 'fix', 'constraint', 'gotcha'];
-
-  const hasActiveFilters = typeFilter !== '' || scopeFilter !== '' || agentFilter !== '' || platformFilter !== '' || selectedTags.length > 0 || query.trim() !== '';
-
-  const tagsKey = selectedTags.join(',');
-  const searchMode = query.trim().length > 0;
-
-  // BROWSE mode (empty search box): infinite-scroll over the WHOLE base, filtered
-  // server-side by type/scope/tags. In SEARCH mode the fetcher no-ops so the list
-  // is empty (search results render from `searchResults` below).
-  const browse = useInfiniteList<Record<string, unknown>>(
-    (offset) => {
-      if (searchMode) return Promise.resolve([]);
-      const filters: { type?: string; scope?: string; tags?: string[]; agent?: string; platform?: string } = {};
-      if (typeFilter) filters.type = typeFilter;
-      if (scopeFilter) filters.scope = scopeFilter;
-      if (agentFilter) filters.agent = agentFilter;
-      if (platformFilter) filters.platform = platformFilter;
-      if (selectedTags.length) filters.tags = selectedTags;
-      return api.listRecent(PAGE_SIZE, filters, offset) as Promise<Record<string, unknown>[]>;
-    },
-    [typeFilter, scopeFilter, agentFilter, platformFilter, tagsKey, searchMode],
-  );
-
-  // SEARCH mode (non-empty box): semantic search, filters applied server-side.
-  // api.search returns SearchResult[] ({entry,similarity}) — normalize to entries.
-  const [searchResults, setSearchResults] = useState<Record<string, unknown>[]>([]);
-  const [searchingLocal, setSearchingLocal] = useState(false);
-  useEffect(() => {
-    const term = query.trim();
-    if (!term) { setSearchResults([]); setSearchingLocal(false); return; }
-    let cancelled = false;
-    setSearchingLocal(true);
-    const handle = setTimeout(() => {
-      const opts: Record<string, unknown> = { limit: 50 };
-      if (typeFilter) opts.type = typeFilter;
-      if (scopeFilter) opts.scope = scopeFilter;
-      if (selectedTags.length) opts.tags = selectedTags;
-      opts.threshold = 0;
-      api.search(term, opts)
-        .then((res: any) => {
-          if (cancelled) return;
-          const list = Array.isArray(res) ? res : (res?.local ?? []);
-          setSearchResults(list.map((r: any) => (r && r.entry ? r.entry : r)));
-        })
-        .catch(() => { if (!cancelled) setSearchResults([]); })
-        .finally(() => { if (!cancelled) setSearchingLocal(false); });
-    }, 350);
-    return () => { cancelled = true; clearTimeout(handle); };
-  }, [query, typeFilter, scopeFilter, tagsKey]);
-
-  // Entries to render: search results in search mode, else the infinite browse list.
-  // Keep the defensive `type !== 'plan'` exclusion (plans have their own page).
-  const displayedEntries = (searchMode ? searchResults : browse.items)
-    .filter((e) => (e as any).type !== 'plan');
-
-  // Load tags (silent)
-  const loadTags = useCallback(() => {
-    return api.listTags().then(setAllTags).catch(() => {});
-  }, []);
-
-  // Load available scopes
-  const loadScopes = useCallback(() => {
-    return (api.getStats() as Promise<{ byScope: { scope: string }[] }>)
-      .then(stats => setAllScopes(stats.byScope.map(s => s.scope)))
-      .catch(() => {});
-  }, []);
-
-  // Initial load on mount (tags + scopes; the browse list loads itself)
-  useEffect(() => {
-    loadTags();
-    loadScopes();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Poll for new/updated entries — detects changes from any process (OpenCode, Claude, etc.)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const stats = await api.getStats() as { total: number; lastUpdatedAt?: string };
-        const snapshot = `${stats.total}:${stats.lastUpdatedAt || ''}`;
-        if (lastSnapshotRef.current !== null && snapshot !== lastSnapshotRef.current) {
-          setRefreshing(true);
-          if (!searchMode) browse.reset();
-          await loadTags();
-          setRefreshing(false);
-        }
-        lastSnapshotRef.current = snapshot;
-      } catch { /* ignore polling errors */ }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [loadTags, searchMode, browse.reset]);
-
-  // Detect whether federating to external providers is worthwhile (any enabled provider or always-on)
-  useEffect(() => {
-    Promise.all([
-      api.listProviders().catch(() => ({ providers: [] as { enabled?: boolean }[] })),
-      api.getSettings().catch(() => ({} as { alwaysSearchExternalProviders?: boolean })),
-    ]).then(([cfg, settings]) => {
-      setExternalEnabled(
-        (cfg.providers?.some((p) => p.enabled) ?? false) || !!settings.alwaysSearchExternalProviders,
-      );
-    });
-  }, []);
-
-  // Federated external search — additive; the local recent list above is rendered exactly as before.
-  useEffect(() => {
-    const term = query.trim();
-    if (!externalEnabled || term.length < 2) { setExternalSections([]); setSearchingExt(false); return; }
-    let cancelled = false;
-    setSearchingExt(true);
-    const handle = setTimeout(() => {
-      api.searchFederated(term)
-        .then((fed) => { if (!cancelled) setExternalSections(fed.external ?? []); })
-        .catch(() => { if (!cancelled) setExternalSections([]); })
-        .finally(() => { if (!cancelled) setSearchingExt(false); });
-    }, 450);
-    return () => { cancelled = true; clearTimeout(handle); };
-  }, [query, externalEnabled]);
-
-  // Read ?tag= / ?agent= / ?platform= from URL on mount (deep-links from Stats charts)
-  useEffect(() => {
-    const tagParam = searchParams.get('tag');
-    if (tagParam) {
-      setSelectedTags(tagParam.split(',').map(t => t.trim()).filter(Boolean));
-    }
-    const agentParam = searchParams.get('agent');
-    if (agentParam) setAgentFilter(agentParam);
-    const platformParam = searchParams.get('platform');
-    if (platformParam) setPlatformFilter(platformParam);
-  }, []); // Only on mount
-
-  // Sync selectedTags to URL
-  useEffect(() => {
-    if (selectedTags.length > 0) {
-      setSearchParams({ tag: selectedTags.join(',') }, { replace: true });
-    } else {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('tag');
-      setSearchParams(newParams, { replace: true });
-    }
-  }, [selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Related plans for editing entry
-  const [relatedPlans, setRelatedPlans] = useState<RelatedPlan[]>([]);
-
-  // Deep-link: open knowledge from ?edit=knowledgeId
-  useEffect(() => {
-    const editId = searchParams.get('edit');
-    if (editId && !editingEntry) {
-      api.getById(editId).then((entry: any) => {
-        if (entry) { setEditingEntry(entry); setShowModal(true); }
-      }).catch(() => {});
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Reset state when nav link clicked for same route
-  useEffect(() => {
-    if ((location.state as any)?.reset) {
-      setShowModal(false);
-      setEditingEntry(null);
-      setQuery('');
-      setTypeFilter('');
-      setScopeFilter('');
-      setAgentFilter('');
-      setPlatformFilter('');
-      setSelectedTags([]);
-      setRelatedPlans([]);
-      setSearchParams({}, { replace: true });
-      window.history.replaceState({}, '');
-      browse.reset();
-    }
-  }, [(location.state as any)?.reset]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Load related plans when editing entry changes
-  useEffect(() => {
-    if (editingEntry?.id) {
-      api.getKnowledgePlans(editingEntry.id as string).then(setRelatedPlans).catch(() => setRelatedPlans([]));
-    } else {
-      setRelatedPlans([]);
-    }
-  }, [editingEntry?.id]);
-
-  // Bulk selection state
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkMode, setBulkMode] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkDeleting(true);
-    try {
-      await api.bulkDeleteKnowledge(Array.from(selectedIds));
-      setDeleteError(null);
-      setSelectedIds(new Set());
-      setBulkMode(false);
-      setShowBulkDeleteConfirm(false);
-      handleSuccess();
-    } catch {
-      // User-initiated mutation: keep the modal open and surface failure.
-      setDeleteError(t('errors.deleteFailed'));
-    } finally {
-      setBulkDeleting(false);
-    }
-  };
-
-  // Delete confirmation modal state
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  // Error shown inside the delete ConfirmModals (modal stays open on failure).
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const handleDeleteClick = (id: string) => {
-    setDeleteTargetId(id);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteTargetId) return;
-    setDeleting(true);
-    try {
-      await api.deleteEntry(deleteTargetId);
-      setDeleteError(null);
-      browse.setItems(prev => prev.filter(e => e.id !== deleteTargetId));
-      setSearchResults(prev => prev.filter(e => e.id !== deleteTargetId));
-      setDeleteTargetId(null);
-    } catch {
-      // User-initiated mutation: keep the modal open and surface failure —
-      // do NOT remove the row from the UI (the entry still exists server-side).
-      setDeleteError(t('errors.deleteFailed'));
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleToggleTag = (tag: string) => {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
-
-  const handleClearAll = () => {
-    setSelectedTags([]);
-    setTypeFilter('');
-    setScopeFilter('');
-    setAgentFilter('');
-    setPlatformFilter('');
-    setQuery('');
-    const newParams = new URLSearchParams(searchParams);
-    newParams.delete('agent');
-    newParams.delete('platform');
-    setSearchParams(newParams, { replace: true });
-  };
-
-  const handleSuccess = () => {
-    browse.reset();
-    loadTags();
-    loadScopes();
-    // Reset snapshot so polling doesn't double-refresh
-    lastSnapshotRef.current = null;
-  };
-
-  const handleEdit = (entry: Record<string, unknown>) => {
-    setEditingEntry(entry);
-    setShowModal(true);
-  };
-
-  const handleCloseModal = () => {
-    setShowModal(false);
-    setEditingEntry(null);
-    setRelatedPlans([]);
-    const newParams = new URLSearchParams(searchParams);
-    newParams.delete('edit');
-    setSearchParams(newParams, { replace: true });
-  };
-
-  return (
-    <div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <CleanupBanner />
-      {showModal ? (
-        <>
-          <button
-            onClick={handleCloseModal}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
-              background: 'none', border: 'none', color: 'var(--text-secondary)',
-              cursor: 'pointer', fontSize: 13, padding: 0,
-            }}
-          >
-            ← {t('search.recent')}
-          </button>
-          <KnowledgeModal
-            isOpen={showModal}
-            onClose={handleCloseModal}
-            onSuccess={handleSuccess}
-            entry={editingEntry}
-          />
-          {/* Related Plans Section */}
-          {editingEntry && relatedPlans.length > 0 && (() => {
-            const originPlans = relatedPlans.filter(p => p.relationType === 'output');
-            const usedInPlans = relatedPlans.filter(p => p.relationType === 'input');
-            return (
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 20 }}>
-                <div style={{ flex: 1, minWidth: 250 }}>
-                  <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                    {t('plans.originPlan')}
-                  </h3>
-                  {originPlans.length === 0 ? (
-                    <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noPlans')}</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {originPlans.map(p => (
-                        <a key={`${p.planId}-out`} href={`/plans?select=${p.planId}`} style={{
-                          display: 'block', textDecoration: 'none', color: 'inherit',
-                          backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',
-                          padding: 10, fontSize: 12, cursor: 'pointer', transition: 'border-color 0.15s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STATUS_COLORS[p.status] || '#6b7280', flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600 }}>{p.title}</span>
-                            <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600, backgroundColor: STATUS_COLORS[p.status] || '#6b7280', color: '#fff' }}>{p.status}</span>
-                          </div>
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 250 }}>
-                  <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
-                    {t('plans.consultedBy')}
-                  </h3>
-                  {usedInPlans.length === 0 ? (
-                    <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noPlans')}</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {usedInPlans.map(p => (
-                        <a key={`${p.planId}-in`} href={`/plans?select=${p.planId}`} style={{
-                          display: 'block', textDecoration: 'none', color: 'inherit',
-                          backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',
-                          padding: 10, fontSize: 12, cursor: 'pointer', transition: 'border-color 0.15s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: STATUS_COLORS[p.status] || '#6b7280', flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600 }}>{p.title}</span>
-                            <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600, backgroundColor: STATUS_COLORS[p.status] || '#6b7280', color: '#fff' }}>{p.status}</span>
-                          </div>
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-        </>
-      ) : (
-        <>
-      {/* Search Bar + Actions */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input
-          data-testid="knowledge-search"
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('search.placeholder')}
-          style={{
-            flex: 1, padding: '12px 16px', borderRadius: 8,
-            backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: 'var(--text-primary)', fontSize: 14, outline: 'none',
-          }}
-        />
-        <button
-          onClick={() => { setBulkMode(!bulkMode); setSelectedIds(new Set()); }}
-          title={t('actions.bulkSelect')}
-          style={{
-            padding: '8px 14px', borderRadius: 8,
-            border: bulkMode ? '1px solid var(--accent)' : '1px solid var(--border)',
-            backgroundColor: bulkMode ? 'var(--accent-muted)' : 'transparent',
-            color: bulkMode ? 'var(--accent)' : 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-          }}
-        >
-          {bulkMode ? t('actions.cancel') : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="2" width="12" height="12" rx="2" />
-              <path d="M5.5 8l2 2 3.5-3.5" />
-            </svg>
-          )}
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: 6,
-            backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: typeFilter ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 13,
-          }}
-        >
-          <option value="">{t('filters.all')} — {t('filters.type')}</option>
-          {types.map(type => (
-            <option key={type} value={type}>{t(`types.${type}`)}</option>
-          ))}
-        </select>
-        <select
-          value={scopeFilter}
-          onChange={(e) => setScopeFilter(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: 6,
-            backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: scopeFilter ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 13,
-          }}
-        >
-          <option value="">{t('filters.all')} — {t('filters.scope')}</option>
-          {allScopes.map(scope => (
-            <option key={scope} value={scope}>{scope}</option>
-          ))}
-        </select>
-        {agentFilter && (
-          <button
-            onClick={() => { setAgentFilter(''); const p = new URLSearchParams(searchParams); p.delete('agent'); setSearchParams(p, { replace: true }); }}
-            style={{
-              padding: '6px 12px', borderRadius: 6,
-              border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
-              color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            {t('filters.agent')}: {agentFilter} ✕
-          </button>
-        )}
-        {platformFilter && (
-          <button
-            onClick={() => { setPlatformFilter(''); const p = new URLSearchParams(searchParams); p.delete('platform'); setSearchParams(p, { replace: true }); }}
-            style={{
-              padding: '6px 12px', borderRadius: 6,
-              border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
-              color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            {t('filters.platform')}: {platformFilter} ✕
-          </button>
-        )}
-        {hasActiveFilters && (
-          <button
-            onClick={handleClearAll}
-            style={{
-              padding: '8px 14px', borderRadius: 6,
-              border: '1px solid var(--border)', backgroundColor: 'transparent',
-              color: 'var(--accent)', fontSize: 12, fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            {t('filters.clear')}
-          </button>
-        )}
-      </div>
-
-      {/* Tag Bar */}
-      <TagBar
-        tags={allTags}
-        selectedTags={selectedTags}
-        onToggleTag={handleToggleTag}
-        onClearTags={() => setSelectedTags([])}
-        loading={false}
-      />
-
-      {/* Knowledge Entries */}
-      {displayedEntries.length > 0 && (
-        <div>
-          <h3 style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {searchMode ? t('search.results') : t('search.recent')}
-            {(refreshing || searchingLocal) && (
-              <span style={{
-                display: 'inline-block', width: 12, height: 12,
-                border: '2px solid var(--border)', borderTopColor: 'var(--accent)',
-                borderRadius: '50%', animation: 'spin 0.8s linear infinite',
-              }} />
-            )}
-          </h3>
-          {displayedEntries.map((entry) => (
-            <KnowledgeCard
-              key={entry.id as string}
-              entry={entry}
-              onDelete={handleDeleteClick}
-              onTagClick={handleToggleTag}
-              onEdit={bulkMode ? undefined : handleEdit}
-              selected={selectedIds.has(entry.id as string)}
-              onToggleSelect={bulkMode ? toggleSelect : undefined}
-            />
-          ))}
-          {/* Infinite-scroll sentinel + footer (browse mode only) */}
-          {!searchMode && (
-            <div ref={browse.sentinelRef} style={{ height: 1 }} />
-          )}
-          {!searchMode && browse.loadingMore && (
-            <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 16, fontSize: 12 }}>
-              {t('list.loadingMore')}
-            </p>
-          )}
-          {!searchMode && !browse.hasMore && displayedEntries.length > PAGE_SIZE && (
-            <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 16, fontSize: 12 }}>
-              {t('list.noMore')}
-            </p>
-          )}
-        </div>
-      )}
-
-      {displayedEntries.length === 0 && !browse.loadingMore && !searchingLocal && (
-        <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 40 }}>
-          {hasActiveFilters ? t('search.noResults') : t('search.empty')}
-        </p>
-      )}
-
-      {/* External provider results — provenance-labeled, untrusted, kept separate from local */}
-      {(searchingExt || externalSections.length > 0) && query.trim().length >= 2 && (
-        <div style={{ marginTop: 28 }}>
-          <h3 style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {t('providers.externalResults')}
-            {searchingExt && (
-              <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-            )}
-          </h3>
-          <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 14 }}>⚠ {t('providers.externalUntrusted')}</p>
-          {externalSections.map((sec) => (
-            <div key={sec.providerId} style={{ marginBottom: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <strong style={{ fontSize: 13 }}>{sec.providerName}</strong>
-                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{t('providers.untrustedBadge')}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{sec.tookMs}ms</span>
-              </div>
-              {sec.error ? (
-                <p style={{ fontSize: 12, color: 'var(--error)' }}>{t('providers.failed')}: {sec.error}</p>
-              ) : sec.results.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('providers.externalNoResults')}</p>
-              ) : (
-                sec.results.map((r, i) => (
-                  <div key={i} style={{ backgroundColor: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                      {isSafeHttpUrl(r.url)
-                        ? <a href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}>{r.title}</a>
-                        : r.title}
-                      {typeof r.score === 'number' && <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 400 }}> · {r.score.toFixed(2)}</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{r.content}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Bulk action bar */}
-      {bulkMode && selectedIds.size > 0 && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          backgroundColor: 'var(--bg-card)', border: '1px solid var(--accent)',
-          borderRadius: 12, padding: '12px 20px', display: 'flex', gap: 12, alignItems: 'center',
-          zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-        }}>
-          <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>
-            {selectedIds.size} {t('actions.selected')}
-          </span>
-          <button
-            onClick={() => setSelectedIds(new Set(displayedEntries.map(e => e.id as string)))}
-            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12 }}
-          >
-            {t('actions.selectAll')}
-          </button>
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}
-          >
-            {t('actions.deselectAll')}
-          </button>
-          <button
-            onClick={() => setShowBulkDeleteConfirm(true)}
-            style={{
-              padding: '6px 16px', borderRadius: 6, border: 'none',
-              backgroundColor: 'var(--error)', color: '#fff', cursor: 'pointer',
-              fontSize: 13, fontWeight: 600,
-            }}
-          >
-            {t('actions.delete')}
-          </button>
-        </div>
-      )}
-
-      {/* FAB */}
-      <FloatingAddButton onClick={() => { setEditingEntry(null); setShowModal(true); }} />
-        </>
-      )}
-
-      {/* Single delete confirmation modal */}
-      <ConfirmModal
-        isOpen={deleteTargetId !== null}
-        onClose={() => { setDeleteTargetId(null); setDeleteError(null); }}
-        onConfirm={handleConfirmDelete}
-        title={t('delete.title')}
-        message={t('delete.message')}
-        loading={deleting}
-        errorText={deleteError}
-      />
-
-      {/* Bulk delete confirmation modal */}
-      <ConfirmModal
-        isOpen={showBulkDeleteConfirm}
-        onClose={() => { setShowBulkDeleteConfirm(false); setDeleteError(null); }}
-        onConfirm={handleBulkDelete}
-        title={t('delete.bulkTitle')}
-        message={t('delete.bulkMessage', { count: selectedIds.size })}
-        loading={bulkDeleting}
-        errorText={deleteError}
-      />
-    </div>
-  );
+  registerKnowledgeResources();
+  const route = useKnowledgeRoute();
+  return route.overview ? <Overview /> : <KnowledgeBase />;
 }
 
-
-/**
- * Nudge to the cleanup report when candidates are waiting.
- *
- * Reads the dedicated count endpoint rather than the full report: this renders
- * on the home page, and pulling every candidate just to show a number would be
- * wasteful. Fetched once per mount — the count only changes when the user acts
- * on the report in Settings, which unmounts this page.
- * Dismissal is per-session only — the report itself is the durable state.
- */
-function CleanupBanner() {
+function Overview() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [count, setCount] = useState(0);
-  const [hidden, setHidden] = useState(false);
+  const route = useKnowledgeRoute();
+  const scope = route.params.get('scope') || undefined;
+  const [recent, setRecent] = useState<KnowledgeEntry[] | null>(null);
+  const [plans, setPlans] = useState<{ id: string; title: string }[] | null>(null);
+  const [pending, setPending] = useState<number | null>(null);
+  const [health, setHealth] = useState<Record<string, { connected?: boolean }> | null>(null);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const results = await Promise.allSettled([
+        api.listRecent(6, { scope }), api.listPlans(6, 'active', 0, scope),
+        api.getCleanupPendingCount(), api.getHealth(),
+      ]);
+      if (!active) return;
+      const [entries, activePlans, cleanup, status] = results;
+      setRecent(entries.status === 'fulfilled' ? entries.value as KnowledgeEntry[] : null);
+      setPlans(activePlans.status === 'fulfilled' ? activePlans.value as { id: string; title: string }[] : null);
+      setPending(cleanup.status === 'fulfilled' ? (cleanup.value as { pendingCount: number }).pendingCount : null);
+      setHealth(status.status === 'fulfilled' ? status.value as Record<string, { connected?: boolean }> : null);
+    };
+    void load();
+    const timer = setInterval(load, 30000);
+    return () => { active = false; clearInterval(timer); };
+  }, [scope]);
+  const scoped = (path: string) => scope ? `${path}?scope=${encodeURIComponent(scope)}` : path;
+  const unavailable = t('knowledgeScreen.unavailable');
+  return <div className="space-y-6">
+    <header className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-2xl font-semibold">{t('knowledgeScreen.overview')}</h1>
+      <Button asChild><Link to={route.listUrl}>{t('knowledgeScreen.viewBase')}</Link></Button>
+    </header>
+    <div className="grid gap-6 lg:grid-cols-2">
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="mb-3 text-lg font-semibold">{t('knowledgeScreen.recent')}</h2>
+        {recent === null ? <p>{unavailable}</p> : recent.length === 0 ? <p>{t('knowledgeScreen.empty')}</p> :
+          <ul className="space-y-3">{recent.map(entry => <li key={entry.id}>
+            <Link className="text-primary underline" to={route.detailUrl(entry.id)}>{entry.title}</Link>
+            <p className="text-sm text-muted-foreground">{entry.type} · {entry.scope}</p>
+          </li>)}</ul>}
+      </section>
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="mb-3 text-lg font-semibold">{t('knowledgeScreen.activePlans')}</h2>
+        {plans === null ? <p>{unavailable}</p> : plans.length === 0 ? <p>{t('knowledgeScreen.noActivePlans')}</p> :
+          <ul className="space-y-3">{plans.map(plan => <li key={plan.id}><Link className="text-primary underline"
+            to={scoped(`/plans/${encodeURIComponent(plan.id)}`)}>{plan.title}</Link></li>)}</ul>}
+      </section>
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="mb-3 text-lg font-semibold">{t('cleanup.title')}</h2>
+        <Link className="text-primary underline" to={scoped('/curation')}>
+          {pending === null ? unavailable : t('knowledgeScreen.cleanupPending', { count: pending })}
+        </Link>
+      </section>
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="mb-3 text-lg font-semibold"><Link to={scoped('/system/health')}>{t('knowledgeScreen.health')}</Link></h2>
+        <dl className="space-y-2">{['database', 'ollama'].map(service => <div key={service} className="flex justify-between gap-3">
+          <dt>{service === 'database' ? t('knowledgeScreen.database') : 'Ollama'}</dt>
+          <dd>{typeof health?.[service]?.connected !== 'boolean' ? unavailable :
+            t(health[service].connected ? 'monitoring.connected' : 'monitoring.disconnected')}</dd>
+        </div>)}</dl>
+      </section>
+    </div>
+  </div>;
+}
+
+function KnowledgeBase() {
+  const { t } = useTranslation();
+  const route = useKnowledgeRoute();
+  const { params, page } = route;
+  const query = params.get('q') || '';
+  const scope = params.get('scope') || '';
+  const type = params.get('type') || '';
+  const tags = params.get('tags') || params.get('tag') || '';
+  const agent = params.get('agent') || '';
+  const platform = params.get('platform') || '';
+  const compact = params.get('view') === 'compact';
+  const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
+  const [external, setExternal] = useState<ExternalSection[]>([]);
+  const [externalEnabled, setExternalEnabled] = useState(false);
+  const [scopes, setScopes] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [hasNext, setHasNext] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteFailed, setDeleteFailed] = useState(false);
+  const [detail, setDetail] = useState<KnowledgeEntry | null>(null);
+  const [detailFailed, setDetailFailed] = useState(false);
+  const [related, setRelated] = useState<Awaited<ReturnType<typeof api.getKnowledgePlans>> | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const viewport = useRef<HTMLDivElement>(null);
+  const rowHeight = compact ? 76 : 156;
+  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 2);
+  const visible = entries.slice(start, start + Math.ceil(560 / rowHeight) + 4);
+  const filtersKey = JSON.stringify([query, scope, type, tags, agent, platform, page, revision]);
 
   useEffect(() => {
-    let cancelled = false;
-    api.getCleanupPendingCount()
-      .then((r) => { if (!cancelled) setCount(r.pendingCount); })
-      .catch(() => { /* the sidecar may still be starting */ });
-    return () => { cancelled = true; };
+    let active = true;
+    void Promise.allSettled([api.listScopes(), api.listProviders(), api.getSettings()]).then(([scopeList, providers, settings]) => {
+      if (!active) return;
+      if (scopeList.status === 'fulfilled') setScopes(scopeList.value);
+      setExternalEnabled((providers.status === 'fulfilled' && providers.value.providers.some(provider => provider.enabled)) ||
+        (settings.status === 'fulfilled' && !!settings.value.alwaysSearchExternalProviders));
+    });
+    return () => { active = false; };
   }, []);
 
-  if (hidden || count === 0) return null;
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setLoadFailed(false); setEntries([]);
+    setScrollTop(0);
+    if (viewport.current) viewport.current.scrollTop = 0;
+    const filters = { scope: scope || undefined, type: type || undefined,
+      tags: tags.split(',').map(tag => tag.trim()).filter(Boolean), agent: agent || undefined, platform: platform || undefined };
+    const timer = setTimeout(async () => {
+      try {
+        if (query.trim()) {
+          const response = await api.search(query.trim(), { ...filters, limit: SEARCH_LIMIT, threshold: 0 }) as
+            { local?: { entry: KnowledgeEntry }[] } | { entry: KnowledgeEntry }[];
+          const results = Array.isArray(response) ? response : response.local ?? [];
+          const normalized = results.map(result => result.entry ?? result as unknown as KnowledgeEntry)
+            .filter(entry => entry.type !== 'plan' && (!agent || entry.agentId === agent) && (!platform || entry.platform === platform));
+          if (!active) return;
+          setEntries(normalized.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE));
+          setSelected(current => new Set([...current].filter(id => normalized.some(entry => entry.id === id))));
+          setHasNext(normalized.length > (page + 1) * PAGE_SIZE);
+        } else {
+          const results = await api.listRecent(PAGE_SIZE, filters, page * PAGE_SIZE) as KnowledgeEntry[];
+          if (!active) return;
+          setEntries(results.filter(entry => entry.type !== 'plan')); setHasNext(results.length === PAGE_SIZE);
+          setSelected(current => new Set([...current].filter(id => results.some(entry => entry.id === id))));
+        }
+      } catch { if (active) setLoadFailed(true); }
+      finally { if (active) setLoading(false); }
+    }, query.trim() ? 300 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [filtersKey]);
 
-  return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
-        padding: '10px 14px', borderRadius: 8,
-        border: '1px solid var(--border)', fontSize: 13,
-      }}
-    >
-      <span style={{ flex: 1 }}>{t('cleanup.bannerReady', { count })}</span>
-      <button
-        onClick={() => navigate('/settings')}
-        style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', cursor: 'pointer' }}
-      >
-        {t('cleanup.bannerReview')}
-      </button>
-      <button
-        onClick={() => setHidden(true)}
-        aria-label={t('cleanup.bannerDismiss')}
-        style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-      >
-        ×
-      </button>
+  useEffect(() => { setSelected(new Set()); }, [query, scope, type, tags, agent, platform, page]);
+
+  useEffect(() => {
+    let active = true;
+    setExternal([]);
+    if (!externalEnabled || query.trim().length < 2) return;
+    const timer = setTimeout(() => {
+      void api.searchFederated(query.trim(), { scope: scope || undefined, type: type || undefined,
+        tags: tags.split(',').map(tag => tag.trim()).filter(Boolean), limit: SEARCH_LIMIT })
+        .then(result => { if (active) setExternal(result.external ?? []); })
+        .catch(() => { if (active) setExternal([{ providerId: 'unavailable', providerName: t('providers.externalResults'), results: [], error: 'unavailable', tookMs: 0 }]); });
+    }, 450);
+    return () => { active = false; clearTimeout(timer); };
+  }, [query, scope, type, tags, externalEnabled, t]);
+
+  // Relationships belong to the selected detail, never the list rows.
+  useEffect(() => {
+    let active = true;
+    setDetail(null); setRelated(null); setDetailFailed(false); setEditing(false);
+    if (!route.selectedId) return;
+    void api.getById(route.selectedId).then(entry => { if (active) setDetail(entry as KnowledgeEntry); })
+      .catch(() => { if (active) setDetailFailed(true); });
+    void api.getKnowledgePlans(route.selectedId).then(plans => { if (active) setRelated(plans); })
+      .catch(() => { if (active) setRelated(null); });
+    return () => { active = false; };
+  }, [route.selectedId, revision]);
+
+  useEffect(() => {
+    setScrollTop(0);
+    if (viewport.current) viewport.current.scrollTop = 0;
+  }, [compact]);
+
+  const toggle = (id: string) => setSelected(current => {
+    const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
+  });
+  const save = () => {
+    setRevision(value => value + 1);
+    setEditing(false);
+    if (route.creating) {
+      // Keep active filters; creation under this scope remains visible after reload.
+      route.patch({ new: null, page: null }, false);
+    }
+  };
+  const bulkDelete = async () => {
+    if (deleting || !selected.size) return;
+    setDeleting(true); setDeleteFailed(false);
+    try {
+      const result = await api.bulkDeleteKnowledge([...selected]);
+      if (result.errors.length) { setDeleteFailed(true); }
+      else { setConfirmDelete(false); setSelected(new Set()); }
+      setRevision(value => value + 1);
+    } catch { setDeleteFailed(true); }
+    finally { setDeleting(false); }
+  };
+  const exportSelected = () => {
+    const blob = new Blob([JSON.stringify({ knowledge: entries.filter(entry => selected.has(entry.id)) }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = 'knowledge-selection.json'; link.click();
+    URL.revokeObjectURL(url);
+  };
+  const index = entries.findIndex(entry => entry.id === route.selectedId);
+  const unavailable = t('knowledgeScreen.unavailable');
+  const metadata: [string, unknown][] = detail ? [
+    [t('knowledgeScreen.id'), detail.id], [t('knowledgeScreen.type'), detail.type],
+    [t('knowledgeScreen.scope'), detail.scope], [t('knowledgeScreen.tags'), detail.tags.join(', ')],
+    [t('knowledgeScreen.source'), detail.source], [t('knowledgeScreen.confidence'), detail.confidenceScore],
+    [t('knowledgeScreen.agent'), detail.agentId], [t('filters.platform'), detail.platform],
+    [t('knowledgeScreen.created'), detail.createdAt], [t('knowledgeScreen.updated'), detail.updatedAt],
+    [t('knowledge.version'), detail.version], [t('knowledge.expires'), detail.expiresAt],
+    [t('knowledgeScreen.curationHistory'), null],
+  ] : [];
+
+  return <div className="space-y-4">
+    <header className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-2xl font-semibold">{t('knowledgeScreen.base')}</h1>
+      <Button onClick={route.newEntry}>{t('knowledgeScreen.new')}</Button>
+    </header>
+    <div className="grid gap-3 md:grid-cols-3">
+      <label className="md:col-span-3">{t('knowledgeScreen.search')}<Input data-testid="knowledge-search" type="search"
+        value={query} onChange={event => route.patch({ q: event.target.value })} /></label>
+      <label>{t('knowledgeScreen.scope')}<Input list="knowledge-scopes" value={scope}
+        onChange={event => route.patch({ scope: event.target.value })} /></label>
+      <datalist id="knowledge-scopes">{scopes.map(item => <option key={item} value={item} />)}</datalist>
+      <label>{t('knowledgeScreen.filterByTag')}<Input value={tags} onChange={event => route.patch({ tags: event.target.value, tag: null })} /></label>
+      <label>{t('knowledgeScreen.type')}<select className="h-9 w-full rounded-md border bg-background px-3" value={type}
+        onChange={event => route.patch({ type: event.target.value })}>
+        <option value="">{t('filters.all')}</option>{types.map(value => <option key={value} value={value}>{t(`types.${value}`)}</option>)}
+      </select></label>
+      <label>{t('knowledgeScreen.agent')}<Input value={agent} onChange={event => route.patch({ agent: event.target.value })} /></label>
+      <label>{t('filters.platform')}<Input value={platform} onChange={event => route.patch({ platform: event.target.value })} /></label>
     </div>
-  );
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant={compact ? 'outline' : 'secondary'} aria-pressed={!compact} onClick={() => route.patch({ view: 'cards' }, false)}>{t('knowledgeScreen.cards')}</Button>
+      <Button variant={compact ? 'secondary' : 'outline'} aria-pressed={compact} onClick={() => route.patch({ view: 'compact' }, false)}>{t('knowledgeScreen.compact')}</Button>
+      <Button variant="ghost" onClick={() => route.patch({ q: null, scope: null, tags: null, tag: null, type: null, agent: null, platform: null })}>{t('filters.clear')}</Button>
+      <Button variant="outline" disabled={!entries.length} onClick={() => setSelected(selected.size === entries.length ? new Set() : new Set(entries.map(entry => entry.id)))}>
+        {t(selected.size && selected.size === entries.length ? 'actions.deselectAll' : 'knowledgeScreen.selectAll')}
+      </Button>
+      <span aria-live="polite">{selected.size} {t('knowledgeScreen.selected')}</span>
+      <Button variant="outline" disabled={!selected.size} onClick={exportSelected}>{t('actions.export')}</Button>
+      <Button variant="destructive" disabled={!selected.size || deleting} onClick={() => { setDeleteFailed(false); setConfirmDelete(true); }}>{t('knowledgeScreen.deleteSelected')}</Button>
+    </div>
+    {loadFailed && <p role="alert">{t('errors.actionFailed')} <Button onClick={() => setRevision(value => value + 1)}>{t('knowledgeScreen.retry')}</Button></p>}
+    {loading && <p role="status">{t('stats.loading')}</p>}
+    {!loading && !loadFailed && entries.length === 0 && <p>{t('knowledgeScreen.empty')}</p>}
+    {query.trim() && <p className="text-sm text-muted-foreground">{t('knowledgeScreen.searchLimit', { count: SEARCH_LIMIT })}</p>}
+    <div ref={viewport} onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
+      className="overflow-auto rounded-lg border" style={{ height: Math.min(560, entries.length * rowHeight) }} aria-busy={loading}>
+      <div style={{ height: entries.length * rowHeight, position: 'relative' }}>
+        {visible.map((entry, offset) => <article key={entry.id} data-testid="knowledge-row"
+          className={`absolute inset-x-0 flex items-start gap-3 border-b p-3 ${compact ? 'bg-background' : 'bg-card'}`}
+          style={{ top: (start + offset) * rowHeight, height: rowHeight, overflow: 'hidden' }}>
+          <Checkbox aria-label={`${t('knowledgeScreen.selectEntry')} ${entry.title}`} checked={selected.has(entry.id)} onCheckedChange={() => toggle(entry.id)} />
+          <Link className="h-full min-w-0 flex-1" to={route.detailUrl(entry.id)} onClick={event => {
+            if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) { event.preventDefault(); route.open(entry.id); }
+          }}>
+            <h2 className="truncate font-semibold text-primary">{entry.title}</h2>
+            {!compact && <p className="my-2 line-clamp-2 text-sm text-muted-foreground">{entry.content}</p>}
+            <p className="truncate text-xs text-muted-foreground">{entry.type} · {entry.scope} · {entry.tags.join(', ')}</p>
+          </Link>
+        </article>)}
+      </div>
+    </div>
+    <nav className="flex items-center justify-between" aria-label={t('knowledgeScreen.pagination')}>
+      <Button variant="outline" disabled={page === 0 || loading} onClick={() => route.patch({ page: String(page - 1) }, false)}>{t('knowledgeScreen.previous')}</Button>
+      <span>{page + 1}</span>
+      <Button variant="outline" disabled={!hasNext || loading} onClick={() => route.patch({ page: String(page + 1) }, false)}>{t('knowledgeScreen.next')}</Button>
+    </nav>
+    {external.map(section => <section key={section.providerId} className="space-y-2 rounded-lg border p-4">
+      <h2 className="font-semibold">{section.providerName} · {t('providers.untrustedBadge')}</h2>
+      <p className="text-sm text-muted-foreground">{t('providers.externalUntrusted')}</p>
+      {section.error ? <p role="status">{t('providers.failed')}</p> : section.results.map((result, item) => <article key={item}>
+        {isSafeHttpUrl(result.url) ? <a className="text-primary underline" href={result.url} target="_blank" rel="noopener noreferrer">{result.title}</a> : <strong>{result.title}</strong>}
+        <p className="whitespace-pre-wrap text-sm">{result.content}</p>
+      </article>)}
+    </section>)}
+    <Sheet open={!!route.selectedId || route.creating} onOpenChange={open => { if (!open) route.close(); }}>
+      <SheetContent className="overflow-y-auto sm:max-w-2xl" aria-describedby="knowledge-detail-description">
+        <SheetTitle>{route.creating ? t('knowledgeScreen.new') : detail?.title ?? t('knowledgeScreen.details')}</SheetTitle>
+        <SheetDescription id="knowledge-detail-description">{t('knowledgeScreen.details')}</SheetDescription>
+        {route.creating ? <KnowledgeEditor key="new" onSaved={save} onCancel={route.close} /> :
+          <div data-testid="knowledge-detail" className="space-y-5 pt-4">
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={index <= 0} onClick={() => route.open(entries[index - 1].id, true)}>{t('knowledgeScreen.previous')}</Button>
+              <Button variant="outline" disabled={index < 0 || index >= entries.length - 1} onClick={() => route.open(entries[index + 1].id, true)}>{t('knowledgeScreen.next')}</Button>
+              <Button disabled={!detail} onClick={() => setEditing(value => !value)}>{t('actions.edit')}</Button>
+            </div>
+            {detailFailed ? <p role="alert">{t('errors.actionFailed')}</p> : !detail ? <p role="status">{t('stats.loading')}</p> : editing ?
+              <KnowledgeEditor key={detail.id} entry={detail} onSaved={save} onCancel={() => setEditing(false)} /> : <>
+                <div className="prose max-w-none break-words dark:prose-invert [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_code]:font-mono">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                    a: ({ href, children }) => isSafeHttpUrl(href) ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>,
+                    img: ({ alt }) => <span>{alt}</span>,
+                  }}>{detail.content}</ReactMarkdown>
+                </div>
+                <h3 className="font-semibold">{t('knowledgeScreen.metadata')}</h3>
+                <dl className="space-y-2 text-sm">{metadata.map(([label, value]) => <div key={label} className="grid grid-cols-2 gap-3">
+                  <dt className="text-muted-foreground">{label}</dt><dd className="break-all">{value == null || value === '' ? unavailable : String(value)}</dd>
+                </div>)}</dl>
+                <h3 className="font-semibold">{t('knowledgeScreen.relatedPlans')}</h3>
+                {related === null ? <p>{unavailable}</p> : related.length === 0 ? <p>{t('plans.noPlans')}</p> :
+                  <ul className="space-y-2">{related.map(plan => <li key={`${plan.planId}-${plan.relationType}`}>
+                    <Link className="text-primary underline" to={`/plans/${encodeURIComponent(plan.planId)}${scope ? `?scope=${encodeURIComponent(scope)}` : ''}`}>{plan.title}</Link>
+                    <span className="ml-2 text-sm">{t(plan.relationType === 'output' ? 'plans.originPlan' : 'plans.consultedBy')} · {plan.status}</span>
+                  </li>)}</ul>}
+              </>}
+          </div>}
+      </SheetContent>
+    </Sheet>
+    <Sheet open={confirmDelete} onOpenChange={open => { if (!deleting) setConfirmDelete(open); }}>
+      <SheetContent>
+        <SheetTitle>{t('delete.bulkTitle')}</SheetTitle>
+        <SheetDescription>{t('delete.bulkMessage', { count: selected.size })}</SheetDescription>
+        {deleteFailed && <p role="alert">{t('errors.deleteFailed')}</p>}
+        <div className="mt-4 flex gap-2">
+          <Button variant="outline" disabled={deleting} onClick={() => setConfirmDelete(false)}>{t('knowledgeScreen.cancel')}</Button>
+          <Button variant="destructive" disabled={deleting || !selected.size} onClick={bulkDelete}>{t('actions.confirm')}</Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  </div>;
 }

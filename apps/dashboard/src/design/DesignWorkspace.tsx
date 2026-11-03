@@ -71,7 +71,7 @@ export default function DesignWorkspace() {
   return <TooltipProvider delayDuration={300}><div className="design-shell flex h-screen overflow-hidden bg-background font-sans text-foreground">
     <SidebarProvider defaultOpen className="min-h-0">
       <DesignSidebar />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5">
           <SidebarTrigger><PanelLeftClose className="size-4" /></SidebarTrigger>
           <Separator orientation="vertical" className="h-5" />
@@ -88,7 +88,7 @@ export default function DesignWorkspace() {
             <Route path="gallery" element={<Gallery theme={theme} onChange={changeTheme} />} />
           </Routes>
         </div>
-      </main>
+      </div>
       <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen}>
         <CommandInput placeholder="Search knowledge or navigate…" />
         <CommandList><CommandEmpty>No results found.</CommandEmpty><CommandGroup heading="Knowledge">{entries.slice(0, 8).map((entry) => <CommandItem key={entry.id} onSelect={() => { navigate(`/_design/k/${entry.id}`); setPaletteOpen(false); }}><BookOpen className="mr-2 size-4" />{entry.title}<span className="ml-auto font-mono text-[10px] text-muted-foreground">{entry.id.slice(0, 8)}</span></CommandItem>)}</CommandGroup><CommandGroup heading="Navigate"><CommandItem onSelect={() => { navigate('/_design/gallery'); setPaletteOpen(false); }}><LayoutGrid className="mr-2 size-4" />Component gallery</CommandItem></CommandGroup></CommandList>

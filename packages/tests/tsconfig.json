@@ -8,7 +8,8 @@
     // must span the repo; DOM types cover page.evaluate bodies and fetch().json().
     "rootDir": "../..",
     "lib": ["ES2022", "DOM"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": { "@/*": ["../../apps/dashboard/src/*"] }
   },
   "include": ["src"]
 }
