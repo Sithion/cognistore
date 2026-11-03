@@ -25,19 +25,19 @@ Rodadas que faltam (detalhes no plano): 7 (B.12, B.13, U.0.2 spike shadcn/ui no 
 ## Decisões já tomadas (não reabra)
 shadcn/ui + Tremor (gráficos), lucide, sonner, cmdk; dark como padrão com tema claro e "seguir o sistema"; navegação conforme U.2; 1D fora da 2.6; retenção do token_usage cru 90 dias com campo na U.4; recharts e react-day-picker atualizados junto com a Fase U; TypeScript 7 depois do release; curadoria sai com `suggest`; squash merge do #109 na Fase R.
 
-## Portões humanos — PARE e peça ao Raphael (nunca contorne)
+## Portões humanos — PARE e peça ao mantenedor (nunca contorne)
 1. Merge em main, bump, tag, publish npm, release Tauri. Prepare tudo e passe o comando exato (ex.: `! gh pr merge <n> --merge`).
 2. Override de hook de segurança (CLAUDE_ALLOW_SECRET, --no-verify) ou permissão negada.
 3. Qualquer coisa destrutiva em dados reais ou no HOME real.
 4. Decisão de produto com mudança visível que o plano não define.
 5. Direção visual: ao fim da Rodada 7, screenshots em documentation/plans/reports/assets/rodada-7/ (claro e escuro, /_design, lista + painel + ⌘K) e ESPERE aprovação antes da Rodada 8.
-6. Fase R: betas instalados pelo Raphael (inclui checagem no macOS) antes do release final; o squash merge do #109 é dele.
+6. Fase R: betas instalados pelo mantenedor (inclui checagem no macOS) antes do release final; o squash merge do #109 é dele.
 7. Advisory de segurança que afeta o main: prepare o hotfix (branch a partir de origin/main, PR com checks verdes) e PARE para o merge.
 
 Ao parar: uma mensagem curta com o que está pronto, a decisão necessária (com sua recomendação) e o comando ou resposta exata que te destrava. Depois aguarde. Quando ele responder, retome pelo diário.
 
 ## Regras permanentes
-Contrato 1.2; sem bump/tag/publish/merge em main sem o Raphael; testes herméticos (HOME sandbox); nada de reduzir limiar para passar; uma major de dependência por branch; registre achados fora do escopo como B.n; se algo falhar duas vezes pelo mesmo motivo, registre, siga para o próximo item seguro e cite no relatório. O plano no repositório é a sua memória: mantenha o diário atualizado a cada rodada para poder retomar após qualquer reinício de contexto.
+Contrato 1.2; sem bump/tag/publish/merge em main sem o mantenedor; testes herméticos (HOME sandbox); nada de reduzir limiar para passar; uma major de dependência por branch; registre achados fora do escopo como B.n; se algo falhar duas vezes pelo mesmo motivo, registre, siga para o próximo item seguro e cite no relatório. O plano no repositório é a sua memória: mantenha o diário atualizado a cada rodada para poder retomar após qualquer reinício de contexto.
 
 Comece agora pela Preparação e depois pela Rodada 7.
 ```
