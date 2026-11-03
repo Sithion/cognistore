@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { ArrowDownUp, BookOpen, Command as CommandIcon, Database, FileText, LayoutGrid, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Sun, X } from 'lucide-react';
+import { ArrowDownUp, ArrowLeft, BookOpen, Command as CommandIcon, Database, FileText, LayoutGrid, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings2, Sparkles, Sun, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/client';
 import { applyTheme, getThemeMode, type ThemeMode } from './theme';
@@ -25,7 +25,7 @@ const groups = [
   { title: 'Knowledge', items: [{ label: 'All entries', icon: BookOpen, path: '/_design' }, { label: 'Collections', icon: Database, path: '/_design' }] },
   { title: 'Plans', items: [{ label: 'Active plans', icon: FileText, path: '/_design' }] },
   { title: 'Telemetry', items: [{ label: 'Overview', icon: Sparkles, path: '/_design' }] },
-  { title: 'Settings', items: [{ label: 'Design system', icon: Settings2, path: '/_design/gallery' }] },
+  { title: 'Settings', items: [{ label: 'Design system', icon: Settings2, path: '/_design/gallery' }, { label: 'Back to dashboard', icon: ArrowLeft, path: '/' }] },
 ];
 
 export default function DesignWorkspace() {

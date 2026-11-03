@@ -88,3 +88,14 @@ test('knowledge selection routes to a side detail panel', async ({ page }) => {
   await expect(detail.locator('.font-mono')).toContainText(/^[0-9a-f-]{36}$/);
   await expect(page).toHaveURL(/\/_design\/k\/[0-9a-f-]+$/);
 });
+
+test('Ctrl+Shift+D opens the design preview and the sidebar leads back', async ({ page }) => {
+  await page.addInitScript((token) => { (window as any).__COGNISTORE_TOKEN__ = token; }, TEST_TOKEN);
+  await gotoViaNav(page, baseUrl, '/');
+  await page.keyboard.press('Control+Shift+D');
+  await expect(page.getByRole('heading', { name: 'Knowledge', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/_design$/);
+  await page.getByRole('link', { name: 'Back to dashboard' }).click();
+  await expect(page.getByText('Knowledge Base', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+});
