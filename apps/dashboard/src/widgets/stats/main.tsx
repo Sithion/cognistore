@@ -6,7 +6,6 @@ import { StatsWidget } from './StatsWidget.js';
 
 applyTheme(getThemeMode());
 window.addEventListener('storage', event => { if (event.key === 'cognistore.theme') applyTheme(getThemeMode()); });
-window.addEventListener('cognistore:themechange', event => applyTheme((event as CustomEvent<{ mode: 'light' | 'dark' | 'system' }>).detail.mode));
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

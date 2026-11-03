@@ -13,7 +13,7 @@ Store, search, and retrieve knowledge using local vector embeddings — directly
 
 [Download](#quick-start) · [Features](#features) · [MCP Integration](#mcp-integration) · [External Providers](#external-knowledge-providers) · [Dashboard](#dashboard) · [Development](#development) · [Patch Notes](PATCH-NOTES.md)
 
-![CogniStore Dashboard](documentation/plans/reports/assets/rodada-8/knowledge-dark.png)
+![CogniStore Dashboard](screenshot.png)
 
 </div>
 
