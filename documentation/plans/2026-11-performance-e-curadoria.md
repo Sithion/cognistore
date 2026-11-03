@@ -156,8 +156,8 @@ Hoje: 46 arquivos e ~400 testes em `packages/tests` (runner Playwright, integra�
 - [x] T.5 **Setup/uninstall/upgrade de artefatos**: em `HOME` temporário — setup → snapshot de todos os arquivos injetados por plataforma → setup de novo (idempotência) → upgrade de versão (re-deploy) → uninstall → árvore volta ao estado inicial (exceto o que é opt-in). — **Rodada 3** (78c8067), corrige B.1.
 - [x] T.6 **Contrato MCP congelado**: snapshot do `listTools` (nomes, schemas de entrada, annotations) e de respostas-exemplo; mudança exige atualizar o snapshot conscientemente. — **Rodada 3** (6e67505): snapshot da v2.5.4, 18 ferramentas.
 - [x] T.7 **Testes de API do sidecar**: todas as rotas (auth/CSRF, 4xx/5xx, paginação, limites). Gerar a lista de rotas automaticamente e falhar se uma rota nova não tiver teste. — **Rodada 3** (a3fb60c + b90769c): inventário vindo do Fastify (`COGNISTORE_ROUTE_MANIFEST`); três correções de API.
-- [ ] T.8 **Testes de componentes React** (Testing Library + jsdom, já são dependências do pacote de testes): páginas principais, modais, filtros, i18n (todas as chaves em pt e en), estados vazio/erro/carregando.
-- [ ] T.9 **E2E de UI** (Playwright contra o sidecar com Ollama fake): fluxos de primeiro uso, busca, CRUD de conhecimento, planos, settings, curadoria; **axe-core** para acessibilidade; **regressão visual** (screenshots por página, tema claro/escuro) para a Fase U.
+- [x] T.8 **Testes de componentes React** (Testing Library + jsdom, já são dependências do pacote de testes): páginas principais, modais, filtros, i18n (todas as chaves em pt e en), estados vazio/erro/carregando. — **Rodada 8**.
+- [x] T.9 **E2E de UI** (Playwright contra o sidecar com Ollama fake): fluxos de primeiro uso, busca, CRUD de conhecimento, planos, settings, curadoria; **axe-core** para acessibilidade; **regressão visual** (screenshots por página, tema claro/escuro) para a Fase U. — **Rodada 8**.
 - [x] T.10 **Performance** (Fase 0.3/0.4) entra no mesmo gate. Até a Fase R: job de CI **só de relatório** (não reprova), com `PERF_BUDGET_SCALE=3` e cache do fixture; na Fase R vira bloqueante. — **Rodada 2**: job `perf` no `ci.yml` (relatório; vira bloqueante na Fase R).
 - [x] T.10b Corrigir `e2e/upgrade-progress.test.ts:199` (depende do mtime do `~/.claude.json` **real** — falha com um Claude Code aberto); usar só o HOME sandbox. Também: os testes de `cleanup-*.test.ts` têm erros de tipo e o pacote de testes não entra no `pnpm type-check` → incluir. — **Rodada 2** (+ `packages/tests` no `pnpm type-check`, 93 → 0 erros).
 - [x] T.11 **Build/empacotamento** (hoje o Rust só compila no `publish.yml`, ou seja, depois do merge — achado na Rodada 0): job `cargo check --locked` + `cargo test` do `src-tauri` em todo PR, com toolchain fixado (`rust-toolchain.toml`, ≥ 1.90 exigido pelo tauri 2.12). Além disso, CI gera o bundle do sidecar e o AppImage/deb no Linux e roda um smoke (sidecar sobe, `/api/health` responde, worker threads e sqlite-vec carregam a partir do bundle). — **Rodada 2: primeira metade feita** (job `rust`: `cargo check --locked` + `cargo test --locked`, `rust-toolchain.toml` 1.97.0, ubuntu-24.04). **Rodada 3: segunda metade feita** (ff3289a): job `sidecar-bundle` monta o bundle e roda `smoke-sidecar-bundle.mjs` (ready marker, `/api/health`, busca semântica = sqlite-vec). AppImage/deb ficam só no `publish.yml` (decisão em `ci-cd.md` e no relatório da Rodada 3).
@@ -220,7 +220,7 @@ Restrições: React 19 + Vite + Tailwind v4 já no projeto, webview Tauri (WebKi
 
 ### U.2 Navegação e arquitetura de informação (revisão completa — pedido do mantenedor)
 
-- [ ] Deep link (hard navigation) a rotas que não são `/` devolve 403 do sidecar (`isStaticPath` em `server/auth.ts`); decidir na Rodada 8 junto com as URLs próprias (U.2).
+- [x] Deep link (hard navigation) a rotas que não são `/` devolve 403 do sidecar (`isStaticPath` em `server/auth.ts`); decidir na Rodada 8 junto com as URLs próprias (U.2). — **Rodada 8**: application deep links load the SPA while API authentication remains enforced.
 
 **Objetivo:** chegar a qualquer coisa do app em ≤ 2 cliques ou 1 atalho, e toda tela/entrada/plano/seção ter URL própria (link, voltar/avançar, abrir de outro lugar).
 
@@ -249,38 +249,38 @@ Restrições: React 19 + Vite + Tailwind v4 já no projeto, webview Tauri (WebKi
 | | Sobre / Atualizações | `/system/about` | Versão, changelog, update |
 
 **Navegação transversal:**
-- [ ] U.2.1 Novo roteamento com rotas aninhadas (react-router 7) + **redirects de compatibilidade** de todas as URLs antigas (`/?edit=`, `/plans?select=`, `/stats`, `/stats/plans`, `/tokens`, `/providers`, `/widgets`) — widgets/janelas Tauri e links salvos continuam funcionando (contrato 1.2).
-- [ ] U.2.2 Sidebar agrupada (shadcn `Sidebar`), recolhível com estado persistido, badges (curadoria pendente, jobs rodando), item ativo correto em sub-rotas.
-- [ ] U.2.3 **Paleta ⌘K/Ctrl+K** indexando: todas as rotas e seções de Settings, ações ("novo conhecimento", "novo plano", "rodar curadoria", "reindexar", "trocar tema"), busca semântica de entradas e planos, tags e scopes. Resultados recentes no topo.
-- [ ] U.2.4 **Atalhos de teclado** estilo `g` + letra (`g k` Base, `g p` Planos, `g c` Curadoria, `g i` Insights, `g s` Settings), `/` foca a busca, `n` novo, `Esc` fecha painel, `?` mostra a folha de atalhos.
-- [ ] U.2.5 **Seletor global de scope/workspace** no cabeçalho (todos / global / workspace:X), refletido na URL (`?scope=`) e aplicado em Base, Planos, Insights e Curadoria.
-- [ ] U.2.6 Breadcrumbs no cabeçalho + título da janela por rota; painel de detalhe com navegação anterior/próximo na lista atual.
-- [ ] U.2.7 **Links cruzados em todo lugar**: entrada ↔ planos que a usaram/criaram; plano ↔ entradas; tag → Base filtrada; gráfico de Insights → lista filtrada; item de curadoria → entradas envolvidas; chip de agente/plataforma → filtro.
-- [ ] U.2.8 Estado de filtros, ordenação, aba e página **sempre na URL** (compartilhável, sobrevive a reload).
-- [ ] U.2.9 Estados vazios que ensinam o caminho (ex.: "nenhum plano — crie pelo agente ou ⌘K → Novo plano").
-- [ ] U.2.10 Testes: e2e percorre **todas as rotas** pela sidebar, pela ⌘K e por atalho; teste que falha se existir rota sem item de navegação ou comando na paleta (sem páginas órfãs); teste de todos os redirects antigos; axe nos landmarks (`nav`, `main`, `aside`).
+- [x] U.2.1 Novo roteamento com rotas aninhadas (react-router 7) + **redirects de compatibilidade** de todas as URLs antigas (`/?edit=`, `/plans?select=`, `/stats`, `/stats/plans`, `/tokens`, `/providers`, `/widgets`) — widgets/janelas Tauri e links salvos continuam funcionando (contrato 1.2). — **Rodada 8**.
+- [x] U.2.2 Sidebar agrupada (shadcn `Sidebar`), recolhível com estado persistido, badges (curadoria pendente, jobs rodando), item ativo correto em sub-rotas. — **Rodada 8**.
+- [x] U.2.3 **Paleta ⌘K/Ctrl+K** indexando: todas as rotas e seções de Settings, ações ("novo conhecimento", "novo plano", "rodar curadoria", "reindexar", "trocar tema"), busca semântica de entradas e planos, tags e scopes. Resultados recentes no topo. — **Rodada 8**.
+- [x] U.2.4 **Atalhos de teclado** estilo `g` + letra (`g k` Base, `g p` Planos, `g c` Curadoria, `g i` Insights, `g s` Settings), `/` foca a busca, `n` novo, `Esc` fecha painel, `?` mostra a folha de atalhos. — **Rodada 8**.
+- [x] U.2.5 **Seletor global de scope/workspace** no cabeçalho (todos / global / workspace:X), refletido na URL (`?scope=`) e aplicado em Base, Planos, Insights e Curadoria. — **Rodada 8**.
+- [x] U.2.6 Breadcrumbs no cabeçalho + título da janela por rota; painel de detalhe com navegação anterior/próximo na lista atual. — **Rodada 8**.
+- [x] U.2.7 **Links cruzados em todo lugar**: entrada ↔ planos que a usaram/criaram; plano ↔ entradas; tag → Base filtrada; gráfico de Insights → lista filtrada; item de curadoria → entradas envolvidas; chip de agente/plataforma → filtro. — **Rodada 8**.
+- [x] U.2.8 Estado de filtros, ordenação, aba e página **sempre na URL** (compartilhável, sobrevive a reload). — **Rodada 8**.
+- [x] U.2.9 Estados vazios que ensinam o caminho (ex.: "nenhum plano — crie pelo agente ou ⌘K → Novo plano"). — **Rodada 8**.
+- [x] U.2.10 Testes: e2e percorre **todas as rotas** pela sidebar, pela ⌘K e por atalho; teste que falha se existir rota sem item de navegação ou comando na paleta (sem páginas órfãs); teste de todos os redirects antigos; axe nos landmarks (`nav`, `main`, `aside`). — **Rodada 8**.
 - [ ] U.2.11 Barra de status no rodapé: Ollama, tamanho do banco, jobs em execução com progresso (clicável → Saúde do banco).
 - [ ] U.2.12 Transições de rota com `<ViewTransition>` (React 19.3), respeitando `prefers-reduced-motion`; titlebar integrada + vibrancy no macOS/mica no Windows (fallback sólido no Linux).
 
 ### U.3 Base de conhecimento (tela principal)
-- [ ] Lista mais densa com alternância **cartão / lista compacta**; seleção múltipla para ações em lote.
-- [ ] **Painel de detalhe lateral roteado** (`/knowledge/:id`, em vez de modal): markdown com destaque de código, metadados (leituras, versão, origem, planos ligados), entradas relacionadas/similares, histórico de curadoria, ações (editar, marcar `keep`, substituir, apagar).
-- [ ] Filtros como chips combináveis (tipo, scope, tags, plataforma, status), salvos na URL.
-- [ ] Skeletons, estados vazios úteis, toasts com "desfazer".
+- [x] Lista mais densa com alternância **cartão / lista compacta**; seleção múltipla para ações em lote. — **Rodada 8**.
+- [x] **Painel de detalhe lateral roteado** (`/knowledge/:id`, em vez de modal): markdown com destaque de código, metadados (leituras, versão, origem, planos ligados), entradas relacionadas/similares, histórico de curadoria, ações (editar, marcar `keep`, substituir, apagar). — **Rodada 8**.
+- [x] Filtros como chips combináveis (tipo, scope, tags, plataforma, status), salvos na URL. — **Rodada 8**.
+- [x] Skeletons, estados vazios úteis, toasts com "desfazer". — **Rodada 8**.
 - [ ] Opcional: visão em grafo de relações (`related_ids`, planos ↔ conhecimento, clusters de similaridade).
 
 ### U.4 Demais telas
-- [ ] Estatísticas e Tokens: migrar para recharts 3 (L.8), gráficos com tooltip/drill-down, sparklines, números mono, presets de período.
-- [ ] Planos: linha do tempo da cadeia (lineage), progresso das tarefas, kanban opcional.
-- [ ] Campo de **retenção do `token_usage` cru (dias)** na seção Telemetria/retenção — hoje só existe no `settings.json`/API; o aviso da tela de Tokens linka para cá *(decisão da Rodada 6: entra com a Fase U, não antes)*.
-- [ ] Settings reorganizado em seções roteadas (`/settings/:section`: Geral, Modelos, Curadoria, Telemetria/retenção, Avançado); Tags, Curadoria e Saúde do banco saem de Settings para as rotas da U.2.
+- [x] Estatísticas e Tokens: migrar para recharts 3 (L.8), gráficos com tooltip/drill-down, sparklines, números mono, presets de período. — **Rodada 8**.
+- [x] Planos: linha do tempo da cadeia (lineage), progresso das tarefas, kanban opcional. — **Rodada 8**.
+- [x] Campo de **retenção do `token_usage` cru (dias)** na seção Telemetria/retenção — hoje só existe no `settings.json`/API; o aviso da tela de Tokens linka para cá *(decisão da Rodada 6: entra com a Fase U, não antes)*. — **Rodada 8**.
+- [x] Settings reorganizado em seções roteadas (`/settings/:section`: Geral, Modelos, Curadoria, Telemetria/retenção, Avançado); Tags, Curadoria e Saúde do banco saem de Settings para as rotas da U.2. — **Rodada 8**.
 - [ ] Setup/primeiro uso e Upgrade com progresso claro e mensagens de erro acionáveis.
 - [ ] Widgets Tauri com o mesmo sistema de design.
 
 ### U.5 Qualidade
-- [ ] Acessibilidade: zero violações `axe` sérias, navegação completa por teclado, foco visível, contraste AA nos dois temas.
-- [ ] i18n pt/en completo (teste T.8 falha em chave faltando).
-- [ ] Orçamento de performance da UI: bundle inicial, tempo até lista renderizada com 10k entradas (virtualização da lista).
+- [x] Acessibilidade: zero violações `axe` sérias, navegação completa por teclado, foco visível, contraste AA nos dois temas. — **Rodada 8**.
+- [x] i18n pt/en completo (teste T.8 falha em chave faltando). — **Rodada 8**.
+- [ ] Orçamento de performance da UI: bundle inicial, tempo até lista renderizada com 10k entradas (virtualização da lista). — **a 10k render-time budget remains open**.
 
 **Pronto quando:** todas as telas no novo sistema, regressão visual aprovada nos 2 temas, axe limpo, screenshot/README atualizados.
 
@@ -416,6 +416,7 @@ Reordenado após a Rodada 1: o congelamento tem causa concreta e barata de ataca
 
 ## Diário de execução
 
+- 2026-11-03 — **Rodada 8 APROVADA pelo gerente.** Em clone limpo de `986292c`, `pnpm verify --coverage` ficou verde (68,27% de cobertura global; segundo escopo 60,76%), matrizes de compatibilidade 55/55, CI do PR #109 verde nos jobs de build/teste, MCP sem toolchain, osv-scan, perf, Rust, bundle do sidecar e type-check. O único @perf local instável foi transitório sob carga, passou em isolamento e nas duas execuções de CI, então o limite ficou inalterado; bundle gzip 432.470 B (1,171× Rodada 7, abaixo do teto 1,30). U.2–U.5 e T.8/T.9 foram entregues nos limites descritos no [relatório da Rodada 8](reports/2026-11-03-rodada-8.md); U.2.11, U.2.12, status MCP por plataforma, Insights com scope e orçamento de renderização para 10k seguem abertos.
 - 2026-11-03 — **Rodada 7 APROVADA pelo gerente.** Validada num clone limpo de `release/2.6` (862f1d2): `pnpm verify --coverage` verde (cobertura 68,08% linhas, todas as camadas ≥ baseline), compat 55/55, `@perf` 21/21 (maior bloqueio 30,1 ms), `design-route` 60/60 com `--repeat-each=20`, CI do #109 sem vermelho além de version-check/release-version-guard. osv-scanner local indisponível (coberto pelo CI). Executor e gerente agora seguem a seção "Execução com a frota HORIZON" da skill `cognistore-manager`. **Aguardando aprovação visual (portão 5) dos screenshots em `documentation/plans/reports/assets/rodada-7/` antes da Rodada 8.**
 - 2026-11-03 — **Rodada 7** (`reports/2026-11-03-rodada-7.md`). B.12 (814800a), B.13 (3f805c0), U.0.2 + U.1 (0a216be). Spike no WebKitGTK real: 10/10; bundle inicial +6,8% (bruto) / +8,7% (gzip); telas atuais intactas. Pendente do mantenedor: aprovar a direção visual (screenshots em reports/assets/rodada-7/) e conferir o checklist do macOS.
 - 2026-11-02 — **Rodada 6 APROVADA pelo gerente.** Clone limpo de `release/2.6` (49d77e1), Node 24.22: `pnpm verify --coverage` verde — **541 passed**, knip 0, gate de cobertura ✅ (no ambiente do gerente foi preciso `pnpm install --ignore-scripts` porque o pnpm tenta compilar o `better-sqlite3` 13 e o download dos headers do Node é bloqueado aqui → B.13; e reaproveitar o Chromium instalado). Advisories: GHSA 2025–2026 nada fora dos ignores; RustSec só os 7 ignorados. Revisado o override do vite (`>=8.3.5 <9`) e o `auditConfig` do esbuild. Decisões: campo de retenção vai para a Fase U (U.4); B.12 aprovado; B.13 registrado (consumidores via npx não compilam nada com o better-sqlite3 13 — bom —, mas precisa de prova no CI).
