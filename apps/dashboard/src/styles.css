@@ -2,18 +2,34 @@
 @import "./design/theme.css";
 
 :root {
-  --bg-main: #0d0d1a;
-  --bg-sidebar: #0a0a15;
-  --bg-card: #111128;
-  --bg-input: #0f0f24;
-  --border: #1e1e3a;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --success: #10b981;
-  --error: #ec4899;
-  --warning: #f59e0b;
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
+  --background: var(--design-background);
+  --foreground: var(--design-foreground);
+  --card: var(--design-card);
+  --card-foreground: var(--design-foreground);
+  --popover: var(--design-popover);
+  --popover-foreground: var(--design-foreground);
+  --primary: var(--design-primary);
+  --primary-foreground: var(--design-primary-foreground);
+  --muted: var(--design-muted);
+  --muted-foreground: var(--design-muted-foreground);
+  --accent-foreground: var(--design-foreground);
+  --sidebar: var(--design-sidebar);
+  --sidebar-foreground: var(--design-sidebar-foreground);
+  --sidebar-border: var(--design-sidebar-border);
+  --sidebar-accent: var(--design-sidebar-accent);
+  --sidebar-primary: var(--design-sidebar-primary);
+  --bg-main: var(--background);
+  --bg-sidebar: var(--sidebar);
+  --bg-card: var(--card);
+  --bg-input: var(--design-input);
+  --border: var(--design-border);
+  --accent: var(--primary);
+  --accent-hover: var(--design-ring);
+  --success: var(--design-success);
+  --error: var(--design-destructive);
+  --warning: var(--design-warning);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
 }
 
 body {
@@ -44,7 +60,7 @@ body {
    system (light) theme — making dark-on-light text nearly invisible. Force CSS control
    with appearance:none and provide a custom dropdown arrow. Options are styled explicitly
    because the GTK popup also defaults to system colors. Applies on all platforms. */
-select {
+select:not([data-radix-select-trigger]):not([role='combobox']) {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -57,10 +73,32 @@ select {
   padding-right: 32px;
 }
 
-select option {
+select:not([data-radix-select-trigger]):not([role='combobox']) option {
   background-color: var(--bg-input);
   color: var(--text-primary);
 }
+
+.command-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: flex-start; padding: min(15vh, 120px) 16px 16px; background: rgb(15 23 42 / 45%); }
+.command-palette { width: min(640px, 100%); max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); box-shadow: 0 24px 80px rgb(0 0 0 / 24%); }
+.command-palette input { width: 100%; padding: 18px 20px; border: 0; border-bottom: 1px solid var(--border); outline: none; background: transparent; color: var(--text-primary); font: inherit; }
+.command-results, .command-recent { display: grid; padding: 8px; }
+.command-results button, .command-recent button { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.command-results button:hover, .command-recent button:hover, .command-results button:focus { outline: none; background: var(--bg-input); }
+.command-results small, .command-recent small, .command-palette footer { color: var(--text-secondary); }
+.command-recent > small, .command-palette footer { padding: 8px 12px; }
+.shell-main { overflow: auto; background: var(--bg-main); }
+.shell-main > main { min-height: 100%; padding: 24px; }
+.sidebar-link { display: flex; align-items: center; gap: 10px; margin: 2px 0; padding: 10px 12px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; font-size: 14px; }
+.sidebar-link:hover { background: var(--sidebar-accent); color: var(--text-primary); }
+.sidebar-link.is-active { background: var(--accent); color: #fff; }
+.screen-state { display: grid; justify-items: start; gap: 8px; padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); }
+.screen-state h2, .screen-state p { margin: 0; }
+.shell-main > main [style*="10, 10, 26"] { background-color: var(--bg-card) !important; }
+.shortcut-help { width: min(520px, 100%); padding: 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); }
+.shortcut-help kbd { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 180ms; }
+@media (prefers-reduced-motion: reduce) { ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.01ms; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
 
 /* Markdown rendering */
 .plan-markdown h1, .plan-markdown h2, .plan-markdown h3 { color: var(--text-primary); margin-top: 16px; margin-bottom: 8px; }

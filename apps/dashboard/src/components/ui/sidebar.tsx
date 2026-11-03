@@ -10,7 +10,7 @@ function SidebarProvider({ defaultOpen = true, children, className }: React.Prop
 }
 const Sidebar = React.forwardRef<HTMLElement, React.ComponentProps<'aside'>>(({ className, ...props }, ref) => { const { open } = useSidebar(); return <aside ref={ref} data-state={open ? 'expanded' : 'collapsed'} className={cn('flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200', open ? 'w-64' : 'w-[68px]', className)} {...props} />; });
 Sidebar.displayName = 'Sidebar';
-const SidebarTrigger = React.forwardRef<HTMLButtonElement, React.ComponentProps<'button'>>(({ className, children, ...props }, ref) => { const { toggle } = useSidebar(); return <button ref={ref} type="button" aria-label="Toggle sidebar" onClick={toggle} className={cn('inline-flex items-center justify-center rounded-md p-2 hover:bg-sidebar-accent', className)} {...props}>{children}</button>; });
+const SidebarTrigger = React.forwardRef<HTMLButtonElement, React.ComponentProps<'button'>>(({ className, children, onClick, ...props }, ref) => { const { toggle } = useSidebar(); return <button ref={ref} type="button" aria-label="Toggle sidebar" onClick={(event) => { toggle(); onClick?.(event); }} className={cn('inline-flex items-center justify-center rounded-md p-2 hover:bg-sidebar-accent', className)} {...props}>{children}</button>; });
 SidebarTrigger.displayName = 'SidebarTrigger';
 function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) { return <main className={cn('min-w-0 flex-1', className)} {...props} />; }
 function SidebarHeader({ className, ...props }: React.ComponentProps<'div'>) { return <div className={cn('flex items-center gap-2 p-4', className)} {...props} />; }

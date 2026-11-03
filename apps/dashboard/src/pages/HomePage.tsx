@@ -448,6 +448,7 @@ export function HomePage() {
       {/* Search Bar + Actions */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input
+          data-testid="knowledge-search"
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

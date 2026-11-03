@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess } from 'node:child_process';
 import { createDbClient, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
 import { KnowledgeType, DEFAULT_EMBEDDING_DIMENSIONS } from '@cognistore/shared';
-import { getFreePort, startMockOllama, TEST_TOKEN, waitForSidecar } from '../sidecar-helpers.js';
+import { getFreePort, startMockOllama, TEST_TOKEN, waitForSidecar, spawnSidecar, stopSidecar } from '../sidecar-helpers.js';
 import { SERVER_ENTRY } from '../sidecar-helpers.js';
 
 let sandbox = '';
@@ -31,12 +31,24 @@ test.beforeAll(async () => {
   stopMock = () => mock.server.close();
   const port = await getFreePort();
   baseUrl = `http://127.0.0.1:${port}`;
-  sidecar = spawn(process.execPath, [SERVER_ENTRY], { env: { ...process.env, HOME: sandbox, COGNISTORE_HOME: join(sandbox, '.cognistore'), SQLITE_PATH: dbPath, DASHBOARD_PORT: String(port), SIDECAR_TOKEN: TEST_TOKEN, OLLAMA_HOST: `http://127.0.0.1:${mock.port}`, OLLAMA_MODEL: 'nomic-embed-text', DASHBOARD_DIST_PATH: resolve(dirname(SERVER_ENTRY), '../dist') }, stdio: 'ignore' });
-  expect(await waitForSidecar(baseUrl)).toBe(true);
+  const spawned = spawnSidecar({
+    HOME: sandbox,
+    XDG_CONFIG_HOME: join(sandbox, '.config'),
+    COGNISTORE_HOME: join(sandbox, '.cognistore'),
+    COGNISTORE_MANAGED: '0',
+    SQLITE_PATH: dbPath,
+    DASHBOARD_PORT: String(port),
+    SIDECAR_TOKEN: TEST_TOKEN,
+    OLLAMA_HOST: `http://127.0.0.1:${mock.port}`,
+    OLLAMA_MODEL: 'nomic-embed-text',
+    DASHBOARD_DIST_PATH: resolve(dirname(SERVER_ENTRY), '../dist'),
+  });
+  sidecar = spawned.child;
+  expect(await waitForSidecar(baseUrl), spawned.readLog()).toBe(true);
 });
 
-test.afterAll(() => {
-  sidecar?.kill('SIGTERM');
+test.afterAll(async () => {
+  await stopSidecar(sidecar);
   stopMock?.();
   if (sandbox) rmSync(sandbox, { recursive: true, force: true });
 });
