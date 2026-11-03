@@ -50,6 +50,22 @@ function WidgetEventListener() {
   return null;
 }
 
+// Hidden entry to the internal design preview (U.0.2): Ctrl/Cmd+Shift+D.
+function DesignShortcut() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        navigate('/_design');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [navigate]);
+  return null;
+}
+
 type AppState = 'loading' | 'setup' | 'upgrade' | 'ready';
 
 export function App() {
@@ -119,6 +135,7 @@ export function App() {
   // Normal dashboard
   return (
     <BrowserRouter>
+      <DesignShortcut />
       <Routes>
         <Route path="/_design/*" element={<Suspense fallback={<div>Loading…</div>}><DesignPage /></Suspense>} />
         <Route path="*" element={<>
