@@ -1,18 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, setProviderSecret, SIDECAR_TOKEN, type ProviderEntry } from '../api/client.js';
+import { Button } from '../components/ui/button.js';
+import { Card, CardContent } from '../components/ui/card.js';
+import { Input } from '../components/ui/input.js';
+import { Switch } from '../components/ui/switch.js';
+import { Label } from '../components/ui/label.js';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select.js';
+import { Badge } from '../components/ui/badge.js';
 
-const card: React.CSSProperties = {
-  backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 10,
-};
-const input: React.CSSProperties = {
-  padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
-  color: 'var(--text-primary)', fontSize: 12, width: '100%',
-};
-const btn: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)',
-  color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-};
 
 // All providers are MCP connectors now. stdio = local subprocess; remote = Streamable HTTP.
 const emptyStdio = (): ProviderEntry => ({ id: '', name: '', enabled: true, transport: 'stdio', mode: 'tool', command: '', toolName: 'search' });
@@ -134,74 +130,64 @@ export function ProvidersSection() {
 
   return (
     <div style={{ marginBottom: 32 }}>
-      <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
+      <h1 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
         {t('providers.section')}
-      </h2>
+      </h1>
+      <Button type="button" className="mb-3" onClick={() => { setDraft(emptyStdio()); setSecret(''); setError(''); }}>Add provider</Button>
 
-      <label style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-        <span>
-          <span style={{ fontWeight: 500 }}>{t('providers.alwaysOn')}</span>
-          <br /><span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('providers.alwaysOnHint')}</span>
-        </span>
-        <input type="checkbox" checked={alwaysOn} onChange={(e) => toggleAlways((e.target as HTMLInputElement).checked)} />
-      </label>
+      <Card className="mb-3"><CardContent className="flex items-center justify-between gap-4 p-4">
+        <Label htmlFor="always-external" className="cursor-pointer"><span>{t('providers.alwaysOn')}</span><span className="mt-1 block text-xs text-muted-foreground">{t('providers.alwaysOnHint')}</span></Label>
+        <Switch id="always-external" checked={alwaysOn} onCheckedChange={toggleAlways} />
+      </CardContent></Card>
 
       {providers.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('providers.none')}</p>}
       {providers.map((p) => (
-        <div key={p.id} style={card}>
+        <Card key={p.id} className="mb-3"><CardContent className="space-y-3 p-4">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span>
               <strong>{p.name}</strong>{' '}
-              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+              <Badge variant="outline" className="ml-2 text-[10px]">
                 mcp · {p.transport}{p.transport === 'http' && p.auth?.type === 'oauth' ? ' · oauth' : ''}
-              </span>
-              {!p.enabled && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}> · {t('providers.disabled')}</span>}
+              </Badge>
+              {!p.enabled && <Badge variant="secondary">{t('providers.disabled')}</Badge>}
             </span>
             <span style={{ display: 'flex', gap: 6, opacity: busy.has(p.id) ? 0.5 : 1 }}>
               {p.transport === 'http' && p.auth?.type === 'oauth' && (
-                <button style={btn} disabled={busy.has(p.id)} onClick={() => connect(p.id)}>{t('providers.connect')}</button>
+              <Button size="sm" variant="outline" disabled={busy.has(p.id)} onClick={() => connect(p.id)}>{t('providers.connect')}</Button>
               )}
-              <button style={btn} disabled={busy.has(p.id)} onClick={() => test(p.id)}>{t('providers.test')}</button>
-              <button style={btn} disabled={busy.has(p.id)} onClick={() => toggleEnabled(p)}>{p.enabled ? t('providers.disable') : t('providers.enable')}</button>
-              <button style={btn} disabled={busy.has(p.id)} onClick={() => { setDraft(JSON.parse(JSON.stringify(p))); setSecret(''); }}>{t('actions.edit')}</button>
-              <button style={{ ...btn, color: 'var(--error)' }} disabled={busy.has(p.id)} onClick={() => remove(p.id)}>{t('actions.delete')}</button>
+              <Button size="sm" variant="outline" disabled={busy.has(p.id)} onClick={() => test(p.id)}>{t('providers.test')}</Button>
+              <Button size="sm" variant="outline" disabled={busy.has(p.id)} onClick={() => toggleEnabled(p)}>{p.enabled ? t('providers.disable') : t('providers.enable')}</Button>
+              <Button size="sm" variant="outline" disabled={busy.has(p.id)} onClick={() => { setDraft(JSON.parse(JSON.stringify(p))); setSecret(''); }}>{t('actions.edit')}</Button>
+              <Button size="sm" variant="destructive" disabled={busy.has(p.id)} onClick={() => remove(p.id)}>{t('actions.delete')}</Button>
             </span>
           </div>
           {testResult[p.id] && <div style={{ fontSize: 11, marginTop: 6, color: 'var(--text-secondary)' }}>{testResult[p.id]}</div>}
-        </div>
+        </CardContent></Card>
       ))}
 
       {!draft && (
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-          <button style={btn} onClick={() => setDraft(emptyStdio())}>+ {t('providers.addStdio')}</button>
-          <button style={btn} onClick={() => setDraft(emptyRemote())}>+ {t('providers.addRemote')}</button>
+          <Button variant="outline" onClick={() => setDraft(emptyStdio())}>+ {t('providers.addStdio')}</Button>
+          <Button variant="outline" onClick={() => setDraft(emptyRemote())}>+ {t('providers.addRemote')}</Button>
         </div>
       )}
 
       {draft && (
-        <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Card><CardContent className="flex flex-col gap-3 p-4">
           <div style={{ display: 'flex', gap: 8 }}>
-            <input style={input} placeholder={t('providers.id')} value={draft.id} onChange={(e) => setDraft({ ...draft, id: (e.target as HTMLInputElement).value })} />
-            <input style={input} placeholder={t('providers.name')} value={draft.name} onChange={(e) => setDraft({ ...draft, name: (e.target as HTMLInputElement).value })} />
+            <Input aria-label={t('providers.id')} placeholder={t('providers.id')} value={draft.id} onChange={(e) => setDraft({ ...draft, id: e.target.value })} />
+            <Input aria-label={t('providers.name')} placeholder={t('providers.name')} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
           </div>
 
           {!isRemote ? (
-            <input style={input} placeholder={t('providers.commandPlaceholder')} value={draft.command ?? ''} onChange={(e) => setDraft({ ...draft, command: (e.target as HTMLInputElement).value })} />
+            <Input aria-label={t('providers.commandPlaceholder')} placeholder={t('providers.commandPlaceholder')} value={draft.command ?? ''} onChange={(e) => setDraft({ ...draft, command: e.target.value })} />
           ) : (
             <>
-              <input style={input} placeholder={t('providers.urlPlaceholder')} value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: (e.target as HTMLInputElement).value })} />
+              <Input aria-label={t('providers.urlPlaceholder')} placeholder={t('providers.urlPlaceholder')} value={draft.url ?? ''} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
               <div style={{ display: 'flex', gap: 8 }}>
-                <select
-                  style={input}
-                  value={draft.auth?.type ?? 'none'}
-                  onChange={(e) => setDraft({ ...draft, auth: { ...(draft.auth ?? { type: 'none' }), type: (e.target as HTMLSelectElement).value as any } })}
-                >
-                  <option value="none">{t('providers.authNone')}</option>
-                  <option value="header">{t('providers.authHeader')}</option>
-                  <option value="oauth">OAuth 2.1</option>
-                </select>
+                <Select value={draft.auth?.type ?? 'none'} onValueChange={(value) => setDraft({ ...draft, auth: { ...(draft.auth ?? { type: 'none' }), type: value as any } })}><SelectTrigger aria-label={t('providers.authNone')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t('providers.authNone')}</SelectItem><SelectItem value="header">{t('providers.authHeader')}</SelectItem><SelectItem value="oauth">OAuth 2.1</SelectItem></SelectContent></Select>
                 {draft.auth?.type === 'header' && (
-                  <input style={input} type="password" placeholder={t('providers.secret')} value={secret} onChange={(e) => setSecret((e.target as HTMLInputElement).value)} />
+                  <Input aria-label={t('providers.secret')} type="password" autoComplete="new-password" placeholder={t('providers.secret')} value={secret} onChange={(e) => setSecret(e.target.value)} />
                 )}
               </div>
               {draft.auth?.type === 'oauth' && (
@@ -210,14 +196,14 @@ export function ProvidersSection() {
             </>
           )}
 
-          <input style={input} placeholder={t('providers.toolNamePlaceholder')} value={draft.toolName ?? ''} onChange={(e) => setDraft({ ...draft, toolName: (e.target as HTMLInputElement).value })} />
+          <Input aria-label={t('providers.toolNamePlaceholder')} placeholder={t('providers.toolNamePlaceholder')} value={draft.toolName ?? ''} onChange={(e) => setDraft({ ...draft, toolName: e.target.value })} />
 
-          {error && <div style={{ fontSize: 11, color: 'var(--error)' }}>{error}</div>}
+          {error && <div role="alert" className="text-sm text-destructive">{error}</div>}
           <div style={{ display: 'flex', gap: 6 }}>
-            <button style={{ ...btn, backgroundColor: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }} onClick={save}>{t('actions.save')}</button>
-            <button style={btn} onClick={() => { setDraft(null); setSecret(''); setError(''); }}>{t('actions.cancel')}</button>
+            <Button onClick={save}>{t('actions.save')}</Button>
+            <Button variant="outline" onClick={() => { setDraft(null); setSecret(''); setError(''); }}>{t('actions.cancel')}</Button>
           </div>
-        </div>
+        </CardContent></Card>
       )}
     </div>
   );

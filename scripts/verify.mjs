@@ -37,6 +37,7 @@ const steps = [
   ['build', ['pnpm', 'build']],
   ['unit', coverage ? ['pnpm', 'coverage:unit'] : ['pnpm', '--filter', '@cognistore/core', '--filter', '@cognistore/dashboard', 'test']],
   ['scripts', ['pnpm', 'test:scripts']],
+  ['ui', ['pnpm', '--filter', '@cognistore/tests', 'test:ui']],
   ['integration', coverage ? ['pnpm', 'coverage:integration'] : ['pnpm', '--filter', '@cognistore/tests', 'test']],
   ['knip', ['pnpm', 'knip']],
 ];

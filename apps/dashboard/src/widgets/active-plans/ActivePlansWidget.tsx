@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../../api/client.js';
 import { useWidgetClose } from '../shared/useWidgetClose.js';
+import { ChevronDown, ChevronRight, Trash2, X } from 'lucide-react';
 
 interface Task {
   id: string;
@@ -76,14 +77,14 @@ function PlanRow({ plan, onDelete, expanded, onToggle }: {
       {/* Title row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
         {/* Expand toggle */}
-        <span
+        <button type="button" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${plan.title}`} aria-expanded={expanded}
           onClick={onToggle}
           style={{
             fontSize: 9, color: 'rgba(255,255,255,0.3)', cursor: 'pointer',
             transition: 'transform 0.15s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
             flexShrink: 0, width: 12, textAlign: 'center',
           }}
-        >&#9654;</span>
+        >{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</button>
         <div
           onClick={handleNavigate}
           style={{
@@ -99,6 +100,7 @@ function PlanRow({ plan, onDelete, expanded, onToggle }: {
           <button
             onClick={handleDelete}
             title="Delete plan"
+            aria-label={`Delete plan ${plan.title}`}
             style={{
               width: 18, height: 18, borderRadius: '50%', border: 'none',
               background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444',
@@ -106,7 +108,7 @@ function PlanRow({ plan, onDelete, expanded, onToggle }: {
               justifyContent: 'center', fontSize: 10, lineHeight: 1,
               padding: 0, flexShrink: 0,
             }}
-          >×</button>
+          ><Trash2 size={11} /></button>
         )}
       </div>
 
@@ -221,10 +223,10 @@ export function ActivePlansWidget() {
   }, [plans, loading, expandedPlan, maxContentHeight]);
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>Active Plans</span>
-        <button className="widget-close" onClick={handleClose} title="Close">×</button>
+        <h1 className="widget-title" data-tauri-drag-region>Active Plans</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close"><X size={13} /></button>
       </div>
 
       <div ref={contentRef} className="widget-content" style={{ overflowY: 'auto', maxHeight: maxContentHeight }}>
@@ -257,6 +259,6 @@ export function ActivePlansWidget() {
           ))
         )}
       </div>
-    </div>
+    </main>
   );
 }

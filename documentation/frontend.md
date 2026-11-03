@@ -2,7 +2,7 @@
 
 ## Overview
 
-The dashboard frontend is a React 19 SPA built with Vite, styled with Tailwind CSS 4, and uses Redux Toolkit for state management. It runs inside a Tauri v2 WebView, connecting to the Fastify sidecar via HTTP.
+The dashboard frontend is a React 19 SPA built with Vite and Tailwind CSS 4, using Redux Toolkit and React Router. Production screens share the shadcn/ui design system, semantic theme tokens, local fonts, lucide icons, sonner notifications, and a cmdk command palette. The Tauri WebView and browser tests load the application and API from the same Fastify sidecar origin.
 
 ## Tech Stack
 
@@ -156,22 +156,21 @@ The boot screens are the deliberate exception: SetupPage and UpgradePage are ful
 
 ## Routing
 
-**File:** `apps/dashboard/src/App.tsx`
+**Registry:** `apps/dashboard/src/navigation/routes.ts` defines destinations, grouped navigation metadata, hidden internal routes, and compatibility redirects. The public groups are Work (Knowledge, Plans, Curation), Insights, Integrations, and Settings/System. The sidebar is collapsible and persists its collapsed state in `localStorage` (`cognistore.sidebar.collapsed`). The command palette is available with Cmd+K or Ctrl+K. Keyboard shortcuts include `g` followed by `k`, `p`, `c`, `i`, or `s`; `/` focuses search, `n` starts a knowledge entry, `Esc` closes an open detail, and `?` opens shortcut help. Shortcuts do not intercept typing in inputs or dialogs.
 
-```
-App Mount:
-  → GET /api/setup/status        (loading screen: "Checking setup…")
-  → If not ready → show SetupPage
-  → GET /api/upgrade/check       (loading screen: "Checking version…")
-  → If an upgrade is due → show UpgradePage (it runs the upgrade and shows progress)
-  → Otherwise → show Dashboard layout with routes
+**Application boot:** `App.tsx` checks `/api/setup/status`, then `/api/upgrade/check`; it shows setup or upgrade screens as needed before mounting the dashboard routes.
 
-Dashboard Routes:
-  /          → HomePage
-  /plans     → PlansPage
-  /stats     → StatsPage
-  /settings  → SettingsPage
-```
+**Public routes:** `/` and `/knowledge` show Knowledge; `/knowledge/:id` addresses an entry detail; `/plans` and `/plans/:id` show the plan list and detail; `/curation` shows the latest cleanup report and knowledge health, with `/curation/history` for the available report history view and `/curation/trash` explicitly reporting that trash/restore is unavailable; `/insights/knowledge`, `/insights/plans`, and `/insights/tokens` show analytics; `/integrations/agents`, `/integrations/providers`, and `/integrations/widgets` cover integrations; `/settings/general`, `/settings/models`, `/settings/curation`, `/settings/telemetry`, and `/settings/advanced` address Settings sections; `/system/health` and `/system/about` show system information. `/_design` and its subroutes are hidden internal design-preview routes.
+
+**Compatibility redirects:** `/stats` → `/insights/knowledge`, `/stats/plans` → `/insights/plans`, `/tokens` → `/insights/tokens`, `/providers` → `/integrations/providers`, `/widgets` → `/integrations/widgets`, and `/settings` → `/settings/general`. Legacy `/?edit=<id>` links become `/knowledge/<id>` and legacy plan selection is carried into `/plans/<id>`. Redirects preserve query parameters where applicable. The Fastify sidecar serves the SPA for application paths and continues to enforce authentication on `/api` routes.
+
+**URL state contract:** Knowledge detail IDs are path segments; the list filters, search, pagination, and creation/edit state are query parameters. Plan detail IDs are path segments, with status, scope, sort, and page in the query string. Insights scope, provider, and date-range filters are URL-addressable. Filter changes retain other query parameters where applicable, and browser history supports navigation between list and detail states. Shareable URLs can be copied or reloaded to restore the represented view.
+
+**Theme:** `apps/dashboard/src/design/theme.ts` persists `light`, `dark`, or `system` in `localStorage` under `cognistore.theme`; dark is the fallback when no valid value is stored. `public/theme-init.js` applies the saved choice before React renders to avoid a first-paint flash. System mode follows the operating-system color preference.
+
+**Coverage:** React component tests live in `packages/tests/src/ui` and use Vitest with Testing Library (`pnpm --filter @cognistore/tests test:ui`). Playwright browser tests live in `packages/tests/src/e2e`; `packages/tests/src/ui/browser-fixture.ts` starts an isolated Fastify sidecar and mock embedding service, seeds knowledge and a plan, injects the test API token, and exercises application routes on the sidecar origin.
+
+**Unavailable capabilities:** Curation history currently exposes only the latest cleanup report; full curation history, deletion audit records, trash, and undo/restore are unavailable. The system screen reports setup readiness and database/Ollama health; platform MCP process health is unknown because process information is unavailable. No scope-filtered chart behavior is provided by the Insights screens. These UI routes do not imply future API endpoints.
 
 ## Layout
 

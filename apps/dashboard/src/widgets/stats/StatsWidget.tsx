@@ -58,11 +58,11 @@ export function StatsWidget() {
   }, [fetchData]);
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       {/* Drag region */}
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>CogniStore</span>
-        <button className="widget-close" onClick={handleClose} title="Close">
+        <h1 className="widget-title" data-tauri-drag-region>CogniStore</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close">
           ×
         </button>
       </div>
@@ -83,8 +83,9 @@ export function StatsWidget() {
         ) : (
           <>
             {/* Total */}
-            <div
-              onClick={() => navigateMainApp('/stats')}
+            <button
+              type="button"
+              onClick={() => navigateMainApp('/insights')}
               style={{
                 textAlign: 'center',
                 padding: '8px 0 12px',
@@ -94,8 +95,8 @@ export function StatsWidget() {
                 borderRadius: 6,
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.03)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.03)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
             >
               <div style={{ fontSize: 28, fontWeight: 700, color: '#6366f1' }}>
                 {metrics?.activity.total ?? 0}
@@ -103,7 +104,7 @@ export function StatsWidget() {
               <div style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>
                 Total Knowledge
               </div>
-            </div>
+            </button>
 
             {/* Operation rows */}
             <StatRow label="Consulted (1h)" value={metrics?.operations.readsLastHour ?? 0} />
@@ -113,6 +114,6 @@ export function StatsWidget() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

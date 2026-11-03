@@ -100,3 +100,38 @@ describe('authorize decision table', () => {
     expect(authorize({ ...BASE, token: CFG.token }, { ...CFG, dev: true })).toEqual({ ok: true });
   });
 });
+
+describe('application document authorization', () => {
+  const paths = [
+    '/', '/knowledge', '/knowledge/entry-1', '/knowledge/tags',
+    '/plans', '/plans/plan-1', '/insights', '/insights/knowledge',
+    '/insights/plans', '/insights/tokens', '/curation',
+    '/curation/history', '/curation/trash', '/settings',
+    '/settings/general', '/settings/models', '/settings/curation',
+    '/settings/telemetry', '/settings/advanced',
+    '/integrations/agents', '/integrations/providers',
+    '/integrations/widgets', '/system/health', '/system/about',
+    '/stats', '/stats/plans', '/tokens', '/providers', '/widgets',
+    '/_design', '/_design/gallery', '/_design/k/entry-1',
+  ];
+  for (const pathname of paths.filter(p => p !== '/')) {
+    it(`serves only authorized document methods for ${pathname}`, () => {
+      for (const method of ['GET', 'HEAD']) {
+        expect(authorize({ ...BASE, pathname, method }, CFG).ok).toBe(true);
+        expect(authorize({ ...BASE, pathname, method, host: 'evil.example:4317' }, CFG).ok).toBe(false);
+        expect(authorize({ ...BASE, pathname, method, origin: 'https://evil.example' }, CFG).ok).toBe(false);
+      }
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+        expect(authorize({ ...BASE, pathname, method }, CFG).ok).toBe(false);
+      }
+    });
+  }
+  it.each([
+    '/api/settings', '/api/knowledge', '/api/plans', '/api/uninstall',
+    '/api/unknown', '/knowledge/a/b', '/settings/unknown',
+    '/knowledge/%2fapi', '/knowledge/%ZZ', '//knowledge',
+    '/knowledge/../api/settings', '/knowledge/%2e%2e',
+  ])('does not exempt %s', pathname => {
+    expect(authorize({ ...BASE, pathname }, CFG).ok).toBe(false);
+  });
+});

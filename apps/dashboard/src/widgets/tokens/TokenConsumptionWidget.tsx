@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, PROVIDER_SOURCE, type ProviderFilter, type TokenUsageAggregates } from '../../api/client.js';
 import { useWidgetClose } from '../shared/useWidgetClose.js';
+import { Button } from '../../components/ui/button.js';
 
 const REFRESH_INTERVAL = 30_000;
 
@@ -79,10 +80,10 @@ export function TokenConsumptionWidget() {
   const total = totals ? totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheCreationTokens : 0;
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>Tokens · 7d</span>
-        <button className="widget-close" onClick={handleClose} title="Close">×</button>
+        <h1 className="widget-title" data-tauri-drag-region>Tokens · 7d</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close">×</button>
       </div>
 
       <div className="widget-content">
@@ -90,23 +91,12 @@ export function TokenConsumptionWidget() {
           {PROVIDER_SEGMENTS.map(({ key, label }) => {
             const active = provider === key;
             return (
-              <button
+              <Button variant={active ? 'default' : 'outline'} size="sm"
                 key={key}
                 onClick={() => changeProvider(key)}
-                style={{
-                  flex: 1,
-                  padding: '3px 0',
-                  borderRadius: 5,
-                  border: `1px solid ${active ? '#6366f1' : 'rgba(255,255,255,0.12)'}`,
-                  background: active ? '#6366f1' : 'transparent',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.6)',
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
               >
                 {label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -123,8 +113,9 @@ export function TokenConsumptionWidget() {
           </div>
         ) : (
           <>
-            <div
-              onClick={() => navigateMainApp('/tokens')}
+            <button
+              type="button"
+              onClick={() => navigateMainApp('/insights/tokens')}
               style={{
                 textAlign: 'center',
                 padding: '8px 0 12px',
@@ -134,8 +125,8 @@ export function TokenConsumptionWidget() {
                 borderRadius: 6,
                 transition: 'background 0.15s',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.03)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.03)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
             >
               <div style={{ fontSize: 28, fontWeight: 700, color: '#6366f1' }}>
                 {formatTokens(total)}
@@ -143,7 +134,7 @@ export function TokenConsumptionWidget() {
               <div style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>
                 Total Tokens · 7 Days
               </div>
-            </div>
+            </button>
 
             <Row label="Input" value={totals?.inputTokens ?? 0} color="#a5b4fc" />
             <Row label="Output" value={totals?.outputTokens ?? 0} color="#86efac" />
@@ -152,6 +143,6 @@ export function TokenConsumptionWidget() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

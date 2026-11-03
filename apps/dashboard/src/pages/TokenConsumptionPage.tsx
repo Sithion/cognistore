@@ -1,387 +1,95 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Trans, useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
-import {
-  AreaChart, Area, BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, Legend,
-} from 'recharts';
-import { useAppSelector } from '../store/index.js';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, PROVIDER_SOURCE, SOURCE_TO_PROVIDER, type ProviderFilter, type TokenUsageAggregates } from '../api/client.js';
-import { DateRangePicker } from '../components/DateRangePicker.js';
-import { MetricCard, WidgetCard, formatTokens, getHeatmapColor } from '../components/statsPrimitives.js';
+import { DateRangeControl } from '../components/DateRangeControl.js';
+import { ChartPanel, MetricCard } from '../insights/ChartPanel.js';
+import { ScreenState } from '../navigation/ScreenState.js';
+import { useInsightsRoute } from '../insights/useInsightsRoute.js';
 import { dateAxisProps } from '../utils/chartAxis.js';
+import { registerInsightsResources } from '../i18n/round8-insights.js';
 
-const MODEL_COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
-const PROVIDERS: { key: ProviderFilter; labelKey: string }[] = [
-  { key: 'all', labelKey: 'tokens.all' },
-  { key: 'claude', labelKey: 'tokens.claude' },
-  { key: 'copilot', labelKey: 'tokens.copilot' },
-];
-const PROVIDER_COLORS: Record<string, string> = { claude: '#8b5cf6', copilot: '#3b82f6' };
+const COLORS = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
+const PROVIDERS: { key: ProviderFilter; labelKey: string }[] = [{ key: 'all', labelKey: 'tokens.all' }, { key: 'claude', labelKey: 'tokens.claude' }, { key: 'copilot', labelKey: 'tokens.copilot' }];
+const number = (value: number) => new Intl.NumberFormat().format(Number.isFinite(value) ? value : 0);
+const totalOf = (v: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) => v.inputTokens + v.outputTokens + v.cacheReadTokens + v.cacheCreationTokens;
+const heatColor = (value: number, max: number) => value <= 0 || max <= 0 ? 'hsl(var(--muted))' : `hsl(263 70% ${Math.max(28, 78 - Math.round(value / max * 48))}%)`;
 
-function Badge({ label, color }: { label: string; color: string }) {
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-      fontSize: 11, fontWeight: 600, color,
-      backgroundColor: `${color}1f`, border: `1px solid ${color}55`,
-    }}>
-      {label}
-    </span>
-  );
-}
+registerInsightsResources();
 
-/** One colored badge per platform from a comma-joined `sources` string — a project
- *  worked on with both tools shows two badges (Claude + Copilot). */
-function PlatformBadge({ sources }: { sources: string }) {
-  const { t } = useTranslation();
-  const providers = Array.from(
-    new Set((sources ?? '').split(',').map((s) => SOURCE_TO_PROVIDER[s.trim()]).filter(Boolean)),
-  );
-  if (providers.length === 0) return <Badge label={t('tokens.unknown')} color="#6b7280" />;
-  return (
-    <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-      {providers.map((p) => <Badge key={p} label={t(`tokens.${p}`)} color={PROVIDER_COLORS[p] ?? '#6b7280'} />)}
-    </span>
-  );
-}
-
-function ModelsBar({ data }: { data: TokenUsageAggregates['byModel'] }) {
-  if (data.length === 0) return null;
-  const total = data.reduce((s, d) => s + d.totalTokens, 0) || 1;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {data.slice(0, 7).map((m, i) => {
-        const pct = (m.totalTokens / total) * 100;
-        return (
-          <div key={m.model}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.model}</span>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>{formatTokens(m.totalTokens)} · {pct.toFixed(0)}%</span>
-            </div>
-            <div style={{ height: 8, borderRadius: 4, backgroundColor: 'var(--bg-input)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, backgroundColor: MODEL_COLORS[i % MODEL_COLORS.length] }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function CacheGauge({ ratio }: { ratio: number }) {
-  const pct = Math.round(ratio * 100);
-  const color = pct >= 50 ? '#22c55e' : pct >= 25 ? '#f59e0b' : '#ef4444';
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-      <div style={{ position: 'relative', width: 140, height: 140 }}>
-        <svg width="140" height="140" viewBox="0 0 140 140">
-          <circle cx="70" cy="70" r="60" fill="none" stroke="var(--bg-input)" strokeWidth="14" />
-          <circle
-            cx="70" cy="70" r="60" fill="none" stroke={color} strokeWidth="14"
-            strokeDasharray={`${(pct / 100) * 377} 377`}
-            strokeLinecap="round"
-            transform="rotate(-90 70 70)"
-          />
-          <text x="70" y="76" textAnchor="middle" fontSize="24" fontWeight="700" fill="var(--text-primary)">{pct}%</text>
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-function HourDayHeatmap({ data, dayLabels }: { data: TokenUsageAggregates['byHourDay']; dayLabels: string[] }) {
-  const max = data.reduce((m, d) => Math.max(m, d.totalTokens), 0);
-  const lookup = new Map(data.map((d) => [`${d.dayOfWeek}-${d.hour}`, d.totalTokens]));
-  const cell = 12;
-  const gap = 3;
-  return (
-    <div>
-      <div style={{ display: 'flex', gap, marginLeft: 30 }}>
-        {Array.from({ length: 24 }, (_, h) => (
-          <span key={h} style={{ width: cell, fontSize: 9, color: 'var(--text-secondary)', textAlign: 'center' }}>
-            {h % 6 === 0 ? h : ''}
-          </span>
-        ))}
-      </div>
-      {dayLabels.map((label, day) => (
-        <div key={day} style={{ display: 'flex', gap, alignItems: 'center', marginTop: gap }}>
-          <span style={{ width: 26, fontSize: 10, color: 'var(--text-secondary)' }}>{label}</span>
-          {Array.from({ length: 24 }, (_, h) => {
-            const v = lookup.get(`${day}-${h}`) ?? 0;
-            return (
-              <div
-                key={h}
-                title={`${label} ${h}:00 — ${formatTokens(v)} tokens`}
-                style={{ width: cell, height: cell, borderRadius: 2, backgroundColor: getHeatmapColor(v, max) }}
-              />
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
+function PlatformLabel({ sources }: { sources: string }) {
+  const providers = Array.from(new Set(sources.split(',').map((s) => SOURCE_TO_PROVIDER[s.trim()]).filter(Boolean)));
+  return <span>{providers.length ? providers.join(', ') : 'Unknown'}</span>;
 }
 
 export function TokenConsumptionPage() {
   const { t, i18n } = useTranslation();
-  const { range } = useAppSelector((s) => s.dateRange);
+  const navigate = useNavigate();
+  const { range, scope, provider: urlProvider, patch } = useInsightsRoute();
   const [data, setData] = useState<TokenUsageAggregates | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [provider, setProvider] = useState<ProviderFilter>('all');
   const [retentionDays, setRetentionDays] = useState(90);
   const [hydrated, setHydrated] = useState(false);
-  const snapshotRef = useRef<string | null>(null);
+  const dayLabels = useMemo(() => Array.from({ length: 7 }, (_, d) => new Intl.DateTimeFormat(i18n.language, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + d)))), [i18n.language]);
 
-  // Locale-aware weekday labels (index 0 = Sunday, matching byHourDay.dayOfWeek;
-  // 2023-01-01 was a Sunday). Format in UTC so the label matches the UTC date —
-  // without timeZone:'UTC', a negative-offset local zone renders Date.UTC(...,1)
-  // as the previous (Saturday) evening, shifting the whole weekday axis by one.
-  const dayLabels = useMemo(
-    () => Array.from({ length: 7 }, (_, d) =>
-      new Intl.DateTimeFormat(i18n.language, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + d)))),
-    [i18n.language],
-  );
-
-  // Hydrate the persisted provider filter once (shared with the widget via settings.json).
   useEffect(() => {
-    api.getSettings()
-      .then((s) => {
-        setProvider(s.tokenProviderFilter ?? 'all');
-        const days = s.tokenUsageRetentionDays;
-        setRetentionDays(typeof days === 'number' && Number.isFinite(days) && days > 0 ? days : 90);
-      })
-      .catch(() => { /* keep default */ })
-      .finally(() => setHydrated(true));
+    api.getSettings().then((settings) => {
+      const configured = settings.tokenProviderFilter ?? 'all';
+      const validUrl = PROVIDERS.some((option) => option.key === urlProvider);
+      setProvider(validUrl ? urlProvider as ProviderFilter : configured);
+      const days = settings.tokenUsageRetentionDays;
+      setRetentionDays(typeof days === 'number' && Number.isFinite(days) && days >= 0 ? days : 90);
+    }).catch(() => {}).finally(() => setHydrated(true));
+  // Hydrate persisted preference once; URL filter takes precedence.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const load = () => {
-    api.getTokenUsage({ from: range.from, to: range.to, source: PROVIDER_SOURCE[provider] })
-      .then(setData)
-      .catch(() => setData(null));
-  };
+  const load = useCallback(async () => {
+    if (!hydrated) return;
+    setLoading(true); setError(false);
+    try { setData(await api.getTokenUsage({ from: range.from, to: range.to, source: PROVIDER_SOURCE[provider] })); }
+    catch { setData(null); setError(true); }
+    finally { setLoading(false); }
+  }, [hydrated, range.from, range.to, provider]);
+  useEffect(() => { void load(); }, [load]);
 
-  // Wait for hydration so we fetch once with the persisted provider, not twice.
   useEffect(() => {
-    if (hydrated) load();
-  }, [range.from, range.to, provider, hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!hydrated || error || loading || scanning) return;
+    const timer = setInterval(() => { void api.getTokenUsage({ from: range.from, to: range.to, source: PROVIDER_SOURCE[provider] }).then((fresh) => {
+      if (JSON.stringify(fresh.totals) !== JSON.stringify(data?.totals) || fresh.byDay.length !== data?.byDay.length) setData(fresh);
+    }).catch(() => {}); }, 5000);
+    return () => clearInterval(timer);
+  }, [data, error, hydrated, loading, provider, range.from, range.to, scanning]);
 
-  // 5s snapshot-poll for out-of-band changes (a scan from another window, new
-  // sessions logged by the scanner). The poll response IS the fresh data — only
-  // setData when the snapshot actually changed (no flicker). Paused while a
-  // manual rescan runs; rescan() does its own trailing load() when it finishes.
-  useEffect(() => {
-    if (!hydrated || scanning) return;
-    snapshotRef.current = null; // re-seed per filter/effect instance
-    const interval = setInterval(async () => {
-      try {
-        const fresh = await api.getTokenUsage({ from: range.from, to: range.to, source: PROVIDER_SOURCE[provider] });
-        const ft = fresh.totals;
-        const snapshot = `${ft.inputTokens}:${ft.outputTokens}:${ft.cacheReadTokens}:${ft.cacheCreationTokens}:${fresh.byDay.length}`;
-        if (snapshotRef.current !== null && snapshot !== snapshotRef.current) setData(fresh);
-        snapshotRef.current = snapshot;
-      } catch { /* ignore polling errors */ }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [range.from, range.to, provider, hydrated, scanning]);
-
-  const changeProvider = (p: ProviderFilter) => {
-    setProvider(p);
-    void api.updateSettings({ tokenProviderFilter: p }).catch(() => {});
+  const selectProvider = (value: ProviderFilter) => {
+    setProvider(value); patch('provider', value === 'all' ? null : value);
+    void api.updateSettings({ tokenProviderFilter: value }).catch(() => {});
   };
-
-  const rescan = async () => {
-    setScanning(true);
-    try { await api.scanTokenUsage(); load(); } finally { setScanning(false); }
-  };
-
+  const rescan = async () => { setScanning(true); try { await api.scanTokenUsage(); await load(); } finally { setScanning(false); } };
   const totals = data?.totals ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
-  const hasAnyTokens = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheCreationTokens > 0;
-
-  const dailySeries = (data?.byDay ?? []).map((d) => ({
-    date: d.date,
-    input: d.inputTokens,
-    output: d.outputTokens,
-    cacheRead: d.cacheReadTokens,
-    cacheWrite: d.cacheCreationTokens,
-  }));
-
-  return (
-    <div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('tokens.title')}</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{t('tokens.subtitle')}</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {PROVIDERS.map(({ key, labelKey }) => {
-              const active = provider === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => changeProvider(key)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 6,
-                    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                    backgroundColor: active ? 'var(--accent)' : 'var(--bg-card)',
-                    color: active ? '#fff' : 'var(--text-primary)',
-                    fontSize: 12,
-                    fontWeight: active ? 600 : 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {t(labelKey)}
-                </button>
-              );
-            })}
-          </div>
-          <DateRangePicker />
-          <button
-            onClick={rescan}
-            disabled={scanning}
-            style={{
-              padding: '6px 12px', borderRadius: 6,
-              border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)',
-              color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
-              cursor: scanning ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            {scanning ? (
-              <>
-                <span style={{ width: 12, height: 12, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                {t('tokens.rescanning')}
-              </>
-            ) : t('tokens.rescan')}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Top-line totals ── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <MetricCard label={t('tokens.input')}      value={formatTokens(totals.inputTokens)} />
-        <MetricCard label={t('tokens.output')}     value={formatTokens(totals.outputTokens)} />
-        <MetricCard label={t('tokens.cacheRead')}  value={formatTokens(totals.cacheReadTokens)} />
-        <MetricCard label={t('tokens.cacheWrite')} value={formatTokens(totals.cacheCreationTokens)} />
-      </div>
-
-      {!hasAnyTokens && (
-        <WidgetCard title={t('tokens.title')} state="empty" emptyText={t('tokens.noData')}>
-          <span />
-        </WidgetCard>
-      )}
-
-      {hasAnyTokens && (
-        <>
-          {/* Activity + Models */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24, marginBottom: 24 }}>
-            <WidgetCard title={t('tokens.activity')} state="loaded">
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={dailySeries}>
-                  <XAxis dataKey="date" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} {...dateAxisProps(dailySeries.length)} />
-                  <YAxis hide />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                    itemStyle={{ color: 'var(--text-primary)' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-secondary)' }} />
-                  <Area type="monotone" stackId="t" dataKey="input"      name={t('tokens.input')}      stroke="#8b5cf6" fill="#8b5cf640" />
-                  <Area type="monotone" stackId="t" dataKey="output"     name={t('tokens.output')}     stroke="#3b82f6" fill="#3b82f640" />
-                  <Area type="monotone" stackId="t" dataKey="cacheRead"  name={t('tokens.cacheRead')}  stroke="#22c55e" fill="#22c55e40" />
-                  <Area type="monotone" stackId="t" dataKey="cacheWrite" name={t('tokens.cacheWrite')} stroke="#f59e0b" fill="#f59e0b40" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </WidgetCard>
-
-            <WidgetCard title={t('tokens.models')} state={data && data.byModel.length > 0 ? 'loaded' : 'empty'} emptyText={t('tokens.noData')}>
-              {data && <ModelsBar data={data.byModel} />}
-            </WidgetCard>
-          </div>
-
-          {/* Cache efficiency + time-of-day */}
-          <p style={{ color: 'var(--text-secondary)', fontSize: 12, margin: '0 0 12px' }}>
-            <Trans
-              i18nKey="tokens.retentionNotice"
-              values={{ days: retentionDays }}
-              components={{ settingsLink: <Link to="/settings" style={{ color: 'var(--text-secondary)' }} /> }}
-            />
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 24, marginBottom: 24 }}>
-            <WidgetCard title={t('tokens.cacheEfficiency')} state="loaded">
-              <CacheGauge ratio={data?.cacheEfficiency ?? 0} />
-            </WidgetCard>
-
-            <WidgetCard title={t('tokens.timeOfDay')} state={data && data.byHourDay.length > 0 ? 'loaded' : 'empty'} emptyText={t('tokens.noData')}>
-              {data && <HourDayHeatmap data={data.byHourDay} dayLabels={dayLabels} />}
-            </WidgetCard>
-          </div>
-
-          {/* Top projects */}
-          <WidgetCard title={t('tokens.topProjects')} state={data && data.byProject.length > 0 ? 'loaded' : 'empty'} emptyText={t('tokens.noData')} style={{ marginBottom: 24 }}>
-            {data && data.byProject.length > 0 && (
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('tokens.projectCol')}</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('tokens.platformCol')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.input')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.output')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.cacheRead')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.cacheWrite')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.tokensCol')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byProject.slice(0, 15).map((p) => (
-                    <tr key={p.project} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '6px 8px' }}>{p.project}</td>
-                      <td style={{ padding: '6px 8px' }}><PlatformBadge sources={p.sources} /></td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{formatTokens(p.inputTokens)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{formatTokens(p.outputTokens)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{formatTokens(p.cacheReadTokens)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{formatTokens(p.cacheCreationTokens)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--accent)' }}>{formatTokens(p.totalTokens)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </WidgetCard>
-
-          {/* Top sessions */}
-          <WidgetCard title={t('tokens.topSessions')} state={data && data.topSessions.length > 0 ? 'loaded' : 'empty'} emptyText={t('tokens.noData')}>
-            {data && data.topSessions.length > 0 && (
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('tokens.sessionIdCol')}</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('tokens.projectCol')}</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('tokens.platformCol')}</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('tokens.modelCol')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.startedCol')}</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('tokens.tokensCol')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topSessions.map((s) => (
-                    <tr key={s.sessionId} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>{s.sessionId.slice(0, 8)}…</td>
-                      <td style={{ padding: '6px 8px' }}>{s.project ?? t('tokens.unknown')}</td>
-                      <td style={{ padding: '6px 8px' }}><PlatformBadge sources={s.source} /></td>
-                      <td style={{ padding: '6px 8px' }}>{s.model}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{new Date(s.startedAt).toLocaleString()}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--accent)' }}>{formatTokens(s.totalTokens)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </WidgetCard>
-        </>
-      )}
-    </div>
-  );
+  const daily = (data?.byDay ?? []).map((day) => ({ date: day.date, input: day.inputTokens, output: day.outputTokens, cacheRead: day.cacheReadTokens, cacheWrite: day.cacheCreationTokens, total: totalOf(day) }));
+  const hasTokens = totalOf(totals) > 0;
+  const lookup = new Map((data?.byHourDay ?? []).map((cell) => [`${cell.dayOfWeek}-${cell.hour}`, cell.totalTokens]));
+  const maxHeat = Math.max(0, ...(data?.byHourDay ?? []).map((cell) => cell.totalTokens));
+  const failureProps = { onRetry: load };
+  const commonState = error ? 'error' as const : loading ? 'loading' as const : 'ready' as const;
+  return <div className="space-y-6">
+    <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">{t('tokens.title')}</h1><p className="text-sm text-muted-foreground">{t('tokens.subtitle')}</p></div><div className="flex flex-wrap items-center gap-3"><fieldset aria-label="Provider" className="m-0 flex min-w-0 gap-1 border-0 p-0">{PROVIDERS.map(({ key, labelKey }) => <button key={key} type="button" aria-pressed={provider === key} onClick={() => selectProvider(key)} className={`rounded-md border px-3 py-1.5 text-xs ${provider === key ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}>{t(labelKey)}</button>)}</fieldset><DateRangeControl /><button type="button" onClick={rescan} disabled={scanning} className="rounded-md border px-3 py-1.5 text-xs">{scanning ? t('tokens.rescanning') : t('tokens.rescan')}</button></div></header>
+    {scope && <p role="note" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-muted-foreground">Scope “{scope}” is present in the URL, but `/api/token-usage` accepts date range and provider, model, or project filters only; it has no scope parameter. Token totals and charts below include all scopes.</p>}
+    {error ? <ScreenState state="error" title={t('tokens.title')} description="Could not load token usage. Retry to load the charts." onRetry={load} /> : <>
+    <div className="flex flex-wrap gap-3"><MetricCard label={t('tokens.input')} value={number(totals.inputTokens)} /><MetricCard label={t('tokens.output')} value={number(totals.outputTokens)} /><MetricCard label={t('tokens.cacheRead')} value={number(totals.cacheReadTokens)} /><MetricCard label={t('tokens.cacheWrite')} value={number(totals.cacheCreationTokens)} /></div>
+    <p data-testid="retention-notice" className="text-sm text-muted-foreground"><Trans i18nKey="insights.retention" values={{ days: retentionDays === 0 ? t('insights.unlimited') : t('insights.days', { count: retentionDays }) }} components={{ settingsLink: <Link data-testid="retention-link" to="/settings/telemetry" className="underline underline-offset-4" /> }} /></p>
+    <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]"><ChartPanel title={t('tokens.activity')} state={commonState} emptyText={t('tokens.noData')} {...failureProps} summary={`Daily totals across ${daily.length} days; ${number(daily.reduce((sum, d) => sum + d.total, 0))} tokens.`}><div role="img" aria-label={`Daily token totals across ${daily.length} days`} className="h-64"><ResponsiveContainer width="100%" height="100%"><AreaChart data={daily}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="date" {...dateAxisProps(daily.length)} /><YAxis hide /><Tooltip formatter={(v) => number(Number(v))} /><Legend /><Area type="monotone" stackId="tokens" dataKey="input" name={t('tokens.input')} stroke="#8b5cf6" fill="#8b5cf640" /><Area type="monotone" stackId="tokens" dataKey="output" name={t('tokens.output')} stroke="#3b82f6" fill="#3b82f640" /><Area type="monotone" stackId="tokens" dataKey="cacheRead" name={t('tokens.cacheRead')} stroke="#22c55e" fill="#22c55e40" /><Area type="monotone" stackId="tokens" dataKey="cacheWrite" name={t('tokens.cacheWrite')} stroke="#f59e0b" fill="#f59e0b40" /></AreaChart></ResponsiveContainer></div><div className="mt-2 flex flex-wrap gap-1">{daily.map((d) => <button key={d.date} type="button" onClick={() => navigate(`/insights/tokens?${new URLSearchParams({ preset: 'custom', from: `${d.date}T00:00:00.000Z`, to: `${d.date}T23:59:59.999Z`, ...(scope ? { scope } : {}), ...(provider !== 'all' ? { provider } : {}) })}`)} className="rounded border px-2 py-1 text-xs focus-visible:ring-2">{d.date} · {number(d.total)}</button>)}</div></ChartPanel>
+      <ChartPanel title={t('tokens.models')} state={commonState === 'ready' ? data?.byModel.length ? 'ready' : 'empty' : commonState} emptyText={t('tokens.noData')} {...failureProps} summary={`Top models: ${(data?.byModel ?? []).slice(0, 7).map((x) => `${x.model} ${number(x.totalTokens)}`).join(', ')}`}><div role="img" aria-label={`Model totals: ${(data?.byModel ?? []).slice(0, 7).map((x) => `${x.model} ${x.totalTokens}`).join(', ')}`} className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={(data?.byModel ?? []).slice(0, 7)} layout="vertical" margin={{ left: 12, right: 12 }}><XAxis type="number" hide /><YAxis type="category" dataKey="model" width={90} tick={{ fontSize: 11 }} /><Tooltip formatter={(v) => number(Number(v))} /><Bar dataKey="totalTokens" fill="#8b5cf6" radius={[0, 5, 5, 0]}>{(data?.byModel ?? []).slice(0, 7).map((x, i) => <Cell key={x.model} fill={COLORS[i % COLORS.length]} />)}</Bar></BarChart></ResponsiveContainer></div></ChartPanel></div>
+    <div className="grid gap-4 xl:grid-cols-2"><ChartPanel title={t('tokens.cacheEfficiency')} state={commonState} {...failureProps} summary={`Cache efficiency ${Math.round((data?.cacheEfficiency ?? 0) * 100)} percent.`}><div className="flex h-40 items-center justify-center"><p className="font-mono text-5xl font-semibold tabular-nums">{Math.round((data?.cacheEfficiency ?? 0) * 100)}%</p></div></ChartPanel>
+      <ChartPanel title={t('tokens.timeOfDay')} description="Aggregated by UTC weekday and hour; bounded heatmap summary." state={commonState === 'ready' ? data?.byHourDay.length ? 'ready' : 'empty' : commonState} emptyText={t('tokens.noData')} {...failureProps} summary={`UTC heatmap, ${data?.byHourDay.length ?? 0} populated weekday-hour cells.`}><div className="overflow-x-auto"><div className="min-w-[670px]"><div className="mb-1 flex gap-1 pl-10">{Array.from({ length: 24 }, (_, h) => <span key={h} className="w-5 text-center text-[9px] text-muted-foreground">{h % 6 === 0 ? h : ''}</span>)}</div>{dayLabels.map((label, day) => <div key={label} className="mb-1 flex items-center gap-1"><span className="w-9 text-xs text-muted-foreground">{label}</span>{Array.from({ length: 24 }, (_, hour) => { const value = lookup.get(`${day}-${hour}`) ?? 0; return <button key={hour} type="button" aria-label={`${label} ${hour}:00 UTC: ${number(value)} tokens`} title={`${label} ${hour}:00 UTC — ${number(value)} tokens`} onClick={() => patch('hour', `${day}-${hour}`)} className="size-5 rounded-sm focus-visible:ring-2 focus-visible:ring-ring" style={{ backgroundColor: heatColor(value, maxHeat) }} />; })}</div>)}</div></div></ChartPanel></div>
+    <ChartPanel title={t('tokens.topProjects')} state={commonState === 'ready' ? data?.byProject.length ? 'ready' : 'empty' : commonState} emptyText={t('tokens.noData')} {...failureProps} summary={`Showing up to 15 project aggregates from ${data?.byProject.length ?? 0} projects.`}><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b text-muted-foreground">{[t('tokens.projectCol'), t('tokens.platformCol'), t('tokens.tokensCol')].map((x) => <th scope="col" key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{(data?.byProject ?? []).slice(0, 15).map((p) => <tr key={p.project} className="border-b"><td className="p-2">{p.project}</td><td className="p-2"><PlatformLabel sources={p.sources} /></td><td className="p-2 text-right font-mono tabular-nums">{number(p.totalTokens)}</td></tr>)}</tbody></table></div></ChartPanel>
+    <ChartPanel title={t('tokens.topSessions')} description="Bounded raw session records, separate from daily aggregates." state={commonState === 'ready' ? data?.topSessions.length ? 'ready' : 'empty' : commonState} emptyText={t('tokens.noData')} {...failureProps} summary={`Showing ${data?.topSessions.length ?? 0} bounded raw sessions.`}><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b text-muted-foreground">{[t('tokens.sessionIdCol'), t('tokens.projectCol'), t('tokens.platformCol'), t('tokens.modelCol'), t('tokens.startedCol'), t('tokens.tokensCol')].map((x) => <th scope="col" key={x} className="p-2">{x}</th>)}</tr></thead><tbody>{(data?.topSessions ?? []).map((s) => <tr key={s.sessionId} className="border-b"><td className="p-2 font-mono">{s.sessionId.slice(0, 8)}…</td><td className="p-2">{s.project ?? t('tokens.unknown')}</td><td className="p-2"><PlatformLabel sources={s.source} /></td><td className="p-2">{s.model}</td><td className="p-2">{new Date(s.startedAt).toLocaleString()}</td><td className="p-2 text-right font-mono tabular-nums">{number(s.totalTokens)}</td></tr>)}</tbody></table></div></ChartPanel>
+    {hasTokens && <p className="text-xs text-muted-foreground">Daily totals are date-range aggregates. The heatmap summarizes UTC weekday/hour buckets and the session table contains a bounded raw sample.</p>}
+    </>}
+  </div>;
 }

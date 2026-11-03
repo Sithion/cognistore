@@ -4,6 +4,14 @@
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
+### Round 8 — Navigation and dashboard
+- Grouped, collapsible navigation, addressable detail panels and Settings sections, command palette, keyboard shortcuts, and URL-backed filters.
+- Dashboard screens use the approved shadcn/ui design system with light, dark, and system themes.
+- Telemetry settings expose raw token-history retention in days, including the existing 90-day default and unlimited-retention option.
+- Application deep links load the SPA while API authentication remains enforced.
+- Design-route startup failures include captured sidecar output.
+- React component and Playwright coverage exercise the migrated interface.
+
 ### Fixes
 - Perf tests: PERF_BUDGET_SCALE now applies to every event-loop and drift limit (B.12).
 - **`pnpm audit` clean (L.8d).** `glob` 13 and `minimatch` 10, pulled by `c8` and `@fastify/static` (no newer release of either), are overridden to `glob` 14.0.2+ and `minimatch` 11.0.1+ (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249). The esbuild 0.18 advisory reached only through drizzle-kit's build-time loader stays ignored, now also in `pnpm.auditConfig`, with the justification already in `osv-scanner.toml`.

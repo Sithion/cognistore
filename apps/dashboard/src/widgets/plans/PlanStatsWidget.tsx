@@ -70,10 +70,10 @@ export function PlanStatsWidget() {
     : 0;
 
   return (
-    <div className="widget-shell">
+    <main className="widget-shell">
       <div className="widget-drag-region" data-tauri-drag-region>
-        <span className="widget-title" data-tauri-drag-region>Plan Stats</span>
-        <button className="widget-close" onClick={handleClose} title="Close">×</button>
+        <h1 className="widget-title" data-tauri-drag-region>Plan Stats</h1>
+        <button className="widget-close" aria-label="Close widget" onClick={handleClose} title="Close">×</button>
       </div>
 
       <div className="widget-content">
@@ -90,8 +90,9 @@ export function PlanStatsWidget() {
         ) : (
           <>
             {/* Total Plans */}
-            <div
-              onClick={() => navigateMainApp('/stats/plans')}
+            <button
+              type="button"
+              onClick={() => navigateMainApp('/insights/plans')}
               style={{
               textAlign: 'center',
               padding: '4px 0 10px',
@@ -105,7 +106,7 @@ export function PlanStatsWidget() {
               <div style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>
                 Total Plans
               </div>
-            </div>
+            </button>
 
             {/* Status breakdown */}
             <StatusPill label="Active" value={metrics?.plans.active ?? 0} color={STATUS_COLORS.active} />
@@ -140,6 +141,6 @@ export function PlanStatsWidget() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

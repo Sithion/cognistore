@@ -61,6 +61,7 @@ export function WidgetsPage() {
   if (!isTauri) {
     return (
       <div style={{ color: 'var(--text-secondary)', padding: 40, textAlign: 'center' }}>
+        <h1 className="sr-only">{t('widgets.title')}</h1>
         {t('widgets.desktopOnly')}
       </div>
     );
@@ -89,7 +90,7 @@ export function WidgetsPage() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 24 }}>{w.icon}</span>
+                <span aria-hidden="true" style={{ fontSize: 24 }}>{w.icon}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {t(w.titleKey)}
@@ -114,6 +115,7 @@ export function WidgetsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('widgets.maxVisible')}</span>
                   <input
+                    aria-label={t('widgets.maxVisible')}
                     type="number"
                     min={1}
                     max={20}
@@ -132,7 +134,7 @@ export function WidgetsPage() {
                 onClick={() => openWidget(w.id)}
                 style={{
                   padding: '8px 16px', borderRadius: 6, border: 'none',
-                  backgroundColor: 'var(--accent)', color: '#fff',
+                  backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
                   cursor: 'pointer', fontSize: 13, fontWeight: 500,
                   transition: 'all 0.15s ease',
                 }}

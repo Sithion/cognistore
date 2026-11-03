@@ -1,30 +1,34 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { markdownHeadings } from '../lib/markdownHeadings.js';
 // Subpath import on purpose: the package root barrel pulls zod in, which the
 // browser bundle has no other reason to carry.
 import { PLAN_STATUS_VALUES, type PlanStatus } from '@cognistore/shared/constants';
 import { api, ApiError } from '../api/client.js';
 import { useInfiniteList, PAGE_SIZE } from '../hooks/useInfiniteScroll.js';
 import { useTransientMessage } from '../hooks/useTransientMessage.js';
-import { FloatingAddButton } from '../components/FloatingAddButton.js';
-import { ScopeAutocomplete } from '../components/ScopeAutocomplete.js';
 import { PLAN_TEMPLATES, type PlanTemplate } from '../data/planTemplates.js';
-import { ConfirmModal } from '../components/ConfirmModal.js';
+import { usePlansRoute } from '../plans/usePlansRoute.js';
+import { Button } from '../components/ui/button.js';
+import { Input } from '../components/ui/input.js';
+import { toast } from 'sonner';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Circle, FileText, LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog.js';
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: '#6b7280',
-  active: '#3b82f6',
-  completed: '#22c55e',
-  archived: '#a78bfa',
+  draft: 'hsl(var(--muted-foreground))',
+  active: 'hsl(var(--primary))',
+  completed: 'hsl(var(--chart-2))',
+  archived: 'hsl(var(--chart-4))',
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  high: '#ef4444',
-  medium: '#f59e0b',
-  low: '#6b7280',
+  high: 'hsl(var(--destructive))',
+  medium: 'hsl(var(--chart-4))',
+  low: 'hsl(var(--muted-foreground))',
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -98,20 +102,13 @@ function StatusBadge({ status }: { status: string }) {
 
 function TaskStatusIcon({ status }: { status: string }) {
   if (status === 'completed') {
-    return <span style={{ color: '#22c55e', fontSize: 16, fontWeight: 700, lineHeight: 1 }}>✓</span>;
+    return <Check className="size-4 text-primary" aria-label="Completed" />;
   }
   if (status === 'in_progress') {
-    return (
-      <span style={{ display: 'inline-block', width: 14, height: 14 }}>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <svg width="14" height="14" viewBox="0 0 14 14" style={{ animation: 'spin 1s linear infinite' }}>
-          <circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="20 14" strokeLinecap="round" />
-        </svg>
-      </span>
-    );
+    return <LoaderCircle className="size-3.5 animate-spin text-primary" aria-label="In progress" />;
   }
   // pending
-  return <span style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1 }}>○</span>;
+  return <Circle className="size-3.5 text-muted-foreground" aria-label="Pending" />;
 }
 
 /* ── Progress Bar ── */
@@ -121,10 +118,10 @@ function ProgressBar({ completed, total }: { completed: number; total: number })
   const barColor = pct === 100 ? '#22c55e' : pct > 50 ? 'var(--accent)' : '#6b7280';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-      <div style={{ flex: 1, height: 6, backgroundColor: 'var(--bg-input)', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor, borderRadius: 3, transition: 'width 0.3s' }} />
+      <div role="progressbar" aria-label={`Task progress: ${completed} of ${total} complete`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={completed} style={{ flex: 1, height: 6, backgroundColor: 'hsl(var(--muted))', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', backgroundColor: pct === 100 ? 'hsl(var(--primary))' : barColor, borderRadius: 3, transition: 'width 0.3s' }} />
       </div>
-      <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+      <span className="font-mono text-xs text-muted-foreground" style={{ whiteSpace: 'nowrap' }}>
         {completed}/{total}
       </span>
     </div>
@@ -219,7 +216,6 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
         display: 'flex', gap: 8, padding: '8px 10px',
         borderLeft: `3px solid ${PRIORITY_COLORS[task.priority] || '#6b7280'}`,
         backgroundColor: 'var(--bg-main)', borderRadius: '0 6px 6px 0',
-        opacity: task.status === 'completed' ? 0.6 : 1,
         position: 'relative',
       }}
     >
@@ -229,6 +225,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
       <div style={{ flex: 1, minWidth: 0 }}>
         {editingDesc && onUpdateTask ? (
           <input
+            aria-label="Task description"
             autoFocus
             value={editDesc}
             onChange={(e) => setEditDesc(e.target.value)}
@@ -299,6 +296,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
             {expandedNotes && (
               editingNotes && onUpdateTask ? (
                 <textarea
+                  aria-label={t('plans.notes')}
                   autoFocus
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
@@ -337,7 +335,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
             backgroundColor: '#ef4444', border: 'none', borderRadius: 4, cursor: 'pointer',
           }}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
@@ -356,7 +354,7 @@ interface NewTask {
   priority: 'high' | 'medium' | 'low';
 }
 
-function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) => void; onCancel: () => void }) {
   const [submitError, setSubmitError] = useTransientMessage(5000);
   const { t } = useTranslation();
   const [title, setTitle] = useState('');
@@ -401,14 +399,17 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
     setSaving(true);
     try {
       const tags = tagsInput.split(',').map((t) => t.trim()).filter(Boolean);
+      // The API requires at least one tag, even when the optional UI field is blank.
+      if (tags.length === 0) tags.push('plan');
       const tasks = newTasks.filter((t) => t.description.trim()).map((t) => ({
         description: t.description.trim(),
         priority: t.priority,
       }));
-      await api.createPlan({ title: title.trim(), content: content.trim(), tags, scope, source: 'dashboard', tasks });
-      onCreated();
+      const created = await api.createPlan({ title: title.trim(), content: content.trim(), tags, scope, source: 'dashboard', tasks }) as PlanEntry;
+      onCreated(created.id);
     } catch {
       // User-initiated mutation: surface failure under the submit button.
+      toast.error(t('errors.saveFailed'));
       setSubmitError(t('errors.saveFailed'));
     }
     setSaving(false);
@@ -422,10 +423,10 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   };
 
   return (
-    <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
+      <div className="rounded-xl border bg-card p-5 text-card-foreground mb-5">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h2>
-        <button onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+        <h1 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h1>
+        <button aria-label={t('actions.cancel')} onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
       </div>
 
       {/* Template Selector */}
@@ -435,46 +436,40 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         </label>
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
           {PLAN_TEMPLATES.map((tpl) => (
-            <button
+          <Button variant={selectedTemplate === tpl.id ? 'secondary' : 'outline'} size="sm"
               key={tpl.id}
               type="button"
               onClick={() => applyTemplate(tpl)}
-              style={{
-                padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                border: selectedTemplate === tpl.id ? '1px solid var(--accent)' : '1px solid var(--border)',
-                backgroundColor: selectedTemplate === tpl.id ? 'var(--accent-muted)' : 'var(--bg-input)',
-                color: selectedTemplate === tpl.id ? 'var(--accent)' : 'var(--text-secondary)',
-                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
-              }}
+              className="shrink-0"
             >
-              {tpl.icon} {tpl.name}
-            </button>
+              <span aria-hidden="true">{tpl.icon}</span> {tpl.name}
+            </Button>
           ))}
         </div>
       </div>
 
       {/* Title */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-          {t('plans.planTitle')}
+        <label htmlFor="plan-title" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+          Title
         </label>
-        <input
+        <Input id="plan-title"
           value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={t('plans.planTitlePlaceholder')}
-          style={inputStyle}
+          className="h-auto py-2.5"
         />
       </div>
 
       {/* Content */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-          {t('plans.planContent')}
+        <label htmlFor="plan-content" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+          Content
         </label>
-        <textarea
+        <textarea id="plan-content"
           value={content} onChange={(e) => setContent(e.target.value)}
           placeholder={t('plans.planContentPlaceholder')}
           rows={5}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+          className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
       </div>
 
@@ -484,19 +479,17 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
           <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
             {t('knowledge.scope')}
           </label>
-          <ScopeAutocomplete
-            value={scope}
-            onChange={setScope}
-          />
+          <Input aria-label={t('knowledge.scope')} value={scope} onChange={(e) => setScope(e.target.value)} placeholder="global or workspace:name" />
         </div>
         <div style={{ flex: 1 }}>
           <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
             {t('knowledge.tags')}
           </label>
-          <input
+          <Input
+            aria-label={t('knowledge.tags')}
             value={tagsInput} onChange={(e) => setTagsInput(e.target.value)}
             placeholder={t('plans.tagsPlaceholder')}
-            style={inputStyle}
+            className="h-auto py-2.5"
           />
         </div>
       </div>
@@ -518,13 +511,15 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {newTasks.map((task, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
+              <Input
+                aria-label={`Task ${i + 1} description`}
                 value={task.description}
                 onChange={(e) => updateTask(i, 'description', e.target.value)}
                 placeholder={`${t('plans.taskPlaceholder')} ${i + 1}`}
-                style={{ ...inputStyle, flex: 1 }}
+                className="flex-1"
               />
               <select
+                aria-label={`Task ${i + 1} priority`}
                 value={task.priority}
                 onChange={(e) => updateTask(i, 'priority', e.target.value)}
                 style={{ ...inputStyle, width: 100, flex: 'none' }}
@@ -534,7 +529,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
                 <option value="low">Low</option>
               </select>
               {newTasks.length > 1 && (
-                <button onClick={() => removeTask(i)} style={{
+                <button aria-label={`Remove task ${i + 1}`} onClick={() => removeTask(i)} style={{
                   background: 'none', border: 'none', color: 'var(--text-secondary)',
                   cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1,
                 }}>×</button>
@@ -553,18 +548,12 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         }}>
           {t('actions.cancel')}
         </button>
-        <button
+        <Button
           onClick={handleSubmit}
           disabled={saving || !title.trim() || !content.trim()}
-          style={{
-            padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-            border: 'none', backgroundColor: 'var(--accent)',
-            color: '#fff', cursor: saving ? 'wait' : 'pointer',
-            opacity: (!title.trim() || !content.trim()) ? 0.5 : 1,
-          }}
         >
-          {saving ? '...' : t('plans.createDraft')}
-        </button>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
       </div>
       {submitError && (
         <p style={{ fontSize: 12, color: 'var(--error, #ef4444)', marginTop: 8, textAlign: 'right' }}>{submitError}</p>
@@ -573,13 +562,31 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   );
 }
 
+function ConfirmDialog({ open, onClose, onConfirm, title, message, loading, errorText }: {
+  open: boolean; onClose: () => void; onConfirm: () => void | Promise<void>;
+  title: string; message: string; loading: boolean; errorText?: string | null;
+}) {
+  const { t } = useTranslation();
+  return <Dialog open={open} onOpenChange={(value) => { if (!value) onClose(); }}>
+    <DialogContent>
+      <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{message}</DialogDescription></DialogHeader>
+      {errorText && <p role="alert" className="text-sm text-destructive">{errorText}</p>}
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose} disabled={loading}>{t('actions.cancel')}</Button>
+        <Button variant="destructive" onClick={() => void onConfirm()} disabled={loading}>{loading ? '…' : t('actions.confirm')}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>;
+}
+
 export function PlansPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const route = usePlansRoute();
   // Status chips are a multi-select toggle group: an empty selection means "all".
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [scopeFilter, setScopeFilter] = useState<string>('');
+  const statusFilter = route.status;
+  const scopeFilter = route.scope;
   const [allScopes, setAllScopes] = useState<string[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<PlanEntry | null>(null);
   const [tasks, setTasks] = useState<PlanTask[]>([]);
@@ -675,15 +682,16 @@ export function PlansPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadActivePlans]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Deep-link: open plan from ?select=planId
+  // Open route detail and retain compatibility with legacy ?select= links.
   useEffect(() => {
-    const selectId = searchParams.get('select');
-    if (selectId && !selectedPlan) {
+    const selectId = route.id || searchParams.get('select');
+    if (selectId && selectedPlan?.id !== selectId) {
       api.getPlan(selectId).then((plan) => {
         if (plan) selectPlan(plan as PlanEntry);
       }).catch(() => {});
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!selectId && selectedPlan) setSelectedPlan(null);
+  }, [route.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Collapse + clear the file preview when a DIFFERENT plan is selected (keyed on
   // id, so the 5s poll replacing the object identity does NOT reset it).
@@ -727,8 +735,8 @@ export function PlansPage() {
     if ((location.state as any)?.reset) {
       setSelectedPlan(null);
       setShowCreateForm(false);
-      setStatusFilter([]);
-      setScopeFilter('');
+      route.setStatuses([]);
+      route.setScope('');
       setSearchParams({}, { replace: true });
       window.history.replaceState({}, '');
       list.reset();
@@ -762,6 +770,7 @@ export function PlansPage() {
 
   const selectPlan = async (plan: PlanEntry) => {
     setSelectedPlan(plan);
+    route.openPlan(plan.id);
     try {
       const [t, r, c] = await Promise.all([
         api.listPlanTasks(plan.id),
@@ -848,16 +857,16 @@ export function PlansPage() {
     archived: 'plans.archived',
   };
   const toggleStatus = (s: string) => {
-    setStatusFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+    route.setStatuses(statusFilter.includes(s) ? statusFilter.filter((x) => x !== s) : [...statusFilter, s]);
     setSelectedPlan(null);
   };
 
   // ── Detail View (full page) ──
   if (selectedPlan) {
     return (
-      <div>
+      <div data-testid="plan-detail">
         <button
-          onClick={() => { setSelectedPlan(null); setSearchParams({}, { replace: true }); }}
+          onClick={() => { setSelectedPlan(null); route.backToList(); }}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
             background: 'none', border: 'none', color: 'var(--text-secondary)',
@@ -930,6 +939,7 @@ export function PlansPage() {
               <button
                 onClick={() => navigator.clipboard?.writeText(selectedPlan.planFilePath!)}
                 title={t('planFile.copyPath')}
+                aria-label={t('planFile.copyPath')}
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}
               >
                 ⧉
@@ -951,7 +961,7 @@ export function PlansPage() {
                   </p>
                 ) : (
                   <>
-                    <Markdown remarkPlugins={[remarkGfm]}>{filePreview.content || ''}</Markdown>
+                    <Markdown components={{ input: ({ node: _node, ...props }) => <input {...props} aria-label="Task completion" /> }} remarkPlugins={[remarkGfm, [markdownHeadings, { level: 2 }]]}>{filePreview.content || ''}</Markdown>
                     {filePreview.truncated && (
                       <p style={{ color: 'var(--text-secondary)', fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>{t('planFile.truncated')}</p>
                     )}
@@ -965,9 +975,9 @@ export function PlansPage() {
         {/* Tasks */}
         {tasks.length > 0 && (
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.tasks')}
-            </h3>
+            </h2>
             {taskError && (
               <p style={{ fontSize: 12, color: 'var(--error, #ef4444)', marginBottom: 8 }}>{taskError}</p>
             )}
@@ -989,7 +999,7 @@ export function PlansPage() {
 
         {/* Content */}
         <div className="plan-markdown" style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-          <Markdown remarkPlugins={[remarkGfm]}>{selectedPlan.content}</Markdown>
+          <Markdown components={{ input: ({ node: _node, ...props }) => <input {...props} aria-label="Task completion" /> }} remarkPlugins={[remarkGfm, [markdownHeadings, { level: 2 }]]}>{selectedPlan.content}</Markdown>
           <div style={{ display: 'flex', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
             {selectedPlan.tags.map((tag) => (
               <span key={tag} style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, backgroundColor: 'var(--bg-input)', color: 'var(--accent)' }}>
@@ -1028,9 +1038,9 @@ export function PlansPage() {
         {/* Plan chain — hidden for a standalone plan, where the chain is just itself. */}
         {chain.length > 1 && (
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', padding: 20, marginBottom: 20 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.chain.title')}
-            </h3>
+            </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {chain.map((node) => (
                 <button
@@ -1072,9 +1082,9 @@ export function PlansPage() {
         {/* Relations */}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 250 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.input')}
-            </h3>
+            </h2>
             {inputRelations.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
             ) : (
@@ -1084,9 +1094,9 @@ export function PlansPage() {
             )}
           </div>
           <div style={{ flex: 1, minWidth: 250 }}>
-            <h3 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 10 }}>
               {t('plans.output')}
-            </h3>
+            </h2>
             {outputRelations.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('plans.noRelations')}</p>
             ) : (
@@ -1098,8 +1108,8 @@ export function PlansPage() {
         </div>
 
         {/* Delete Task Confirm Modal */}
-        <ConfirmModal
-          isOpen={deleteTaskTarget !== null}
+        <ConfirmDialog
+          open={deleteTaskTarget !== null}
           onClose={() => { setDeleteTaskTarget(null); setTaskMutationError(null); }}
           onConfirm={handleDeleteTask}
           title={t('plans.deleteTask')}
@@ -1109,8 +1119,8 @@ export function PlansPage() {
         />
 
         {/* Delete Confirm Modal */}
-        <ConfirmModal
-          isOpen={confirmDelete}
+        <ConfirmDialog
+          open={confirmDelete}
           onClose={() => { setConfirmDelete(false); setMutationError(null); }}
           onConfirm={async () => {
             setDeletingPlan(true);
@@ -1119,7 +1129,7 @@ export function PlansPage() {
               setMutationError(null);
               setSelectedPlan(null);
               setConfirmDelete(false);
-              setSearchParams({}, { replace: true });
+              route.backToList();
               list.reset();
               loadActivePlans();
             } catch {
@@ -1136,8 +1146,8 @@ export function PlansPage() {
         />
 
         {/* Archive Confirm Modal */}
-        <ConfirmModal
-          isOpen={confirmArchive}
+        <ConfirmDialog
+          open={confirmArchive}
           onClose={() => { setConfirmArchive(false); setMutationError(null); }}
           onConfirm={async () => {
             setArchiving(true);
@@ -1146,7 +1156,7 @@ export function PlansPage() {
               setMutationError(null);
               setSelectedPlan(null);
               setConfirmArchive(false);
-              setSearchParams({}, { replace: true });
+              route.backToList();
               list.reset();
               loadActivePlans();
             } catch {
@@ -1180,7 +1190,12 @@ export function PlansPage() {
             ← {t('plans.title')}
           </button>
           <CreatePlanForm
-            onCreated={() => { setShowCreateForm(false); list.reset(); loadActivePlans(); }}
+            onCreated={(planId) => {
+              setShowCreateForm(false);
+              list.reset();
+              void loadActivePlans();
+              route.openPlan(planId);
+            }}
             onCancel={() => setShowCreateForm(false)}
           />
         </>
@@ -1245,7 +1260,7 @@ export function PlansPage() {
       )}
 
       {/* ── Status + Scope Filters ── */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         {statusFilters.map((s) => {
           const on = statusFilter.includes(s);
           return (
@@ -1257,7 +1272,7 @@ export function PlansPage() {
                 padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
                 border: on ? '1px solid var(--accent)' : '1px solid var(--border)',
                 backgroundColor: on ? 'var(--accent)' : 'var(--bg-card)',
-                color: on ? '#fff' : 'var(--text-secondary)',
+                color: on ? 'var(--primary-foreground)' : 'var(--text-secondary)',
                 cursor: 'pointer',
               }}
             >
@@ -1266,8 +1281,9 @@ export function PlansPage() {
           );
         })}
         <select
+          aria-label="Filter plans by scope"
           value={scopeFilter}
-          onChange={(e) => { setScopeFilter(e.target.value); setSelectedPlan(null); }}
+          onChange={(e) => { route.setScope(e.target.value); setSelectedPlan(null); }}
           style={{
             marginLeft: 'auto', padding: '6px 10px', borderRadius: 6,
             backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
@@ -1279,6 +1295,12 @@ export function PlansPage() {
             <option key={sc} value={sc}>{sc}</option>
           ))}
         </select>
+        <select aria-label={t('plans.sort', { defaultValue: 'Sort plans' })} value={route.sort} onChange={(e) => route.setSort(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+          <option value="updated">Recently updated</option>
+          <option value="created">Recently created</option>
+          <option value="title">Title</option>
+        </select>
+        <Input aria-label="Page" type="number" min={1} value={route.page} onChange={(e) => route.setPage(Number(e.target.value))} className="w-20 font-mono" />
       </div>
 
       <div>
@@ -1314,9 +1336,9 @@ export function PlansPage() {
                       <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{plan.scope}</span>
                       {plan.parentPlanId && <OriginChip parentPlanId={plan.parentPlanId} onOpenParent={selectPlanById} />}
                     </div>
-                    <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                    <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
                       {plan.title || 'Untitled Plan'}
-                    </h3>
+                    </h2>
                     <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       {plan.tags.slice(0, 5).map((tag) => (
                         <span key={tag} style={{ padding: '1px 6px', borderRadius: 3, fontSize: 10, backgroundColor: 'var(--bg-input)', color: 'var(--text-secondary)' }}>
@@ -1351,7 +1373,7 @@ export function PlansPage() {
       </div>
 
       {/* FAB */}
-      <FloatingAddButton onClick={() => setShowCreateForm(true)} />
+        <Button className="fixed bottom-6 right-6 shadow-lg" onClick={() => setShowCreateForm(true)}><Plus className="size-4" />New plan</Button>
         </>
       )}
     </div>
@@ -1362,7 +1384,7 @@ function RelationCard({ entry }: { entry: Record<string, unknown> }) {
   const type = entry.type as string;
   return (
     <a
-      href={`/?edit=${entry.id as string}`}
+      href={`/knowledge/${encodeURIComponent(entry.id as string)}`}
       style={{
         display: 'block', textDecoration: 'none', color: 'inherit',
         backgroundColor: 'var(--bg-main)', borderRadius: 6, border: '1px solid var(--border)',

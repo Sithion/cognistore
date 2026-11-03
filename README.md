@@ -261,7 +261,7 @@ Full documentation: [Plug in MCP](documentation/providers/plug-mcp.md) · [Confi
 
 ## Dashboard
 
-The desktop app includes a full dashboard with seven pages:
+The desktop app includes grouped navigation for Knowledge, Work, Insights, Integrations, and System. Entries, plans, filters, and Settings sections have shareable URLs. Open the command palette with Cmd+K or Ctrl+K.
 
 ### Knowledge (Home)
 

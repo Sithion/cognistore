@@ -1,31 +1,24 @@
-import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { test, expect } from '../ui/browser-fixture.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '../../../../apps/dashboard');
+test('@e2e Tokens links to the actual retention control', async ({ page, ui }) => {
+  await page.goto(`${ui.url}/insights/tokens`);
+  await page.getByTestId('retention-link').click();
+  await expect(page).toHaveURL(`${ui.url}/settings/telemetry`);
+  await expect(page.getByTestId('retention-days')).toHaveValue('90');
+});
 
-// The dashboard has no UI harness, so this pins the contract by source: every
-// locale carries the notice with the retention interpolation and the settings
-// link slot, and the page feeds it the configured retention (default 90).
-test.describe('@e2e Tokens retention notice', () => {
-  const i18n = readFileSync(resolve(root, 'src/i18n/index.ts'), 'utf-8');
-  const page = readFileSync(resolve(root, 'src/pages/TokenConsumptionPage.tsx'), 'utf-8');
-
-  test('all three locales define the notice with {{days}} and the settings link', () => {
-    const lines = i18n.split('\n').filter((l) => l.includes('retentionNotice:'));
-    expect(lines).toHaveLength(3);
-    for (const line of lines) {
-      expect(line).toContain('{{days}}');
-      expect(line).toMatch(/<settingsLink>.+<\/settingsLink>/);
-    }
-  });
-
-  test('the page passes the configured retention and falls back to 90', () => {
-    expect(page).toContain('tokens.retentionNotice');
-    expect(page).toContain('tokenUsageRetentionDays');
-    expect(page).toMatch(/useState\(90\)/);
-    expect(page).toContain('to="/settings"');
-  });
+test('@e2e Tokens displays configured and unlimited retention', async ({ page, ui }) => {
+  for (const days of [180, 0]) {
+    const response = await ui.call('/api/settings', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tokenUsageRetentionDays: days }),
+    });
+    expect(response.ok).toBe(true);
+    await page.goto(`${ui.url}/insights/tokens`);
+    const notice = page.getByTestId('retention-notice');
+    if (days === 0) await expect(notice).toContainText(/unlimited/i);
+    else await expect(notice).toContainText('180');
+    await expect(notice).toContainText(/daily/i);
+  }
 });

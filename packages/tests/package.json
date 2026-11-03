@@ -9,7 +9,8 @@
     "test:load": "npx playwright test --grep @load",
     "test:perf": "PERF=1 npx playwright test --project performance --grep @perf --workers=1",
     "build": "echo 'No build needed for test package'",
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test:ui": "vitest run --config vitest.ui.config.ts"
   },
   "dependencies": {
     "@cognistore/config": "workspace:*",
@@ -17,14 +18,25 @@
     "@cognistore/providers": "workspace:*",
     "@cognistore/sdk": "workspace:*",
     "@cognistore/shared": "workspace:*",
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-redux": "^9.3.1",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@playwright/test": "^1.64.1",
+    "@testing-library/react": "^16.3.3",
     "@types/better-sqlite3": "^9.6.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "i18next": "^26.7.1",
+    "jsdom": "^30.1.3",
     "sqlite-vec": "^0.1.9",
     "typescript": "^5.7.0",
+    "vitest": "5.1.0",
     "zod": "^4.6.6"
   }
 }
