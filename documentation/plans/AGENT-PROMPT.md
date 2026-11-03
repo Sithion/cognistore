@@ -91,3 +91,6 @@ Depois do merge do hotfix (decisão do mantenedor — o merge em main dispara o 
 | 9 | Fase 2 | motor de curadoria (`suggest`) |
 | 10 | Fase 3 + 4 | curadoria pelo agente + página de Curadoria |
 | 11 | Fase R | betas e release 2.6.0 (só com autorização explícita) |
+
+## Frota HORIZON (orquestração)
+O Claude só orquestra. Cada rodada vira um plano em waves (skill `horizon-plan`); itens independentes rodam em paralelo via `delegate.py --batch` em Codex/agy, cada um em seu worktree/branch; o Claude verifica, faz merge, valida e fecha. Veja a seção 6 da skill `cognistore-manager`. Balanceie a quota (`delegate.py --usage`) e prefira Codex/agy ao Claude.

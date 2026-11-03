@@ -40,4 +40,6 @@ Ao parar: uma mensagem curta com o que está pronto, a decisão necessária (com
 Contrato 1.2; sem bump/tag/publish/merge em main sem o mantenedor; testes herméticos (HOME sandbox); nada de reduzir limiar para passar; uma major de dependência por branch; registre achados fora do escopo como B.n; se algo falhar duas vezes pelo mesmo motivo, registre, siga para o próximo item seguro e cite no relatório. O plano no repositório é a sua memória: mantenha o diário atualizado a cada rodada para poder retomar após qualquer reinício de contexto.
 
 Comece agora pela Preparação e depois pela Rodada 7.
+## Frota HORIZON (orquestração)
+O Claude só orquestra. Cada rodada vira um plano em waves (skill `horizon-plan`); itens independentes rodam em paralelo via `delegate.py --batch` em Codex/agy, cada um em seu worktree/branch; o Claude verifica, faz merge, valida e fecha. Veja a seção 6 da skill `cognistore-manager`. Balanceie a quota (`delegate.py --usage`) e prefira Codex/agy ao Claude.
 ```
