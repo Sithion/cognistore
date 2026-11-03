@@ -56,6 +56,7 @@
 - **Unknown API paths are a 404.** Any `/api/...` path that does not exist was answered with the dashboard's `index.html` and a 200, so a typo or a route a newer client expected looked like success and failed later as a JSON parse error. It is now a JSON 404. Page routes still fall back to the dashboard.
 
 ### Maintenance
+- Dependencies: pinned `lodash` to `>=4.18.1` via a root override (transitive through `recharts`), fixing GHSA-f23m-r3pf-42rh (prototype pollution in `_.unset`/`_.omit`/`_.pullAt`) flagged by the OSV scan.
 - Removed leftover Stryker mutation-testing output (`packages/core/packages/`, `packages/core/reports/`) and added it to `.gitignore`.
 - The per-platform agent instructions committed under `apps/dashboard/templates/configs/` are regenerated from their base template. They still said every CogniStore tool is pre-approved, which stopped being true when the destructive tools started to prompt. Release builds recompile them, so installed apps already had the right text. The new `sidecar-bundle` CI job now fails when the committed copies drift.
 
