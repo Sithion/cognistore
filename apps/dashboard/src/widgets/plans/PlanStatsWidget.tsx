@@ -90,8 +90,9 @@ export function PlanStatsWidget() {
         ) : (
           <>
             {/* Total Plans */}
-            <div
-              onClick={() => navigateMainApp('/stats/plans')}
+            <button
+              type="button"
+              onClick={() => navigateMainApp('/insights/plans')}
               style={{
               textAlign: 'center',
               padding: '4px 0 10px',
@@ -105,7 +106,7 @@ export function PlanStatsWidget() {
               <div style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>
                 Total Plans
               </div>
-            </div>
+            </button>
 
             {/* Status breakdown */}
             <StatusPill label="Active" value={metrics?.plans.active ?? 0} color={STATUS_COLORS.active} />

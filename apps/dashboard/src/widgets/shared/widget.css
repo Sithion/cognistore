@@ -1,20 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  color-scheme: dark;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #111113;
+  --border: #27272a;
+  --muted-foreground: #a1a1aa;
+  --primary: #8b5cf6;
+}
+html[data-theme='light'] {
+  color-scheme: light;
+  --background: #fafafa;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --border: #e4e4e7;
+  --muted-foreground: #71717a;
+  --primary: #6d28d9;
+}
 html, body {
   /* Opaque solid background. macOS transparent webview windows render blank in
      release/DMG builds (tauri#13415 / wry#1524), so widgets use an opaque window
      with a solid background instead. */
-  background: #0d0d1a !important;
+  background: var(--background) !important;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #e2e8f0;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--foreground);
   user-select: none;
 }
 
 .widget-shell {
   border-radius: 12px;
-  background: #0d0d1a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--card);
+  border: 1px solid var(--border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   min-height: 100vh;
@@ -34,7 +54,7 @@ html, body {
 .widget-title {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
