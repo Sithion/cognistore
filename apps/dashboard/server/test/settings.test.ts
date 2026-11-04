@@ -123,3 +123,25 @@ describe('sanitizeSettings', () => {
     });
   });
 });
+
+
+describe('curation settings cache', () => {
+  it('public patches cannot forge ownership; cached scheduler settings refresh after PUT', async () => {
+    const settings = await loadSettings();
+    await settings.refreshSettingsCache();
+    await settings.patchSettingsAsync({
+      curationIdleMinutes: 25, curationModel: 'qwen2.5:7b-instruct',
+      installedCurationModels: ['forged:7b'], installedCleanupModels: ['forged:3b'],
+      pendingModelInstallations: ['forged:3b'],
+    });
+    expect(settings.getCachedSettings()).toMatchObject({
+      curationIdleMinutes: 25, curationModel: 'qwen2.5:7b-instruct',
+      installedCurationModels: [], installedCleanupModels: [], pendingModelInstallations: [],
+    });
+    settings.writeSettings({ curationIdleMinutes: 100, installedCleanupModels: ['forged:3b'] });
+    expect(settings.readSettings()).toMatchObject({ curationIdleMinutes: 25, installedCleanupModels: [] });
+    const copy = settings.getCachedSettings();
+    copy.curationIdleMinutes = 99;
+    expect(settings.getCachedSettings().curationIdleMinutes).toBe(25);
+  });
+});

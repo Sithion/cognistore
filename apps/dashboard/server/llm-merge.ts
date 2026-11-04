@@ -1,3 +1,5 @@
+import { modelManager, canonicalModelName } from './curation-models.js';
+import { getCachedSettings } from './settings.js';
 import { OllamaChatClient, DEFAULT_CHAT_MODEL, type ChatMessage } from '@cognistore/embeddings';
 import { validateMergeDraft, deterministicMergeDraft, type MergeDraft, type MergeMember } from '@cognistore/core';
 
@@ -67,7 +69,18 @@ export async function buildMergeDraft(
   const client = opts.client ?? new OllamaChatClient({ host: opts.host, model: opts.model ?? DEFAULT_CHAT_MODEL });
 
   try {
-    await client.ensureModel();
+    if (opts.client) {
+      // Injected clients keep the existing test/client contract.
+      await client.ensureModel();
+    } else {
+      const model = opts.model ?? DEFAULT_CHAT_MODEL;
+      // Retain the legacy 3B preview pull. Other shared curation models
+      // require explicit preparation instead of a preview-triggered download.
+      const allowPull = model === DEFAULT_CHAT_MODEL
+        || canonicalModelName(model) !== canonicalModelName(getCachedSettings().curationModel);
+      const prepared = await modelManager.prepare(model, 'cleanup', allowPull);
+      if (!prepared.available) return fallback();
+    }
   } catch {
     // Model missing and the pull failed (offline, no disk, Ollama down).
     return fallback();

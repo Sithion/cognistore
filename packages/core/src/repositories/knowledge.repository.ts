@@ -24,6 +24,7 @@ import { scanDuplicatePairs, invalidateDuplicateScan } from '../services/duplica
 import { groupPairs } from '../services/duplicate-pairs.js';
 import type { CreateKnowledgeInput, UpdateKnowledgeInput, SearchOptions } from '@cognistore/shared';
 import { DEFAULT_SEARCH_LIMIT, DEFAULT_SIMILARITY_THRESHOLD, isPlanStatus } from '@cognistore/shared';
+import { CurationRepository } from './curation.repository.js';
 import { contentHash } from '../jobs/content-hash.js';
 
 // Retention window for the operations_log table. Must exceed the largest
@@ -38,6 +39,75 @@ export class KnowledgeRepository {
     private sqlite: SQLiteDatabase
   ) {}
 
+  /** Advisory ranking is exact-scope, active-only cosine similarity. */
+  async findAdvisoryNeighbours(embedding: number[], scope: string, excludeId?: string) {
+    const rows = this.sqlite.prepare(`SELECT id,title FROM knowledge_entries
+      WHERE scope=? AND status='active' AND id!=?`).all(scope, excludeId ?? '') as {id:string;title:string}[];
+    const vectors = new Map(readEmbeddingBatch(this.sqlite, rows.map(row => row.id)).map(row => [row.id,
+      new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4)]));
+    const norm = Math.hypot(...embedding);
+    return rows.flatMap(row => {
+      const vector = vectors.get(row.id);
+      if (!vector || vector.length !== embedding.length) return [];
+      const similarity = embedding.reduce((sum, x, i) => sum + x * vector[i], 0) / (norm * Math.hypot(...vector));
+      return similarity >= 0.88 ? [{ ...row, similarity: Math.min(1, similarity) }] : [];
+    }).sort((a,b) => b.similarity-a.similarity || a.id.localeCompare(b.id)).slice(0,5);
+  }
+
+  prepareSupersession(sourceId: string | undefined, source: {type:string;tags:string[];scope:string}, ids: string[] = []) {
+    const unique = [...new Set(ids)];
+    if (!unique.length) return [];
+    const curation = new CurationRepository(this.sqlite);
+    const protectedRow = (row: any) => row.type === 'system' || (Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]')).includes('keep');
+    if (protectedRow(source)) throw new Error('Protected supersession source');
+    if (sourceId) {
+      const current = curation.getEntry(sourceId);
+      if (!current || protectedRow(current) || current.status !== 'active') throw new Error('Invalid supersession source');
+    }
+    return unique.map(id => {
+      if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || id === sourceId) throw new Error('Invalid supersedes ID or self-reference');
+      const row = curation.getEntry(id);
+      if (!row || protectedRow(row) || row.status !== 'active' || row.scope !== source.scope) throw new Error('Invalid, protected, inactive or cross-scope supersession target');
+      // New edges point from each target to the resulting source.
+      const seen = new Set<string>([id]);
+      let cursor = sourceId;
+      while (cursor) {
+        if (seen.has(cursor)) throw new Error('Supersession cycle');
+        seen.add(cursor);
+        cursor = curation.getEntry(cursor)?.superseded_by ?? undefined;
+      }
+      return { id, version: row.version, contentHash: row.content_hash, scope: row.scope };
+    });
+  }
+
+  private prepareUpdateSupersession(id: string, updates: UpdateKnowledgeInput) {
+    if (!updates.supersedes?.length) return [];
+    const current = new CurationRepository(this.sqlite).getEntry(id);
+    if (!current) throw new Error('Missing supersession source');
+    return this.prepareSupersession(id, {
+      type: updates.type ?? current.type,
+      tags: updates.tags ?? JSON.parse(current.tags),
+      scope: updates.scope ?? current.scope,
+    }, updates.supersedes);
+  }
+
+  private validateSupersession(sourceId: string | undefined, source: {type:string;tags:string[];scope:string}, claims: ReturnType<KnowledgeRepository['prepareSupersession']>) {
+    const current = this.prepareSupersession(sourceId, source, claims.map(row => row.id));
+    if (JSON.stringify(current) !== JSON.stringify(claims)) throw new Error('Stale supersession target');
+  }
+
+  private applySupersession(sourceId: string, claims: ReturnType<KnowledgeRepository['prepareSupersession']>, before: unknown, now: string) {
+    if (!claims.length) return;
+    const curation = new CurationRepository(this.sqlite);
+    const ids = [sourceId, ...claims.map(row => row.id)];
+    for (const claim of claims) curation.mutateEntry(claim.id, { status: 'superseded', supersededBy: sourceId }, now);
+    const actionId = crypto.randomUUID();
+    curation.createAction({ id: actionId, kind: 'supersedes', actor: 'user', entryIds: ids, snapshot: before,
+      payload: { sourceId, supersedes: claims.map(row => row.id) }, versions: Object.fromEntries(claims.map(row => [row.id, row.version])),
+      key: actionId, now });
+    curation.markActionApplied(actionId, now, curation.captureSnapshot(ids));
+  }
+
   /**
    * Entry row + embedding are committed atomically: a failed embedding insert
    * rolls the entry back instead of leaving an orphan row that semantic search
@@ -45,13 +115,15 @@ export class KnowledgeRepository {
    * better-sqlite3's .transaction() — the body must be fully synchronous; an
    * awaited drizzle insert opens an interleaving window where a concurrent
    * create() issues BEGIN on the same connection ("cannot start a transaction
-   * within a transaction"). FTS stays best-effort inside the txn.
+   * within a transaction"). FTS participates in the same atomic write.
    */
-  async create(input: CreateKnowledgeInput & { embedding: number[] }) {
+  async create(input: CreateKnowledgeInput & { embedding: number[] }, claims = this.prepareSupersession(undefined, input, input.supersedes)) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const insertTxn = this.sqlite.transaction(() => {
+      this.validateSupersession(undefined, input, claims);
+      const before = claims.length ? new CurationRepository(this.sqlite).captureSnapshot(claims.map(row => row.id)) : null;
       this.sqlite.prepare(
         `INSERT INTO knowledge_entries
            (id, title, content, content_hash, tags, type, scope, source, version, expires_at, confidence_score, related_ids, agent_id, platform, created_at, updated_at)
@@ -75,9 +147,10 @@ export class KnowledgeRepository {
       );
       // Inside the txn so a failure rolls back the entry row too.
       insertEmbedding(this.sqlite, id, input.embedding);
-      try { insertFts(this.sqlite, { id, title: input.title, content: input.content, tags: ftsTags(input.tags) }); } catch { /* FTS optional */ }
+      insertFts(this.sqlite, { id, title: input.title, content: input.content, tags: ftsTags(input.tags) });
+      this.applySupersession(id, claims, before, now);
     });
-    insertTxn();
+    insertTxn.immediate();
 
     return (await this.findById(id))!;
   }
@@ -154,7 +227,7 @@ export class KnowledgeRepository {
   }
 
 
-  async update(id: string, updates: UpdateKnowledgeInput & { embedding?: number[] }) {
+  async update(id: string, updates: UpdateKnowledgeInput & { embedding?: number[] }, claims = this.prepareUpdateSupersession(id, updates), expectedVersion?: number) {
     const { embedding, ...rest } = updates;
     const columns: Record<string, string> = {
       title: 'title', content: 'content', tags: 'tags', type: 'type', scope: 'scope', source: 'source',
@@ -181,29 +254,22 @@ export class KnowledgeRepository {
     sets.push('updated_at = ?', 'version = version + 1');
     params.push(new Date().toISOString(), id);
     const updateTxn = this.sqlite.transaction(() => {
+      const current = this.sqlite.prepare('SELECT * FROM knowledge_entries WHERE id=?').get(id) as any;
+      if (!current) { if (claims.length) throw new Error('Missing supersession source'); return false; }
+      if (expectedVersion !== undefined && current.version !== expectedVersion) throw new Error('Stale knowledge update');
+      const source = { type: rest.type ?? current.type, tags: rest.tags ?? JSON.parse(current.tags), scope: rest.scope ?? current.scope };
+      this.validateSupersession(id, source, claims);
+      const before = claims.length ? new CurationRepository(this.sqlite).captureSnapshot([id, ...claims.map(row => row.id)]) : null;
       const result = this.sqlite.prepare(`UPDATE knowledge_entries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      if (result.changes) {
+        updateFts(this.sqlite, { id, title: rest.title ?? current.title, content: rest.content ?? current.content, tags: ftsTags(source.tags) });
+        if (embedding) updateEmbedding(this.sqlite, id, embedding);
+        this.applySupersession(id, claims, before, new Date().toISOString());
+      }
       return result.changes > 0;
     });
     const changed = updateTxn.immediate();
     const entry = changed ? await this.findById(id) : null;
-
-    // Keep the FTS5 index in sync unconditionally — title/content/tags may change
-    // even when the embedding is recomputed separately. Best-effort.
-    if (entry) {
-      try {
-        updateFts(this.sqlite, {
-          id,
-          title: entry.title ?? '',
-          content: entry.content ?? '',
-          tags: ftsTags(entry.tags),
-        });
-      } catch { /* FTS optional */ }
-    }
-
-    // Update embedding in virtual table if provided
-    if (embedding) {
-      updateEmbedding(this.sqlite, id, embedding);
-    }
 
     return entry ?? null;
   }

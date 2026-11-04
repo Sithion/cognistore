@@ -1,6 +1,7 @@
 import { KnowledgeRepository } from '../repositories/knowledge.repository.js';
 import type {
   CreateKnowledgeInput,
+  KnowledgeWriteAdvisory,
   UpdateKnowledgeInput,
   SearchOptions,
   KnowledgeEntry,
@@ -249,41 +250,22 @@ export class KnowledgeService {
     return out;
   }
 
-  async add(input: CreateKnowledgeInput): Promise<KnowledgeEntry & { deduplicated?: boolean }> {
+  private async advisory(embedding: number[], scope: string, excludeId?: string) {
+    let similarExisting: { id: string; title: string; similarity: number }[] = [];
+    try { similarExisting = await this.repository.findAdvisoryNeighbours(embedding, scope, excludeId); }
+    catch { /* Advisory failure must never prevent an explicit write. */ }
+    return { similarExisting, ...(similarExisting.length ? { hint: 'considere updateKnowledge(id) em vez de criar' } : {}) };
+  }
+
+  async add(input: CreateKnowledgeInput): Promise<KnowledgeEntry & KnowledgeWriteAdvisory> {
     const { skipDedup, ...rest } = input;
     rest.tags = this.normalizeTags(rest.tags);
-    const embeddingText = this.buildEmbeddingText(rest.title, rest.content, rest.tags);
-    const embedding = await this.embeddingProvider.embed(embeddingText);
-
-    // Dedup: check for existing similar entry in same scope + type
-    if (!skipDedup) {
-      try {
-        const similar = await this.repository.searchBySimilarity(embedding, {
-          scope: rest.scope,
-          type: rest.type,
-          limit: 1,
-          threshold: 0.85,
-        });
-        if (similar.length > 0) {
-          const existing = similar[0].entry;
-          // Preserve provenance on the dedup-update path: createKnowledgeSchema defaults
-          // agentId/platform to null, so a re-add that omits them would otherwise wipe the
-          // existing row's provenance back to NULL. Only overwrite when a non-null value is
-          // supplied (last-non-null-wins); omitting keeps what was already recorded.
-          const { platform, agentId, ...keep } = rest;
-          const prov: { platform?: string; agentId?: string } = {};
-          if (platform != null) prov.platform = platform;
-          if (agentId != null) prov.agentId = agentId;
-          const updated = await this.repository.update(existing.id, { ...keep, ...prov, embedding });
-          this.logOp('write');
-          return { ...this.toKnowledgeEntry(updated!), deduplicated: true };
-        }
-      } catch { /* best-effort dedup — proceed with insert on failure */ }
-    }
-
-    const entry = await this.repository.create({ ...rest, embedding });
+    const claims = this.repository.prepareSupersession(undefined, rest, rest.supersedes);
+    const embedding = await this.embeddingProvider.embed(this.buildEmbeddingText(rest.title, rest.content, rest.tags));
+    const advisory = skipDedup ? { similarExisting: [] } : await this.advisory(embedding, rest.scope);
+    const entry = await this.repository.create({ ...rest, embedding }, claims);
     this.logOp('write');
-    return this.toKnowledgeEntry(entry);
+    return { ...this.toKnowledgeEntry(entry), ...advisory };
   }
 
   async search(query: string, options?: SearchOptions): Promise<SearchResult[]> {
@@ -389,19 +371,21 @@ export class KnowledgeService {
     return entry ? this.toKnowledgeEntry(entry) : null;
   }
 
-  async update(id: string, updates: UpdateKnowledgeInput): Promise<KnowledgeEntry | null> {
-    if (updates.tags) updates.tags = this.normalizeTags(updates.tags);
-    let embedding: number[] | undefined;
-    if (updates.content || updates.title || updates.tags) {
-      const current = await this.repository.findById(id);
-      const title = updates.title || current?.title || '';
-      const content = updates.content || current?.content || '';
-      const tags = updates.tags || (current?.tags ?? []);
-      embedding = await this.embeddingProvider.embed(this.buildEmbeddingText(title, content, tags));
+  async update(id: string, updates: UpdateKnowledgeInput): Promise<(KnowledgeEntry & KnowledgeWriteAdvisory) | null> {
+    const current = await this.repository.findById(id);
+    if (!current) {
+      if (updates.supersedes?.length) throw new Error('Supersession source is missing');
+      return null;
     }
-    const entry = await this.repository.update(id, { ...updates, embedding });
+    const patch: UpdateKnowledgeInput = Object.fromEntries(Object.entries(updates).filter(([, value]) => value !== undefined));
+    if (patch.tags) patch.tags = this.normalizeTags(patch.tags);
+    const resulting = { ...current, ...patch };
+    const claims = this.repository.prepareSupersession(id, resulting, patch.supersedes);
+    const embedding = await this.embeddingProvider.embed(this.buildEmbeddingText(resulting.title, resulting.content, resulting.tags));
+    const advisory = await this.advisory(embedding, resulting.scope, id);
+    const entry = await this.repository.update(id, { ...patch, embedding }, claims, current.version);
     if (entry) this.logOp('write');
-    return entry ? this.toKnowledgeEntry(entry) : null;
+    return entry ? { ...this.toKnowledgeEntry(entry), ...advisory } : null;
   }
 
   async delete(id: string): Promise<boolean> {

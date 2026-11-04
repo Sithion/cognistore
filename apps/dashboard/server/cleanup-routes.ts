@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { MergeDraftError } from '@cognistore/core';
 import { buildMergeDraft } from './llm-merge.js';
-import { readSettings, writeSettings, type AppSettings } from './settings.js';
+import { readSettings, writeSettings, patchSettingsAsync, type AppSettings } from './settings.js';
 
 /**
  * HTTP surface + scheduling for the cleanup cycle.
@@ -127,7 +127,7 @@ export function registerCleanupRoutes(app: FastifyInstance, deps: CleanupRouteDe
       dupThreshold: settings.cleanupDupThreshold,
       signal: controller.signal,
     });
-    if (result.created) writeSettings({ lastCleanupReportAt: new Date().toISOString() });
+    if (result.created) await patchSettingsAsync({ lastCleanupReportAt: new Date().toISOString() });
     return { created: result.created, report: result.report };
   });
 

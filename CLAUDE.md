@@ -23,7 +23,8 @@ The Tauri app's setup wizard creates resources; the uninstall button must remove
 | Install Ollama via brew/curl | Uninstall Ollama via brew uninstall or remove binary — **conditional**: only when `settings.installedOllama` records that setup installed it AND the user ticks the uninstall checkbox. Ollama is shared; pre-2.5.0 installs have no record, so the default is to keep it |
 | Start `ollama serve` | Kill the recorded PID of the process we spawned; `pkill -f "ollama serve"` only as a fallback, gated by the same opt-in (it matches the user's own instances too) |
 | Pull embedding model via Ollama API | Remove model via `ollama rm` |
-| Pull cleanup LLM model via Ollama API (first consolidation preview) | Remove via `ollama rm <cleanupLlmModel>` — name read from `settings.json` **before** the directory is removed, re-validated, `llama3.2:3b` fallback; skipped when never pulled |
+| Pull cleanup LLM model via Ollama API (first consolidation preview) | Remove recorded app-installed cleanup models once; read ownership before directory removal, validate names, and preserve pre-existing models |
+| Pull curation model via explicit model preparation | Record each model actually installed by CogniStore in settings; uninstall removes only recorded installations once, preserves pre-existing models, and reads ownership before directory removal |
 | Inject `~/.claude/CLAUDE.md` markers | Remove markers via ConfigManager |
 | Inject `~/.github/copilot-instructions.md` markers | Remove markers via ConfigManager |
 | Inject `~/.copilot/copilot-instructions.md` markers | Remove markers via ConfigManager |

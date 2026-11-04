@@ -131,7 +131,7 @@ describe('KnowledgeService additional coverage', () => {
     ctx = makeDb();
     const old = await ctx.service.add(input('Old reference', { confidenceScore: 0.4 }));
     await ctx.service.add(input('Old reference copy', { content: 'Content for Old reference with distinctive details', confidenceScore: 0.4 }));
-    ctx.sqlite.prepare("UPDATE knowledge_entries SET updated_at = '2020-01-01T00:00:00.000Z'").run();
+    ctx.sqlite.prepare("UPDATE knowledge_entries SET updated_at = CASE WHEN id = ? THEN '2019-01-01T00:00:00.000Z' ELSE '2020-01-01T00:00:00.000Z' END").run(old.id);
     expect((await ctx.service.findStaleEntries({ days: 1, limit: 1 })).map((e) => e.id)).toEqual([old.id]);
     expect(await ctx.service.findDuplicatePairs({ threshold: 0.5, limit: 1 })).toHaveLength(1);
     expect(await ctx.service.findDuplicateGroups({ threshold: 0.5 })).toHaveLength(1);

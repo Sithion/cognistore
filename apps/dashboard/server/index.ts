@@ -41,14 +41,20 @@ import {
 } from './mcp-entry.js';
 import {
   readSettings,
+  readSettingsAsync,
+  getCachedSettings,
+  refreshSettingsCache,
+  patchSettingsAsync,
   writeSettings,
   sanitizeSettings,
   isValidOllamaModelName,
-  SETTINGS_DEFAULTS,
   type AppSettings,
   type CreatedConfigFile,
 } from './settings.js';
-import { registerCleanupRoutes, maybeGenerateReport } from './cleanup-routes.js';
+import { registerCleanupRoutes } from './cleanup-routes.js';
+import { createCurationScheduler, sqliteCurationStore } from './curation-scheduler.js';
+import { registerCurationRoutes } from './curation-routes.js';
+import { modelManager, ownedModelNames, ollamaModels, canonicalModelName } from './curation-models.js';
 import { resolveWorkerUrl } from './worker-path.js';
 import {
   createUpgradeProgress,
@@ -173,9 +179,6 @@ if (!VERSION_RESOLVED) {
 // argument), unlike the display preferences that lived here before.
 
 // ─── External knowledge providers (~/.cognistore/providers.json) ─────
-/** Fallback when settings are unreadable at uninstall time. */
-const DEFAULT_CLEANUP_MODEL = SETTINGS_DEFAULTS.cleanupLlmModel;
-
 const PROVIDERS_FILE = resolve(INSTALL_DIR, 'providers.json');
 type ProvidersConfig = ReturnType<typeof providersConfigSchema.parse>;
 
@@ -383,10 +386,6 @@ Pass an array to addKnowledge to create multiple entries at once.
         }
       } catch (e: any) { log('warn', `Incremental vacuum check failed: ${e?.message ?? e}`); }
     })();
-    // Cleanup report. Awaited inside its own async IIFE with a catch: an
-    // unhandled rejection escaping a setInterval callback would crash the
-    // sidecar, and this path talks to the DB and (on preview) to Ollama.
-    void (async () => { await maybeGenerateReport({ sdk, log }); })().catch(() => { /* logged inside */ });
   }, 6 * 60 * 60 * 1000);
 
   // Token usage scan — incremental, idempotent. Adaptive cadence (plan v2.6,
@@ -446,6 +445,10 @@ Pass an array to addKnowledge to create multiple entries at once.
   // is inherited by all of them — and it matches on the resolved path, never on
   // an `/api/` prefix, which would be allow-by-default.
   registerAuth(app, authConfig);
+  app.addHook('onRequest', async request => {
+    if (request.url.split('?')[0].startsWith('/api/')) curationScheduler.noteActivity();
+  });
+
 
   // Generic error responses in production.
   //
@@ -1284,6 +1287,7 @@ Pass an array to addKnowledge to create multiple entries at once.
   /** Guards every path that writes deployed artifacts, so the startup self-heal,
    *  /api/upgrade/run and /api/redeploy can never interleave on the same files. */
   let upgradeRunning = false;
+  let uninstallRunning = false;
   /** Resolves when the in-flight deploy finishes; lets callers wait instead of 409. */
   let inFlightDeploy: Promise<unknown> | null = null;
   /** Live view of the running upgrade, polled by the upgrade screen. */
@@ -1630,6 +1634,10 @@ Pass an array to addKnowledge to create multiple entries at once.
   // ─── Uninstall endpoint ────────────────────────────────────────
 
   app.post<{ Body: { removeOllama?: boolean } | undefined }>('/api/uninstall', async (_request, reply) => {
+    if (uninstallRunning) return sendError(reply, 409, 'Uninstall already running');
+    uninstallRunning = true;
+    await curationScheduler.dispose();
+    await modelManager.dispose();
     const step = async (label: string, fn: () => unknown, results: string[], errors: string[]) => {
       try { await fn(); results.push(label); }
       catch (e) { errors.push(`${label}: ${e}`); }
@@ -1675,22 +1683,11 @@ Pass an array to addKnowledge to create multiple entries at once.
       configManager.removeOpenCodeSkills(); results.push('OpenCode skills removed');
       configManager.removeOpenCodePlugins(); results.push('OpenCode plugins removed');
 
-      // 4. Remove the Ollama models this app pulled: the embedding model, and
-      //    the merge model if a consolidation preview ever downloaded it.
-      //
-      //    execFileSync with an argument array, never a shell string: the
-      //    cleanup model name comes from settings.json, which the user can edit
-      //    and PUT /api/settings can write. The name is re-validated here too,
-      //    because reading it and trusting it are different things.
-      //
-      //    Settings are read BEFORE the ~/.cognistore removal below, or the file
-      //    would already be gone by the time we needed the model name.
-      const cleanupModel = (() => {
-        try {
-          const configured = readSettings().cleanupLlmModel;
-          return isValidOllamaModelName(configured) ? configured : DEFAULT_CLEANUP_MODEL;
-        } catch { return DEFAULT_CLEANUP_MODEL; }
-      })();
+      // 4. Capture model ownership before settings removal. Selected model
+      // names confer no ownership; pre-existing and unrecorded models survive.
+      // Keep the embedding removal policy and deduplicate shared chat models.
+      await modelManager.settled();
+      const ownedModels = ownedModelNames(await readSettingsAsync());
       const embeddingModel = process.env.OLLAMA_MODEL || 'nomic-embed-text';
       if (isValidOllamaModelName(embeddingModel)) {
         // Setup always pulls this one, so a failure here is worth reporting.
@@ -1698,15 +1695,9 @@ Pass an array to addKnowledge to create multiple entries at once.
           execFileSync('ollama', ['rm', embeddingModel], { stdio: 'pipe', timeout: 30000 });
         }, results, errors);
       }
-      // The merge model is pulled lazily, on the first consolidation preview, so
-      // most uninstalls never had it. `ollama rm` on a model that was never
-      // pulled is the normal case, not an error — reporting it would tell the
-      // user their uninstall partly failed when nothing did.
-      if (isValidOllamaModelName(cleanupModel) && cleanupModel !== embeddingModel) {
-        try {
-          execFileSync('ollama', ['rm', cleanupModel], { stdio: 'pipe', timeout: 30000 });
-          results.push(`Ollama model removed (${cleanupModel})`);
-        } catch { /* never pulled, or Ollama already gone */ }
+      for (const model of ownedModels) {
+        if (isValidOllamaModelName(embeddingModel) && model === canonicalModelName(embeddingModel)) continue;
+        await step(`Ollama model removed (${model})`, () => ollamaModels().remove(model), results, errors);
       }
 
       // 5. Uninstall Ollama — OPT-IN, and only what we installed.
@@ -2379,6 +2370,33 @@ Pass an array to addKnowledge to create multiple entries at once.
   // The per-route origin guard that used to live here is gone: it covered 7 of
   // 76 routes and took a security policy in as a route-module dependency. The
   // global onRequest hook from ./auth.ts now covers everything by default.
+  await refreshSettingsCache();
+  const curationStore = sqliteCurationStore(getRawSqlite);
+  const curationExcluded = () => upgradeRunning || uninstallRunning || KnowledgeSDK.maintenanceRunning;
+  const curationScheduler = createCurationScheduler({
+    settings: getCachedSettings, store: curationStore,
+    ready: () => sdkReady, excluded: curationExcluded,
+    recordActivity: at => sdk.recordCurationActivity(at),
+    activityReliable: () => sdk.curationActivityReliable,
+    dispatch: async (options, resume, signal) => {
+      // Availability and ownership are different: an installed 3B model can
+      // serve as fallback without granting uninstall ownership to this app.
+      const installed = new Set([...options.installedCurationModels, ...getCachedSettings().installedCleanupModels]);
+      try {
+        if (await ollamaModels().available('llama3.2:3b')) installed.add('llama3.2:3b');
+      } catch { /* Deterministic curation still works while Ollama is offline. */ }
+      const payload = { ...options, installedCurationModels: [...installed] };
+      return resume ? sdk.resumeCuration(options.runId, payload, { signal }) : sdk.runCuration(payload, { signal });
+    },
+    log: message => log('warn', message),
+  });
+  app.addHook('onClose', async () => { await curationScheduler.dispose(); });
+  registerCurationRoutes(app, {
+    sdk, scheduler: curationScheduler, store: curationStore, db: getRawSqlite,
+    settings: getCachedSettings, models: modelManager, ensureReady, excluded: curationExcluded, sendError,
+  });
+  curationScheduler.start();
+
   registerCleanupRoutes(app, {
     sdk,
     ensureReady,
@@ -2621,13 +2639,13 @@ Pass an array to addKnowledge to create multiple entries at once.
 
   app.put<{ Body: Partial<AppSettings> }>('/api/settings', async (request, reply) => {
     const body = request.body;
-    if (!body || typeof body !== 'object') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
       reply.code(400);
       return { error: 'Body must be an object' };
     }
-    // sanitizeSettings also runs inside writeSettings; calling it here keeps the
+    // sanitizeSettings also runs inside the serialized writer; calling it here keeps the
     // response honest about what was actually stored.
-    const merged = writeSettings(sanitizeSettings(body));
+    const merged = await patchSettingsAsync(sanitizeSettings(body));
     tokenRetentionDays = merged.tokenUsageRetentionDays;
     // The always-on flag is read by the SDK for federated search.
     sdk.reloadProviders();
@@ -2799,27 +2817,6 @@ Pass an array to addKnowledge to create multiple entries at once.
   console.log('COGNISTORE_SIDECAR_READY');
 
   /**
-   * Catch up on the cleanup report shortly after boot, so a machine that is never
-   * up for a full 6-hour tick still gets one.
-   *
-   * Deferred by a minute and gated on COGNISTORE_MANAGED for two independent
-   * reasons: duplicate detection runs a synchronous per-entry KNN scan that would
-   * block the event loop during startup, and the e2e suite spawns this server
-   * against the developer's real HOME — an ungated run would rewrite their
-   * ~/.cognistore/settings.json on every test run.
-   */
-  if (process.env.COGNISTORE_MANAGED === '1') {
-    const scheduleStartupReport = () => setTimeout(() => {
-      if (!sdkReady || upgradeRunning || KnowledgeSDK.maintenanceRunning) {
-        scheduleStartupReport();
-        return;
-      }
-      void (async () => { await maybeGenerateReport({ sdk, log }); })().catch(() => { /* logged inside */ });
-    }, 60_000).unref();
-    scheduleStartupReport();
-  }
-
-  /**
    * Self-heal deployed artifacts when this build is newer than what is on disk.
    *
    * Until now the redeploy only ran when the user opened the dashboard and the UI
@@ -2908,8 +2905,8 @@ Pass an array to addKnowledge to create multiple entries at once.
   const shutdown = async () => {
     pruneController?.abort();
     perfMonitor.stop();
-    if (sdkReady) await sdk.close();
     await app.close();
+    if (sdkReady) await sdk.close();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

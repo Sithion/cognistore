@@ -19,12 +19,15 @@ describe('KnowledgeService knowledge entries', () => {
     expect(entry.id).toMatch(/[0-9a-f-]{36}/i);
   });
 
-  it('deduplicates close content only within matching scope and type', async () => {
+  it('inserts close content and advises within matching scope', async () => {
     ctx = makeDb();
     const first = await ctx.service.add(input());
     const merged = await ctx.service.add(input({ title: 'SQLite WAL guidance', content: 'Use write ahead logging for concurrent readers!' }));
-    expect(merged.id).toBe(first.id);
-    expect(merged.deduplicated).toBe(true);
+    expect(merged.id).not.toBe(first.id);
+    expect(merged.deduplicated).toBeUndefined();
+    expect(await ctx.service.listAll()).toHaveLength(2);
+    expect(merged.similarExisting).toEqual([expect.objectContaining({ id: first.id, title: first.title })]);
+    expect(merged.hint).toBe('considere updateKnowledge(id) em vez de criar');
     const scoped = await ctx.service.add(input({ scope: 'project-a', skipDedup: true }));
     const otherScope = await ctx.service.add(input({ scope: 'project-x' }));
     const otherType = await ctx.service.add(input({ type: 'fact' }));
@@ -38,6 +41,8 @@ describe('KnowledgeService knowledge entries', () => {
     const second = await ctx.service.add(input({ skipDedup: true }));
     expect(second.id).not.toBe(first.id);
     expect(second.deduplicated).toBeUndefined();
+    expect(second.similarExisting).toEqual([]);
+    expect(await ctx.service.listAll()).toHaveLength(2);
   });
 
   it('searches with type, scope, tag, limit and threshold options', async () => {

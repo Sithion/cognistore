@@ -62,7 +62,14 @@ export interface KnowledgeEntry {
   trashedAt?: Date | null;
 }
 
+export interface KnowledgeWriteAdvisory {
+  deduplicated?: boolean;
+  similarExisting: { id: string; title: string; similarity: number }[];
+  hint?: string;
+}
+
 export interface CreateKnowledgeInput {
+  supersedes?: string[];
   title: string;
   content: string;
   tags: string[];
@@ -78,6 +85,7 @@ export interface CreateKnowledgeInput {
 }
 
 export interface UpdateKnowledgeInput {
+  supersedes?: string[];
   title?: string;
   content?: string;
   tags?: string[];
