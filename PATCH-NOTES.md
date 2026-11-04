@@ -13,6 +13,7 @@
 - Explicit curation-model preparation records installation ownership so uninstall preserves pre-existing models.
 - Synthetic evaluation fixtures and compatibility coverage exercise curation without including private knowledge.
 
+- Semantic search again uses sqlite-vec KNN with an adaptive window that skips inactive entries (a brute-force scan introduced earlier in this round took ~140 ms on 10k entries; now ~21 ms), caught by the `@perf` gate (B.16).
 - Test infrastructure: sidecar e2e suites now take ports from a per-worker reserved range instead of the OS ephemeral pool, removing an `EADDRINUSE` flake (B.15).
 
 ### Round 8 — Navigation and dashboard
