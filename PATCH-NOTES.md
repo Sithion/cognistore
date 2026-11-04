@@ -13,6 +13,8 @@
 - Explicit curation-model preparation records installation ownership so uninstall preserves pre-existing models.
 - Synthetic evaluation fixtures and compatibility coverage exercise curation without including private knowledge.
 
+- Test infrastructure: sidecar e2e suites now take ports from a per-worker reserved range instead of the OS ephemeral pool, removing an `EADDRINUSE` flake (B.15).
+
 ### Round 8 — Navigation and dashboard
 - Grouped, collapsible navigation, addressable detail panels and Settings sections, command palette, keyboard shortcuts, and URL-backed filters.
 - Dashboard screens use the approved shadcn/ui design system with light, dark, and system themes.
