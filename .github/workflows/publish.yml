@@ -44,6 +44,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # `pnpm test` includes the browser UI e2e suites (since 2.6), which need
+      # Chromium. Same install as the build-and-test job in ci.yml.
+      - name: Install Chromium for browser e2e
+        run: cd packages/tests && npx playwright install --with-deps chromium
       - run: pnpm test
 
       - name: Strip workspace-only devDependencies from MCP package.json
