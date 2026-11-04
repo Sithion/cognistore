@@ -289,12 +289,12 @@ Restrições: React 19 + Vite + Tailwind v4 já no projeto, webview Tauri (WebKi
 Substitui o "relatório a cada 10 dias com aprovação manual de tudo" por um **pipeline contínuo, auditável e reversível**. Reaproveita `cleanup-merge.ts` (validação de draft, tags derivadas) e `llm-merge.ts`.
 
 ### 2.1 Modelo de dados (migration nova)
-- [ ] `knowledge_entries`: `status TEXT NOT NULL DEFAULT 'active'` (`active` | `superseded` | `archived` | `trashed`), `superseded_by TEXT`, `curated_at TEXT`, `trashed_at TEXT`. `content_hash` já foi entregue na migration 2.4.5.
-- [ ] Busca, listagem, stats, KNN e FTS filtram `status='active'` (índice parcial).
-- [ ] `curation_runs(id, started_at, finished_at, trigger, model, budget, stats JSON)`.
-- [ ] `curation_actions(id, run_id, kind, entry_ids JSON, result_entry_id, reason, confidence, actor ('local-llm'|'agent:<platform>'|'user'|'rule'), before_snapshot JSON, status ('applied'|'undone'|'proposed'|'rejected'), created_at)`.
-- [ ] Purga: `trashed` há > 30 dias (configurável) é apagado de verdade (e embeddings/FTS/relations).
-- [ ] Migrar entradas existentes: título `[SUPERSEDED by X]` → `status='superseded', superseded_by=X`; tag `deprecated` → candidata de regra.
+- [x] `knowledge_entries`: `status TEXT NOT NULL DEFAULT 'active'` (`active` | `superseded` | `archived` | `trashed`), `superseded_by TEXT`, `curated_at TEXT`, `trashed_at TEXT`. `content_hash` já foi entregue na migration 2.4.5. — **Rodada 9**.
+- [x] Busca, listagem, stats, KNN e FTS filtram `status='active'` (índice parcial). — **Rodada 9**.
+- [x] `curation_runs(id, started_at, finished_at, trigger, model, budget, stats JSON)`. — **Rodada 9**.
+- [x] `curation_actions(id, run_id, kind, entry_ids JSON, result_entry_id, reason, confidence, actor ('local-llm'|'agent:<platform>'|'user'|'rule'), before_snapshot JSON, status ('applied'|'undone'|'proposed'|'rejected'), created_at)`. — **Rodada 9**.
+- [x] Purga: `trashed` há > 30 dias (configurável) é apagado de verdade (e embeddings/FTS/relations). — **Rodada 9**.
+- [x] Migrar entradas existentes: título `[SUPERSEDED by X]` → `status='superseded', superseded_by=X`; tag `deprecated` → candidata de regra. — **Rodada 9**.
 
 ### 2.2 Pipeline (um job do JobRunner, com orçamento de tempo e de itens)
 1. **Regras determinísticas (auto):** hash de conteúdo idêntico → mantém o mais novo; `expires_at` vencido → trash; `superseded` há > 14 dias → trash; tag `deprecated` há > N dias sem leitura → trash.
@@ -320,18 +320,18 @@ Substitui o "relatório a cada 10 dias com aprovação manual de tudo" por um **
 Entradas com tag `keep` e `type='system'` nunca são tocadas. Tudo vira linha em `curation_actions`.
 
 ### 2.4 Quando roda
-- [ ] Agendador no sidecar: quando **ocioso** (sem chamadas MCP/API há 10 min) e no máximo 1×/dia, ou manual.
-- [ ] Orçamento por execução: ex. 15 min ou 50 clusters; retoma de onde parou.
-- [ ] Ollama: `keep_alive` curto (ex. `2m`) para descarregar o modelo depois; nunca roda se Ollama indisponível (regras determinísticas rodam mesmo assim).
-- [ ] Modelo: `llama3.2:3b` é fraco para julgar. Tornar configurável e recomendar um 7–8B instruct (ex. `qwen2.5:7b-instruct`) quando houver RAM; manter 3B como fallback. Avaliar com um conjunto de pares rotulados (2.6).
+- [x] Agendador no sidecar: quando **ocioso** (sem chamadas MCP/API há 10 min) e no máximo 1×/dia, ou manual. — **Rodada 9**.
+- [x] Orçamento por execução: ex. 15 min ou 50 clusters; retoma de onde parou. — **Rodada 9**.
+- [x] Ollama: `keep_alive` curto (ex. `2m`) para descarregar o modelo depois; nunca roda se Ollama indisponível (regras determinísticas rodam mesmo assim). — **Rodada 9**.
+- [x] Modelo: `llama3.2:3b` é fraco para julgar. Tornar configurável e recomendar um 7–8B instruct (ex. `qwen2.5:7b-instruct`) quando houver RAM; manter 3B como fallback. Avaliar com um conjunto de pares rotulados (2.6). — **Rodada 9**.
 
 ### 2.5 Prevenção na escrita (o melhor "cleanup" é não duplicar)
-- [ ] `addKnowledge`: antes de inserir, buscar vizinhos ≥ 0,88 no mesmo scope. Se houver, **não bloquear**, mas retornar `similarExisting: [{id,title,similarity}]` + `hint: "considere updateKnowledge(id) em vez de criar"`.
-- [ ] Novo parâmetro `supersedes?: string[]` em `addKnowledge`/`updateKnowledge` → marca as antigas como `superseded` atomicamente.
+- [x] `addKnowledge`: antes de inserir, buscar vizinhos ≥ 0,88 no mesmo scope. Se houver, **não bloquear**, mas retornar `similarExisting: [{id,title,similarity}]` + `hint: "considere updateKnowledge(id) em vez de criar"`. — **Rodada 9**.
+- [x] Novo parâmetro `supersedes?: string[]` em `addKnowledge`/`updateKnowledge` → marca as antigas como `superseded` atomicamente. — **Rodada 9**.
 
 ### 2.6 Qualidade
-- [ ] Conjunto de avaliação: 60 pares sintéticos e anonimizados, rotulados à mão (duplicate/supersedes/complementary/distinct), versionados em `packages/core/test/fixtures`. Teste mede acurácia do juiz por modelo; meta ≥ 85% em `auto-safe` sem falso "duplicate". Resultados incompletos ou modelos indisponíveis não qualificam o modelo; o padrão da 2.6.0 permanece `suggest`.
-- [ ] Testes e2e: merge aplica e desfaz; supersede; purge; política de autonomia; `keep` respeitado; job interrompido retoma.
+- [ ] Conjunto de avaliação: 60 pares sintéticos e anonimizados, rotulados à mão (duplicate/supersedes/complementary/distinct), versionados em `packages/core/test/fixtures`. Teste mede acurácia do juiz por modelo; meta ≥ 85% em `auto-safe` sem falso "duplicate". Resultados incompletos ou modelos indisponíveis não qualificam o modelo; o padrão da 2.6.0 permanece `suggest`. — **Rodada 9**: corpus entregue; acurácia com modelo real ainda NÃO medida.
+- [x] Testes e2e: merge aplica e desfaz; supersede; purge; política de autonomia; `keep` respeitado; job interrompido retoma. — **Rodada 9**.
 
 ## Fase 3 — Curadoria pelo agente (skills + MCP)
 
@@ -372,6 +372,9 @@ O agente que já está usando o CogniStore tem um modelo muito melhor que o loca
 - [x] B.12 **Limites fixos de event loop nos @perf**: `duplicates-eventloop › dense cluster` (no processo, limite fixo 100 ms) deu 123,9 ms no CI e 73,1 ms no re-run; o máximo do loop principal nos testes de worker chegou a 97,1 ms. Aplicar `PERF_BUDGET_SCALE` a todos os limites de event loop/drift e registrar mediana de 3 execuções. *(aprovado pelo gerente na Rodada 6)* — **Rodada 7** (merge 814800a)
 - [x] B.13 **Instalação do MCP sem compilador** (validação da Rodada 6): o `better-sqlite3` 13 traz binários N-API pré-compilados para 8 plataformas e `gypfile: false`, então `npm`/`npx` (o que os consumidores usam) não compila nada e o binário serve para qualquer versão do Node — isso também elimina a causa do B.8 para o MCP 2.6. Mas o pnpm 9.15 ignora o `gypfile: false` e roda `node-gyp rebuild` no dev/CI, que precisa de toolchain C++ e dos headers do nodejs.org (falhou no ambiente do gerente; contornado com `--ignore-scripts`, usando o binário pré-compilado). Fazer: (a) job de CI que instala o tarball do MCP 2.6 (`npm pack`) com `npx` numa imagem `node:24-slim` **sem** build-essential nem Python e roda o smoke de 4 ferramentas; (b) avaliar `pnpm.neverBuiltDependencies`/`onlyBuiltDependencies` para não compilar o `better-sqlite3` no dev/CI e conferir que o bundle do sidecar usa o binário N-API (e não leva os 8 binários de outras plataformas sem necessidade). — **Rodada 7** (merge 3f805c0): job mcp-npx-no-toolchain, neverBuiltDependencies e prebuild único no bundle do sidecar
 - [ ] B.14 **Instabilidade do beforeAll do design-route**: uma vez em 4 execuções de `pnpm verify`, `waitForSidecar` retornou false em 45 s. Ideia de correção: capturar o stdio do sidecar nesse teste e reutilizar `spawnSidecar`.
+- [x] B.15 **`EADDRINUSE` flaky nos e2e com sidecar** (Rodada 9): `getFreePort` fechava a porta 0 e outro worker podia pegá-la. Faixas de porta por worker (`6c57086`).
+- [x] B.16 **Regressão da busca semântica** (Rodada 9): varredura bruta de embeddings (140 ms em 10k). KNN restaurado com janela adaptativa só de ativas (`b98e911`), ~22 ms.
+- [x] B.17 **Regressão do `listRecent` em offset profundo** (Rodada 9): 44 ms em vez de 2 ms; `+status` mantém o índice `created_at` (merge `6e19e60`).
 
 ## Fase R — Release gate (v2.6.0)
 
@@ -416,6 +419,7 @@ Reordenado após a Rodada 1: o congelamento tem causa concreta e barata de ataca
 
 ## Diário de execução
 
+- 2026-11-04 — **Rodada 9 APROVADA pelo gerente.** Clone limpo de `6e19e60`: `pnpm verify --coverage` verde, compat 60/60, @perf 21/21, `--repeat-each=20` verde em todos os testes novos (curation-r9 200, judge 600, compat 80), auditoria sem novidade; CI do PR #109 verde exceto version-check e release-version-guard. A validação achou duas regressões de performance reais (B.16 busca 10→140 ms; B.17 listRecent profundo 2→44 ms), corrigidas antes da aprovação, além do B.15 (flake de porta). Curadoria entregue com `suggest` por padrão; acurácia do juiz com modelo real não medida (não ativar `auto-safe`). Ver [relatório](reports/2026-11-04-rodada-9.md).
 - 2026-11-03 — **Rodada 8 APROVADA pelo gerente.** Em clone limpo de `986292c`, `pnpm verify --coverage` ficou verde (68,27% de cobertura global; segundo escopo 60,76%), matrizes de compatibilidade 55/55, CI do PR #109 verde nos jobs de build/teste, MCP sem toolchain, osv-scan, perf, Rust, bundle do sidecar e type-check. O único @perf local instável foi transitório sob carga, passou em isolamento e nas duas execuções de CI, então o limite ficou inalterado; bundle gzip 432.470 B (1,171× Rodada 7, abaixo do teto 1,30). U.2–U.5 e T.8/T.9 foram entregues nos limites descritos no [relatório da Rodada 8](reports/2026-11-03-rodada-8.md); U.2.11, U.2.12, status MCP por plataforma, Insights com scope e orçamento de renderização para 10k seguem abertos.
 - 2026-11-03 — **Rodada 7 APROVADA pelo gerente.** Validada num clone limpo de `release/2.6` (862f1d2): `pnpm verify --coverage` verde (cobertura 68,08% linhas, todas as camadas ≥ baseline), compat 55/55, `@perf` 21/21 (maior bloqueio 30,1 ms), `design-route` 60/60 com `--repeat-each=20`, CI do #109 sem vermelho além de version-check/release-version-guard. osv-scanner local indisponível (coberto pelo CI). Executor e gerente agora seguem a seção "Execução com a frota HORIZON" da skill `cognistore-manager`. **Aguardando aprovação visual (portão 5) dos screenshots em `documentation/plans/reports/assets/rodada-7/` antes da Rodada 8.**
 - 2026-11-03 — **Rodada 7** (`reports/2026-11-03-rodada-7.md`). B.12 (814800a), B.13 (3f805c0), U.0.2 + U.1 (0a216be). Spike no WebKitGTK real: 10/10; bundle inicial +6,8% (bruto) / +8,7% (gzip); telas atuais intactas. Pendente do mantenedor: aprovar a direção visual (screenshots em reports/assets/rodada-7/) e conferir o checklist do macOS.
