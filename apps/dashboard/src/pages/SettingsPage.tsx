@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { api, SIDECAR_TOKEN, type CleanupCandidate, type CleanupReportResponse } from '../api/client.js';
+import { api, SIDECAR_TOKEN } from '../api/client.js';
 import { triggerUpdateCheck, triggerUpdateDownload, onUpdateState, getIsTauri, getLatestReleaseUrl, useAutoUpdateSetting } from '../components/UpdateChecker.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
 import { RetentionField } from '../settings/RetentionField.js';
@@ -1126,22 +1126,6 @@ function KnowledgeHealthSection() {
   );
 }
 
-
-const smallButton: React.CSSProperties = {
-  fontSize: 12,
-  padding: '4px 10px',
-  borderRadius: 6,
-  border: '1px solid var(--border)',
-  background: 'transparent',
-  color: 'var(--text)',
-  cursor: 'pointer',
-};
-
-const smallDangerButton: React.CSSProperties = {
-  ...smallButton,
-  borderColor: 'var(--error)',
-  color: 'var(--error)',
-};
 
 function ThemeField() {
   const [theme, setTheme] = useState<ThemeMode>(getThemeMode);
