@@ -4,6 +4,9 @@
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
+### Fixes (release pipeline)
+- `publish.yml`: the `publish-mcp` job now installs Chromium before `pnpm test`; the browser UI e2e suites added in 2.6 failed there with "Executable doesn't exist" and blocked the 2.6.0 publish.
+
 ### Release docs (Round 11)
 - Documentation refreshed for 2.6: curation schema (migration 2.4.6) in `database.md`, curation engine and performance changes in `architecture.md`, `/api/curation/*` and `/api/system/db-health` in `api-reference.md`, new UI stack and Curation page in `frontend.md`, curation tools in `mcp-server.md`, and a "What's new in 2.6" section in the README.
 - Upgrade check on a copy of a real 46 MB database (schema 2.4.1): migrations through 2.4.6 apply in under 100 ms, entries are unchanged and integrity is ok.
