@@ -337,24 +337,24 @@ Entradas com tag `keep` e `type='system'` nunca são tocadas. Tudo vira linha em
 
 O agente que já está usando o CogniStore tem um modelo muito melhor que o local. Ele vira o "segundo nível" da curadoria.
 
-- [ ] 3.1 Ferramentas MCP novas:
+- [x] 3.1 Ferramentas MCP novas:
   - `getCurationQueue({ scope?, limit })` — clusters/propostas pendentes com conteúdo resumido.
   - `resolveCuration({ itemId, decision, mergedTitle?, mergedContent?, reason })` — aplica via o mesmo caminho validado da Fase 2 (`actor='agent:<platform>'`).
   - `supersedeKnowledge({ oldIds, newId, reason })`.
   - Permissões: `resolveCuration` entra na lista de ferramentas destrutivas em `~/.claude/settings.json` (como `deleteKnowledge`) — o usuário decide se permite.
-- [ ] 3.2 Skill nova `cognistore-maintain` (templates `claude-code`, `copilot`, `opencode`): processa até 10 itens da fila no scope atual, regras claras de quando fazer merge vs supersede vs manter, nunca apagar `keep`/`system`, sempre registrar `reason`.
-- [ ] 3.3 Atualizar `cognistore-capture`: "busque antes de adicionar; se existe, `updateKnowledge`; se substitui, use `supersedes`; nunca prefixe título com SUPERSEDED".
-- [ ] 3.4 Atualizar `cognistore-query`: ignorar/descartar resultados `superseded`; reportar contradições encontradas via `resolveCuration` com `decision:'flag'`.
-- [ ] 3.5 Hook `Stop`/`session-end`: se fila do scope atual > 5 itens e última manutenção do agente > 24 h, sugerir rodar `/cognistore-maintain` (no máx. 1×/dia).
-- [ ] 3.6 Simetria setup/uninstall: nova pasta de skill copiada no setup e removida no uninstall (atualizar tabela do `CLAUDE.md` + testes de config).
+- [x] 3.2 Skill nova `cognistore-maintain` (templates `claude-code`, `copilot`, `opencode`): processa até 10 itens da fila no scope atual, regras claras de quando fazer merge vs supersede vs manter, nunca apagar `keep`/`system`, sempre registrar `reason`.
+- [x] 3.3 Atualizar `cognistore-capture`: "busque antes de adicionar; se existe, `updateKnowledge`; se substitui, use `supersedes`; nunca prefixe título com SUPERSEDED".
+- [x] 3.4 Atualizar `cognistore-query`: ignorar/descartar resultados `superseded`; reportar contradições encontradas via `resolveCuration` com `decision:'flag'`.
+- [x] 3.5 Hook `Stop`/`session-end`: se fila do scope atual > 5 itens e última manutenção do agente > 24 h, sugerir rodar `/cognistore-maintain` (no máx. 1×/dia).
+- [x] 3.6 Simetria setup/uninstall: nova pasta de skill copiada no setup e removida no uninstall (atualizar tabela do `CLAUDE.md` + testes de config).
 
 ## Fase 4 — UI e agendamento
 
-- [ ] 4.1 Página "Curadoria" no dashboard (no sistema de design da Fase U) (substitui o banner do relatório): última execução, ações aplicadas com **Desfazer**, propostas pendentes (aprovar/rejeitar em lote), lixeira com restaurar.
-- [ ] 4.2 Settings: autonomia, modelo, limiar de cluster, janela de retenção (lixeira, `token_usage`), horário/ociosidade.
-- [ ] 4.3 Saúde do banco: tamanho por tabela, % telemetria, último VACUUM, lag do event loop (da Fase 0).
-- [ ] 4.4 Migrar `cleanup_reports/candidates` existentes para `curation_actions` (status `proposed`) e remover o fluxo antigo.
-- [ ] 4.5 i18n (pt/en) para tudo acima.
+- [x] 4.1 Página "Curadoria" no dashboard (no sistema de design da Fase U) (substitui o banner do relatório): última execução, ações aplicadas com **Desfazer**, propostas pendentes (aprovar/rejeitar em lote), lixeira com restaurar.
+- [x] 4.2 Settings: autonomia, modelo, limiar de cluster, janela de retenção (lixeira, `token_usage`), horário/ociosidade.
+- [x] 4.3 Saúde do banco: tamanho por tabela, % telemetria, último VACUUM, lag do event loop (da Fase 0).
+- [x] 4.4 Migrar `cleanup_reports/candidates` existentes para `curation_actions` (status `proposed`) e remover o fluxo antigo.
+- [x] 4.5 i18n (pt/en) para tudo acima.
 
 ## Bugs encontrados durante a execução
 
@@ -419,6 +419,7 @@ Reordenado após a Rodada 1: o congelamento tem causa concreta e barata de ataca
 
 ## Diário de execução
 
+- 2026-11-04 — **Rodada 10 APROVADA pelo gerente, com ressalvas.** Clone limpo de `12dfe26`: `pnpm verify --coverage` verde, compat 63/63, @perf 21/21 (search 23,2 ms, listRecent 0,3/2,4 ms, stats 13,4 ms), `--repeat-each=20` verde nos 8 testes novos/alterados, auditoria sem novidade; CI do PR #109 vermelho apenas em version-check e release-version-guard. Ressalvas: migração legada vira propostas `flag` (sem snapshots não há ação executável); 4.3 sem "último VACUUM" (campo `null`); reviewers perf/invariants não puderam ser lançados (hook reescreve o prompt) e foram substituídos por checagem em sessão; sem axe na nova página. Relatório: `documentation/plans/reports/2026-11-04-rodada-10.md`.
 - 2026-11-04 — **Rodada 9 APROVADA pelo gerente.** Clone limpo de `6e19e60`: `pnpm verify --coverage` verde, compat 60/60, @perf 21/21, `--repeat-each=20` verde em todos os testes novos (curation-r9 200, judge 600, compat 80), auditoria sem novidade; CI do PR #109 verde exceto version-check e release-version-guard. A validação achou duas regressões de performance reais (B.16 busca 10→140 ms; B.17 listRecent profundo 2→44 ms), corrigidas antes da aprovação, além do B.15 (flake de porta). Curadoria entregue com `suggest` por padrão; acurácia do juiz com modelo real não medida (não ativar `auto-safe`). Ver [relatório](reports/2026-11-04-rodada-9.md).
 - 2026-11-03 — **Rodada 8 APROVADA pelo gerente.** Em clone limpo de `986292c`, `pnpm verify --coverage` ficou verde (68,27% de cobertura global; segundo escopo 60,76%), matrizes de compatibilidade 55/55, CI do PR #109 verde nos jobs de build/teste, MCP sem toolchain, osv-scan, perf, Rust, bundle do sidecar e type-check. O único @perf local instável foi transitório sob carga, passou em isolamento e nas duas execuções de CI, então o limite ficou inalterado; bundle gzip 432.470 B (1,171× Rodada 7, abaixo do teto 1,30). U.2–U.5 e T.8/T.9 foram entregues nos limites descritos no [relatório da Rodada 8](reports/2026-11-03-rodada-8.md); U.2.11, U.2.12, status MCP por plataforma, Insights com scope e orçamento de renderização para 10k seguem abertos.
 - 2026-11-03 — **Rodada 7 APROVADA pelo gerente.** Validada num clone limpo de `release/2.6` (862f1d2): `pnpm verify --coverage` verde (cobertura 68,08% linhas, todas as camadas ≥ baseline), compat 55/55, `@perf` 21/21 (maior bloqueio 30,1 ms), `design-route` 60/60 com `--repeat-each=20`, CI do #109 sem vermelho além de version-check/release-version-guard. osv-scanner local indisponível (coberto pelo CI). Executor e gerente agora seguem a seção "Execução com a frota HORIZON" da skill `cognistore-manager`. **Aguardando aprovação visual (portão 5) dos screenshots em `documentation/plans/reports/assets/rodada-7/` antes da Rodada 8.**
