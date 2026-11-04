@@ -1,6 +1,6 @@
 # Patch Notes
 
-## v2.6.0 (unreleased)
+## v2.6.0 (2026-11-04)
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
