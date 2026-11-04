@@ -77,3 +77,25 @@ describe('curation actions',()=>{
     const result=await ctx.service.applyRemovalCandidate(candidate.id);expect(result.deleted).toBe(1);expect(result.deletedSnapshot[0].content).toBe('retain me');expect(ctx.sqlite.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(e.id)).toEqual({status:'trashed'});expect(ctx.sqlite.prepare("SELECT count(*) AS n FROM curation_actions WHERE kind='trash' AND status='applied' AND entry_ids LIKE ?").get(`%${e.id}%`)).toEqual({n:1});expect(ctx.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE id=?').get(e.id)).toBeTruthy();
   });
 });
+
+
+it('aging without a deterministic score never applies',async()=>{
+  ctx=makeDb();const repo=new CurationRepository(ctx.sqlite);
+  for(const score of [undefined,.69,null,'0.99']){
+    const a=await add('Old','old knowledge');
+    const act=action(repo,[a.id],'aging',score===undefined?{}:{score});
+    expect(new CurationEngine(repo).apply(act.id)).toBe(false);
+    expect(repo.getAction(act.id).status).toBe('proposed');
+    expect(repo.getEntry(a.id).status).toBe('active');
+  }
+});
+
+it('supersede outside the candidate cluster is rejected at apply time',async()=>{
+  ctx=makeDb();const a=await add('A','alpha'),b=await add('B','beta'),outside=await add('Outside','outside');
+  const repo=new CurationRepository(ctx.sqlite);
+  const act=action(repo,[a.id,outside.id],'supersedes',{sourceId:a.id,targetId:outside.id,cluster:{candidateIds:[a.id,b.id],memberIds:[a.id,b.id],threshold:.85}});
+  const before=repo.captureSnapshot([a.id,b.id,outside.id]);
+  expect(new CurationEngine(repo).apply(act.id)).toBe(false);
+  expect(repo.getAction(act.id).status).toBe('proposed');
+  expect(repo.captureSnapshot([a.id,b.id,outside.id])).toEqual(before);
+});

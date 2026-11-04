@@ -50,12 +50,12 @@ export class CurationEngine {
         const versions=Object.fromEntries(current.map(e=>[e.id,{version:e.version,contentHash:e.content_hash,scope:e.scope,status:e.status}]));
         const key=`${runId}:${phase}:${kind}:${ids.slice().sort().join(',')}:${JSON.stringify(payload)}`;
         const deterministic=phase==='deterministic';
-        const threshold=options.autonomy==='suggest'?Infinity:deterministic?0:kind==='merge'||kind==='supersedes'? (options.autonomy==='auto'?0.70:0.85):options.autonomy==='auto'?0:Infinity;
+        const threshold=options.autonomy==='suggest'?Infinity:deterministic?0:kind==='merge'||kind==='supersedes'? (options.autonomy==='auto'?0.70:0.85):options.autonomy==='auto'?0.85:Infinity;
         const nowAction=new Date().toISOString(), confidenceValue=confidence??(kind==='trash'||kind==='expire'||kind==='duplicate'||kind==='deprecated'?1:0);
         this.repository.transaction(()=>{
           const created=this.repository.createAction({id:randomUUID(),runId,kind,actor:'curation',entryIds:ids,snapshot:this.repository.captureSnapshot(ids),confidence,payload,versions,key,now:nowAction,undoExpiresAt:new Date(Date.now()+options.trashRetentionDays*DAY).toISOString()});
           if(created.wasCreated&&created.status==='proposed') proposed++;
-          if(confidenceValue>=threshold){const ok=this.repository.applyAction(created.id,nowAction,(p)=>applyPayload(this.repository,kind,ids,p));if(ok){applied++;proposed=Math.max(0,proposed-1);}}
+          if(confidenceValue>=threshold){const ok=applyValidatedAction(this.repository,created.id,kind,ids,nowAction,options.autonomy==='auto');if(ok){applied++;proposed=Math.max(0,proposed-1);}}
           this.repository.checkpointRun(runId,{...cursor,lastActionKey:key},{proposed,applied,processed,failures},'running',nowAction);
         });
       };
@@ -82,10 +82,11 @@ export class CurationEngine {
             const judged=distinctCached?null:await this.requestJudge(input,signal);
             assertCurrent();
             if(judged){
+              const cluster={candidateIds:input.candidateIds,memberIds:component.map(e=>e.id),threshold:options.clusterThreshold};
               if(judged.verdict==='distinct'&&freshCandidates(this.repository,input,judged.candidateIds))for(const pair of pairRows)this.repository.putVerdict([pair[0].id,pair[1].id],pair.map(toEntryShape),judged.verdict,judged.confidence,judged.reason,judged.model??options.model,new Date().toISOString());
               else if(judged.verdict==='duplicate'){
-                const selected=members.filter(e=>judged.candidateIds.includes(e.id)).sort(canonicalOrder); if(selected.length>1&&freshCandidates(this.repository,input,selected.map(e=>e.id))){const draft=deterministicMergeDraft(selected.map(toMergeMember)); action('merge',selected.map(e=>e.id),{canonicalId:selected[0].id,draft:validateMergeDraft(draft)},judged.confidence,'cluster');}
-              } else if(judged.verdict==='supersedes'&&judged.payload?.sourceId&&judged.payload.targetId&&freshCandidates(this.repository,input,[judged.payload.sourceId,judged.payload.targetId])) action('supersedes',[judged.payload.sourceId,judged.payload.targetId],{sourceId:judged.payload.sourceId,targetId:judged.payload.targetId},judged.confidence,'cluster');
+                const selected=members.filter(e=>judged.candidateIds.includes(e.id)).sort(canonicalOrder); if(selected.length>1&&freshCandidates(this.repository,input,selected.map(e=>e.id))){const draft=deterministicMergeDraft(selected.map(toMergeMember)); action('merge',selected.map(e=>e.id),{canonicalId:selected[0].id,draft:validateMergeDraft(draft),cluster},judged.confidence,'cluster');}
+              } else if(judged.verdict==='supersedes'&&judged.payload?.sourceId&&judged.payload.targetId&&freshCandidates(this.repository,input,[judged.payload.sourceId,judged.payload.targetId])) action('supersedes',[judged.payload.sourceId,judged.payload.targetId],{sourceId:judged.payload.sourceId,targetId:judged.payload.targetId,cluster},judged.confidence,'cluster');
               else if(judged.verdict==='complementary'&&freshCandidates(this.repository,input,judged.candidateIds)) action('complementary',judged.candidateIds,{relatedIds:judged.candidateIds},judged.confidence,'cluster');
             }
           }
@@ -132,7 +133,7 @@ export class CurationEngine {
   }
 
   resume(runId:string, options:CurationOptions, signal?:AbortSignal, checkpoint?:Parameters<CurationEngine['run']>[2]) { return this.run({...options,runId},signal,checkpoint); }
-  apply(actionId:string) { const a=this.repository.getAction(actionId); if(!a)throw new Error('Curation action not found'); const ids=JSON.parse(a.entry_ids); return this.repository.applyAction(actionId,new Date().toISOString(),p=>applyPayload(this.repository,a.kind,ids,p)); }
+  apply(actionId:string) { const a=this.repository.getAction(actionId); if(!a)throw new Error('Curation action not found'); const ids=JSON.parse(a.entry_ids); return applyValidatedAction(this.repository,actionId,a.kind,ids,new Date().toISOString()); }
   reject(actionId:string) { if(!this.repository.setActionStatus(actionId,'proposed','rejected',new Date().toISOString()))throw new Error('Curation action is not pending'); }
   undo(actionId:string) { if(!this.repository.undoAction(actionId,new Date().toISOString()))throw new Error('Curation action is stale, conflicting, or expired'); return {actionId,status:'undone'}; }
   purge(options:{autonomy:CurationOptions['autonomy'];retentionDays:number;batchSize?:number}) {
@@ -160,6 +161,24 @@ function componentsByScope(entries:Entry[],threshold:number,repo:CurationReposit
     for(const group of groups.values())if(group.length>1){const sorted=group.sort(canonicalOrder),key=sorted.map(e=>e.id).sort().join(':');if(!unique.has(key))unique.set(key,sorted);}
   }
   return [...unique.values()].sort((a,b)=>a[0].id.localeCompare(b[0].id));
+}
+// Validate evidence inside the repository transaction immediately before any mutation.
+class InvalidCurationEvidence extends Error {}
+function applyValidatedAction(repo:CurationRepository,actionId:string,kind:string,ids:string[],now:string,automatic=false):boolean {
+  try { return repo.applyAction(actionId,now,payload=>{
+    if(kind==='aging'&&(!Number.isFinite(payload?.score)||payload.score<0.70))throw new InvalidCurationEvidence('Aging requires a recorded deterministic score >= 0.70');
+    if(kind==='merge'||kind==='supersedes'){
+      const cluster=payload?.cluster;
+      if(automatic||cluster){
+        if(!cluster||!Array.isArray(cluster.candidateIds)||!Array.isArray(cluster.memberIds)||!Number.isFinite(cluster.threshold)||cluster.threshold<0||cluster.threshold>1||ids.length<2||ids.some(id=>!cluster.candidateIds.includes(id)||!cluster.memberIds.includes(id)))throw new InvalidCurationEvidence('Participants must belong to the submitted candidate cluster');
+        const members=cluster.memberIds.map((id:string)=>repo.getEntry(id)).filter((e:Entry)=>e&&eligible(e));
+        if(!componentsByScope(members,cluster.threshold,repo).some(component=>ids.every(id=>component.some(e=>e.id===id))))throw new InvalidCurationEvidence('Participants no longer belong to the similarity cluster');
+      }
+      if(kind==='supersedes'&&(!ids.includes(payload.sourceId)||!ids.includes(payload.targetId)||payload.sourceId===payload.targetId))throw new InvalidCurationEvidence('Supersede participants must belong to the action');
+      if(kind==='merge'&&!ids.includes(payload.canonicalId))throw new InvalidCurationEvidence('Canonical entry must belong to the action');
+    }
+    applyPayload(repo,kind,ids,payload);
+  }); } catch(error) { if(error instanceof InvalidCurationEvidence)return false;throw error; }
 }
 function applyPayload(repo:CurationRepository,kind:string,ids:string[],payload:any){const now=new Date().toISOString();
   if(kind==='merge'){const canonical=payload.canonicalId as string, others=ids.filter(id=>id!==canonical);const members=ids.map(id=>repo.getEntry(id)).filter(Boolean);const tags=computeMergedTags(members.map(toMergeMember));const draft=validateMergeDraft(payload.draft);const relatedIds=[...new Set(members.flatMap(e=>parse(e.related_ids)).filter((id:string)=>!others.includes(id)&&id!==canonical))];repo.mutateEntry(canonical,{title:draft.title,content:draft.content,tags,relatedIds},now);for(const id of others)repo.mutateEntry(id,{status:'superseded',supersededBy:canonical},now);}
