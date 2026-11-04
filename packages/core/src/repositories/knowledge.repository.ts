@@ -352,20 +352,23 @@ export class KnowledgeRepository {
     if (options?.scope) { filters.push("(scope = 'global' OR scope = ?)"); filterParams.push(options.scope); }
     if (options?.tags?.length) { filters.push(`(${options.tags.map(() => "EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = ?)").join(' OR ')})`); filterParams.push(...options.tags); }
     if (options?.type) { filters.push('type = ?'); filterParams.push(options.type); }
-    const activeIds = (this.sqlite.prepare(`SELECT id FROM knowledge_entries WHERE ${filters.join(' AND ')} ORDER BY id`).all(...filterParams) as {id:string}[]).map(r=>r.id);
-    const knnResults: { id: string; distance: number }[] = [];
-    for (let from = 0; from < activeIds.length; from += 128) {
-      const batch = readEmbeddingBatch(this.sqlite, activeIds.slice(from, from + 128));
-      for (const row of batch) {
-        const dims = row.embedding.byteLength / 4;
-        const vector = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, dims);
-        if (dims !== queryEmbedding.length) continue;
-        let dot = 0, a = 0, b = 0;
-        for (let i=0;i<dims;i++) { dot += vector[i]*queryEmbedding[i]; a += vector[i]*vector[i]; b += queryEmbedding[i]*queryEmbedding[i]; }
-        knnResults.push({ id: row.id, distance: 1 - (dot / (Math.sqrt(a*b) || 1)) });
+    // sqlite-vec KNN is not metadata-aware: widen the window until enough ACTIVE,
+    // filter-matching candidates survive (inactive entries keep their vectors so undo works).
+    const maxK = Math.max(4096, candidateLimit);
+    let knnResults: { id: string; distance: number }[] = [];
+    for (let k = candidateLimit; ; k = Math.min(k * 2, maxK)) {
+      const raw = searchKnn(this.sqlite, queryEmbedding, k);
+      const allowed = new Set<string>();
+      for (let from = 0; from < raw.length; from += 500) {
+        const ids = raw.slice(from, from + 500).map((r) => r.id);
+        const rows = this.sqlite.prepare(
+          `SELECT id FROM knowledge_entries WHERE id IN (${ids.map(() => '?').join(',')}) AND ${filters.join(' AND ')}`,
+        ).all(...ids, ...filterParams) as { id: string }[];
+        for (const r of rows) allowed.add(r.id);
       }
+      knnResults = raw.filter((r) => allowed.has(r.id));
+      if (knnResults.length >= candidateLimit || raw.length < k || k >= maxK) break;
     }
-    knnResults.sort((a,b)=>a.distance-b.distance);
     knnResults.splice(candidateLimit);
 
     // Build a distance lookup map (cosine distance from sqlite-vec)
