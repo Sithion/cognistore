@@ -3,6 +3,8 @@ import {
   createEmbeddingsTable,
   KnowledgeRepository,
   KnowledgeService,
+  CurationRepository,
+  CurationEngine,
   TokenUsageRepository,
   TokenUsageService,
   type Database,
@@ -94,7 +96,11 @@ export class KnowledgeSDK {
 
   runCuration(options:CurationJobOptions, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.run',options,jobOptions); }
   resumeCuration(runId:string, options:CurationJobOptions, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.resume',{...options,runId},jobOptions); }
-  applyCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.apply',{actionId},jobOptions); }
+  applyCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}, applyOptions?:{actor?:string;draftOverride?:{title:string;content:string}}) { return this.run('curation.apply',{actionId,...applyOptions},jobOptions); }
+  /** Pending curation proposals for agents (bounded, excerpts only). */
+  getCurationQueue(options:{scope?:string;limit?:number;cursor?:string}) { this.ensureInitialized(); return new CurationEngine(new CurationRepository(this.sqlite!)).getQueue(options); }
+  /** Raise a `flag` proposal on an entry (contradiction or quality problem found by an agent). */
+  createCurationFlag(input:{entryId:string;reason:string;actor:string}) { this.ensureInitialized(); return new CurationEngine(new CurationRepository(this.sqlite!)).createFlag(input); }
   rejectCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.reject',{actionId},jobOptions); }
   undoCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.undo',{actionId},jobOptions); }
   purgeCurationTrash(payload:JobPayloads['curation.purge'], jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.purge',payload,jobOptions); }

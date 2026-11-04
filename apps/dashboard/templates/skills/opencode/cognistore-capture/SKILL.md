@@ -27,3 +27,8 @@ Before finishing, check: did you discover any reusable **pattern** about a langu
 
 ## Pre-Capture Check
 Before capturing knowledge, ensure any active plan tasks are marked completed.
+
+## Avoid duplicates and supersessions
+
+- Search before adding. If an entry on the topic already exists, use `cognistore_updateKnowledge` to update it instead of adding a near copy.
+- If the new entry REPLACES older ones, pass `supersedes: [<old ids>]` when adding or updating. Never prefix a title with SUPERSEDED.

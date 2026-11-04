@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { CurationScheduler, SchedulerStore } from './curation-scheduler.js';
 import type { createModelManager } from './curation-models.js';
 import type { AppSettings } from './settings.js';
+import type { CurationStateWriter } from './curation-state.js';
 
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const emptyBody = (body: unknown) => body === undefined || body !== null && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0;
@@ -12,15 +13,18 @@ export function registerCurationRoutes(app: FastifyInstance, deps: {
   models: ReturnType<typeof createModelManager>;
   ensureReady(reply: any): unknown;
   excluded(): boolean;
+  state?: CurationStateWriter;
   sendError(reply: any, code: number, error: string): unknown;
 }) {
   const fail = deps.sendError;
-  const actionColumns = 'a.id,a.kind,a.status,a.confidence,a.entry_ids';
+  const actionColumns = 'a.id,a.kind,a.status,a.confidence,a.entry_ids,a.payload';
   const summary = (row: any) => {
     const entryIds = JSON.parse(row.entry_ids) as string[];
     const titles = entryIds.map(id => deps.db()!.prepare('SELECT title FROM knowledge_entries WHERE id=?').get(id)?.title ?? null);
-    return { id: row.id, kind: row.kind, status: row.status, confidence: row.confidence, titles, entryIds };
+    let reason = ''; try { const parsed = JSON.parse(row.payload ?? '{}'); if (typeof parsed?.reason === 'string') reason = parsed.reason.slice(0, 500); } catch { /* no reason */ }
+    return { id: row.id, kind: row.kind, status: row.status, confidence: row.confidence, titles, entryIds, ...(reason ? { reason } : {}) };
   };
+  const refreshState = () => { void deps.state?.refresh(); };
   const handleError = (reply: any, error: any) => {
     if (error.statusCode === 400 || error.statusCode === 409 || error.statusCode === 503) return fail(reply, error.statusCode, error.message);
     if (/stale|protect|conflict|expired|pending|lease|disabled/i.test(error.message)) return fail(reply, 409, 'Curation action conflicts with current state');
@@ -84,10 +88,70 @@ export function registerCurationRoutes(app: FastifyInstance, deps: {
         const method = { apply: 'applyCurationAction', reject: 'rejectCurationAction', undo: 'undoCurationAction' }[operation];
         const result = await deps.sdk[method](request.params.id, { signal: AbortSignal.timeout(60_000) });
         if (operation === 'apply' && !result.applied) return fail(reply, 409, 'Curation action is stale, protected, or conflicting');
+        refreshState();
         return { action: summary(read()) };
       } catch (error) { return handleError(reply, error); }
     });
   }
+  // Everything the Curation page needs in one bounded read: no entry content, fixed LIMITs.
+  app.get('/api/curation/overview', async (request, reply) => {
+    const ready = deps.ensureReady(reply); if (ready) return ready;
+    const db = deps.db()!;
+    const settings = deps.settings();
+    const run = db.prepare('SELECT id,started_at,finished_at,trigger,model,stats FROM curation_runs ORDER BY started_at DESC,id DESC LIMIT 1').get();
+    let stats: unknown = {}; try { stats = JSON.parse(run?.stats ?? '{}'); } catch { /* keep empty */ }
+    const applied = db.prepare(`SELECT ${actionColumns},a.actor,a.applied_at,a.undo_expires_at FROM curation_actions a
+      WHERE a.status='applied' ORDER BY a.created_at DESC,a.id DESC LIMIT 20`).all()
+      .map((row: any) => ({ ...summary(row), actor: row.actor, appliedAt: row.applied_at, undoExpiresAt: row.undo_expires_at }));
+    const retentionMs = settings.curationTrashRetentionDays * 86_400_000;
+    const trashed = db.prepare("SELECT id,title,trashed_at FROM knowledge_entries WHERE status='trashed' ORDER BY trashed_at DESC,id DESC LIMIT 50").all()
+      .map((row: any) => ({ id: row.id, title: row.title, trashedAt: row.trashed_at,
+        expiresAt: row.trashed_at && Number.isFinite(Date.parse(row.trashed_at)) ? new Date(Date.parse(row.trashed_at) + retentionMs).toISOString() : null }));
+    return {
+      lastRun: run ? { id: run.id, startedAt: run.started_at, finishedAt: run.finished_at, trigger: run.trigger, model: run.model, stats } : null,
+      pending: Number(db.prepare("SELECT COUNT(*) AS n FROM curation_actions WHERE status='proposed'").get()?.n ?? 0),
+      applied,
+      trash: { count: Number(db.prepare("SELECT COUNT(*) AS n FROM knowledge_entries WHERE status='trashed'").get()?.n ?? 0), items: trashed },
+      autonomy: settings.curationAutonomy,
+    };
+  });
+  // Sequential on purpose: each action re-validates against the state the previous one left.
+  app.post('/api/curation/batch', async (request, reply) => {
+    const ready = deps.ensureReady(reply); if (ready) return ready;
+    const body = request.body as { operation?: unknown; ids?: unknown } | null;
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => k !== 'operation' && k !== 'ids') ||
+        (body.operation !== 'apply' && body.operation !== 'reject') || !Array.isArray(body.ids) ||
+        body.ids.length < 1 || body.ids.length > 50 || body.ids.some(id => typeof id !== 'string' || !idPattern.test(id))) return fail(reply, 400, 'Invalid batch body');
+    if (deps.excluded()) return fail(reply, 409, 'Maintenance or upgrade is active');
+    const method = body.operation === 'apply' ? 'applyCurationAction' : 'rejectCurationAction';
+    const results: { id: string; ok: boolean; error?: string }[] = [];
+    for (const id of [...new Set(body.ids as string[])]) {
+      if (!deps.db()!.prepare('SELECT 1 FROM curation_actions WHERE id=?').get(id)) { results.push({ id, ok: false, error: 'not_found' }); continue; }
+      try {
+        const result = await deps.sdk[method](id, { signal: AbortSignal.timeout(60_000) });
+        results.push(body.operation === 'apply' && !result.applied ? { id, ok: false, error: 'stale' } : { id, ok: true });
+      } catch { results.push({ id, ok: false, error: 'conflict' }); }
+    }
+    refreshState();
+    return { results };
+  });
+  // Restoring reuses the Round 9 undo of the action that trashed the entry (snapshot-checked, expiry-bound).
+  app.post<{ Params: { id: string } }>('/api/curation/entries/:id/restore', async (request, reply) => {
+    const ready = deps.ensureReady(reply); if (ready) return ready;
+    if (!idPattern.test(request.params.id) || !emptyBody(request.body)) return fail(reply, 400, 'Invalid restore request');
+    if (deps.excluded()) return fail(reply, 409, 'Maintenance or upgrade is active');
+    const db = deps.db()!;
+    const entry = db.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(request.params.id);
+    if (!entry) return fail(reply, 404, 'Entry not found');
+    if (entry.status !== 'trashed') return fail(reply, 409, 'Entry is not in the trash');
+    const action = db.prepare(`SELECT a.id FROM curation_actions a WHERE a.status='applied' AND (a.undo_expires_at IS NULL OR a.undo_expires_at > ?)
+      AND EXISTS (SELECT 1 FROM json_each(a.entry_ids) WHERE value=?) ORDER BY a.created_at DESC,a.id DESC LIMIT 1`).get(new Date().toISOString(), request.params.id);
+    if (!action) return fail(reply, 409, 'No undoable curation action for this entry');
+    try { await deps.sdk.undoCurationAction(action.id, { signal: AbortSignal.timeout(60_000) }); }
+    catch (error) { return handleError(reply, error); }
+    refreshState();
+    return { restored: true, entryId: request.params.id, actionId: action.id };
+  });
   app.post('/api/curation/model/prepare', async (request, reply) => {
     const ready = deps.ensureReady(reply); if (ready) return ready;
     if (!emptyBody(request.body)) return fail(reply, 400, 'Model preparation uses the configured model');

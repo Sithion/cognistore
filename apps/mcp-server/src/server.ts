@@ -282,6 +282,110 @@ export function createServer(sdk: KnowledgeSDK): McpServer {
     }
   );
 
+  // ─── Agent curation (Round 10) ────────────────────────────────
+
+  const agentActor = () => `agent:${resolvePlatform()}`;
+  const jsonResult = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
+
+  /** Records when an agent last resolved curation; best effort, never fails the tool. */
+  async function recordAgentMaintenance(): Promise<void> {
+    try {
+      const { mkdir, writeFile, rename } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      const { homedir } = await import('node:os');
+      const dir = process.env.COGNISTORE_HOME ?? join(homedir(), '.cognistore');
+      await mkdir(dir, { recursive: true });
+      const tmp = join(dir, `.agent-maintenance.${process.pid}.tmp`);
+      await writeFile(tmp, JSON.stringify({ lastAt: new Date().toISOString() }));
+      await rename(tmp, join(dir, 'agent-maintenance.json'));
+    } catch { /* maintenance bookkeeping is optional */ }
+  }
+
+  tool(
+    'getCurationQueue',
+    'List pending curation proposals (merge, supersede, flag...) with short entry excerpts, oldest first. Use it to review knowledge quality; pair with resolveCuration.',
+    {
+      scope: z.string().max(200).optional().describe('Limit to proposals touching this scope, e.g. "workspace:my-project"'),
+      limit: z.number().int().min(1).max(25).optional().describe('Maximum proposals to return (default 10)'),
+    },
+    READ_ONLY,
+    async (params) => jsonResult(sdk.getCurationQueue({ scope: params.scope, limit: params.limit ?? 10 }))
+  );
+
+  tool(
+    'resolveCuration',
+    'Resolve a curation item. decision "apply" applies a proposed action (itemId = action id; optionally pass mergedTitle and mergedContent together to replace a merge draft), "reject" rejects it, "flag" raises a contradiction or quality flag on a knowledge entry (itemId = entry id). Always give a reason.',
+    {
+      itemId: z.string().uuid().describe('Curation action id (apply/reject) or knowledge entry id (flag)'),
+      decision: z.enum(['apply', 'reject', 'flag']),
+      mergedTitle: z.string().min(1).max(300).optional(),
+      mergedContent: z.string().min(1).max(20000).optional(),
+      reason: z.string().min(1).max(500),
+    },
+    DESTRUCTIVE,
+    async (params) => {
+      const actor = agentActor();
+      const fail = (error: string, detail?: string) => jsonResult({ error, ...(detail ? { detail } : {}) });
+      if ((params.mergedTitle === undefined) !== (params.mergedContent === undefined)) {
+        return fail('invalid', 'mergedTitle and mergedContent must be given together');
+      }
+      if (params.decision !== 'apply' && params.mergedTitle !== undefined) {
+        return fail('invalid', 'merged text is only valid with decision "apply"');
+      }
+      try {
+        if (params.decision === 'flag') {
+          const created = sdk.createCurationFlag({ entryId: params.itemId, reason: params.reason, actor });
+          await recordAgentMaintenance();
+          return jsonResult({ flagged: true, actionId: created.id });
+        }
+        if (params.decision === 'reject') {
+          await sdk.rejectCurationAction(params.itemId);
+          await recordAgentMaintenance();
+          return jsonResult({ rejected: true, id: params.itemId });
+        }
+        const result = await sdk.applyCurationAction(params.itemId, undefined, {
+          actor,
+          draftOverride: params.mergedTitle !== undefined ? { title: params.mergedTitle, content: params.mergedContent! } : undefined,
+        });
+        if (!result.applied) return fail('stale', 'The proposal is stale, protected or conflicting');
+        await recordAgentMaintenance();
+        return jsonResult({ applied: true, id: params.itemId, actor });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        if (/not found/i.test(message)) return fail('not_found');
+        if (/override|protected|inactive|reason|draft|invalid/i.test(message)) return fail('invalid', message);
+        if (/not pending|stale|conflict|expired/i.test(message)) return fail('stale', message);
+        throw e;
+      }
+    }
+  );
+
+  tool(
+    'supersedeKnowledge',
+    'Mark older knowledge entries as superseded by a newer one in the same scope. Entries tagged "keep" or of type system are never touched.',
+    {
+      oldIds: z.array(z.string().uuid()).min(1).max(20),
+      newId: z.string().uuid(),
+      reason: z.string().min(1).max(500),
+    },
+    WRITE,
+    async (params) => {
+      const fail = (detail: string) => jsonResult({ error: 'invalid', detail });
+      const target = await sdk.getKnowledgeById(params.newId);
+      if (!target) return jsonResult({ error: 'not_found', id: params.newId });
+      const ids = [...new Set(params.oldIds)];
+      if (ids.includes(params.newId)) return fail('newId cannot supersede itself');
+      for (const id of [params.newId, ...ids]) {
+        const e = id === params.newId ? target : await sdk.getKnowledgeById(id);
+        if (!e) return jsonResult({ error: 'not_found', id });
+        if (e.type === 'system' || (e.tags ?? []).includes('keep')) return fail(`entry ${id} is protected`);
+        if (e.scope !== target.scope) return fail(`entry ${id} is in a different scope`);
+      }
+      await sdk.updateKnowledge(params.newId, { supersedes: ids });
+      return jsonResult({ superseded: ids, by: params.newId, reason: params.reason });
+    }
+  );
+
   // listTags
   tool(
     'listTags',

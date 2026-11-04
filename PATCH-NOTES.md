@@ -4,6 +4,15 @@
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
+### Round 10 — Agent curation and Curation page
+- New MCP tools (additive, contract 1.2): `getCurationQueue` (read-only), `resolveCuration` (apply, reject or flag; denied by default in Claude Code permissions) and `supersedeKnowledge`.
+- New `cognistore-maintain` skill for Claude Code, Copilot and OpenCode; `cognistore-capture` and `cognistore-query` now teach agents to flag contradictions and supersede outdated entries.
+- The Stop hook suggests `/cognistore-maintain` at most once a day, only when proposals are pending for the current scope.
+- New Curation page: pending proposals with batch approve/reject, applied actions with Undo, trash with Restore, and database health (sizes, telemetry share, event-loop lag). The sidebar shows the pending count; the command palette can run curation.
+- Curation settings (autonomy, model, cluster threshold, trash retention, idle window) are editable in Settings; the old cleanup-report screen is retired in favor of the Curation page.
+- Pending legacy cleanup candidates migrate into the curation queue as flag proposals; the old cleanup routes keep working.
+- New sidecar routes: `GET /api/curation/overview`, `POST /api/curation/batch`, `POST /api/curation/entries/:id/restore`, `GET /api/system/db-health`; curation queue items now include `reason`.
+
 ### Round 9 — Curation engine
 - Curation defaults to `suggest`: deterministic rules and local-model judgments share a persistent proposal queue.
 - Indexed active-entry filtering excludes archived, superseded, and trashed knowledge from active retrieval and statistics.

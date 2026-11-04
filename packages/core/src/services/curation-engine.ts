@@ -133,7 +133,39 @@ export class CurationEngine {
   }
 
   resume(runId:string, options:CurationOptions, signal?:AbortSignal, checkpoint?:Parameters<CurationEngine['run']>[2]) { return this.run({...options,runId},signal,checkpoint); }
-  apply(actionId:string) { const a=this.repository.getAction(actionId); if(!a)throw new Error('Curation action not found'); const ids=JSON.parse(a.entry_ids); return applyValidatedAction(this.repository,actionId,a.kind,ids,new Date().toISOString()); }
+  apply(actionId:string, options?:{actor?:string;draftOverride?:{title:string;content:string}}) {
+    const a=this.repository.getAction(actionId); if(!a)throw new Error('Curation action not found'); const ids=JSON.parse(a.entry_ids);
+    let patch:Record<string,unknown>|undefined;
+    if(options?.draftOverride){
+      if(a.kind!=='merge')throw new Error('Draft override is only valid for merge actions');
+      patch={draft:validateMergeDraft(options.draftOverride)};
+    }
+    if(options?.actor)patch={...patch,appliedBy:options.actor};
+    return applyValidatedAction(this.repository,actionId,a.kind,ids,new Date().toISOString(),false,patch);
+  }
+  /** Agent-raised contradiction/quality flag: a proposed `flag` action the user sees in the queue. */
+  createFlag(input:{entryId:string;reason:string;actor:string}):{id:string} {
+    const entry=this.repository.getEntry(input.entryId); if(!entry)throw new Error('Flag target not found');
+    if(!eligible(entry))throw new Error('Flag target is protected or inactive');
+    const now=new Date().toISOString(), reason=input.reason.trim().slice(0,500);
+    if(!reason)throw new Error('Flag reason is required');
+    const key=`flag:${input.entryId}:${contentHash('flag',reason)}`;
+    const versions={[entry.id]:{version:entry.version,contentHash:entry.content_hash,scope:entry.scope,status:entry.status}};
+    const created=this.repository.createAction({id:randomUUID(),kind:'flag',actor:input.actor,entryIds:[entry.id],snapshot:this.repository.captureSnapshot([entry.id]),payload:{reason},versions,key,now,undoExpiresAt:new Date(Date.now()+30*DAY).toISOString()});
+    return {id:created.id as string};
+  }
+  /** Pending proposals with at most 3 entry excerpts each, for the agent (second-level curation). */
+  getQueue(options:{scope?:string;limit?:number;cursor?:string}) {
+    const limit=Math.min(25,Math.max(1,options.limit??10));let after:[string,string]|null=null;
+    if(options.cursor){try{const p=JSON.parse(Buffer.from(options.cursor,'base64url').toString());if(Array.isArray(p)&&p.length===2&&typeof p[0]==='string'&&typeof p[1]==='string')after=[p[0],p[1]];}catch{}}
+    const rows=this.repository.listQueue({scope:options.scope,limit,after}),page=rows.slice(0,limit),last=page.at(-1);
+    const actions=page.map(row=>{
+      const entryIds=JSON.parse(row.entry_ids) as string[];let payload:any={};try{payload=JSON.parse(row.payload)??{}}catch{}
+      const entries=entryIds.slice(0,3).map(id=>this.repository.getEntry(id)).filter(Boolean).map((e:any)=>({id:e.id,title:e.title,excerpt:String(e.content).slice(0,600),scope:e.scope,type:e.type}));
+      return {id:row.id as string,kind:row.kind as string,actor:row.actor as string,confidence:row.confidence as number|null,reason:typeof payload.reason==='string'?payload.reason:'',entryIds,createdAt:row.created_at as string,entries};
+    });
+    return {actions,nextCursor:rows.length>limit&&last?Buffer.from(JSON.stringify([last.created_at,last.id])).toString('base64url'):null};
+  }
   reject(actionId:string) { if(!this.repository.setActionStatus(actionId,'proposed','rejected',new Date().toISOString()))throw new Error('Curation action is not pending'); }
   undo(actionId:string) { if(!this.repository.undoAction(actionId,new Date().toISOString()))throw new Error('Curation action is stale, conflicting, or expired'); return {actionId,status:'undone'}; }
   purge(options:{autonomy:CurationOptions['autonomy'];retentionDays:number;batchSize?:number}) {
@@ -164,8 +196,9 @@ function componentsByScope(entries:Entry[],threshold:number,repo:CurationReposit
 }
 // Validate evidence inside the repository transaction immediately before any mutation.
 class InvalidCurationEvidence extends Error {}
-function applyValidatedAction(repo:CurationRepository,actionId:string,kind:string,ids:string[],now:string,automatic=false):boolean {
+function applyValidatedAction(repo:CurationRepository,actionId:string,kind:string,ids:string[],now:string,automatic=false,patch?:Record<string,unknown>):boolean {
   try { return repo.applyAction(actionId,now,payload=>{
+    if(patch){Object.assign(payload,patch);repo.mergeActionPayload(actionId,patch);}
     if(kind==='aging'&&(!Number.isFinite(payload?.score)||payload.score<0.70))throw new InvalidCurationEvidence('Aging requires a recorded deterministic score >= 0.70');
     if(kind==='merge'||kind==='supersedes'){
       const cluster=payload?.cluster;

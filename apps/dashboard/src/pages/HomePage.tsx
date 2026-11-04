@@ -43,13 +43,13 @@ function Overview() {
     const load = async () => {
       const results = await Promise.allSettled([
         api.listRecent(6, { scope }), api.listPlans(6, 'active', 0, scope),
-        api.getCleanupPendingCount(), api.getHealth(),
+        api.getCurationOverview(), api.getHealth(),
       ]);
       if (!active) return;
       const [entries, activePlans, cleanup, status] = results;
       setRecent(entries.status === 'fulfilled' ? entries.value as KnowledgeEntry[] : null);
       setPlans(activePlans.status === 'fulfilled' ? activePlans.value as { id: string; title: string }[] : null);
-      setPending(cleanup.status === 'fulfilled' ? (cleanup.value as { pendingCount: number }).pendingCount : null);
+      setPending(cleanup.status === 'fulfilled' ? cleanup.value.pending : null);
       setHealth(status.status === 'fulfilled' ? status.value as Record<string, { connected?: boolean }> : null);
     };
     void load();
@@ -80,7 +80,7 @@ function Overview() {
       </section>
       <section className="rounded-lg border bg-card p-5">
         <h2 className="mb-3 text-lg font-semibold">{t('cleanup.title')}</h2>
-        <Link className="text-primary underline" to={scoped('/curation')}>
+        <Link className="text-primary underline" to="/curation?tab=pending">
           {pending === null ? unavailable : t('knowledgeScreen.cleanupPending', { count: pending })}
         </Link>
       </section>

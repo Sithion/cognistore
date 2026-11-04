@@ -15,7 +15,7 @@ export function CommandPalette() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const commands = useMemo(() => applicationRoutes.filter((route) => !route.hidden && route.id !== 'widgets' && route.path !== '/knowledge/:id' && route.path !== '/plans/:id').map((route) => ({ label: route.label, path: route.path })), []);
+  const commands = useMemo(() => applicationRoutes.filter((route) => !route.hidden && route.id !== 'widgets' && route.path !== '/knowledge/:id' && route.path !== '/plans/:id').map((route) => ({ label: route.label, path: route.path })).concat([{ label: 'Review pending curation', path: '/curation?tab=pending' }, { label: 'Run curation', path: '/curation?tab=pending&run=1' }]), []);
   useLayoutEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat || event.altKey || event.shiftKey) return;

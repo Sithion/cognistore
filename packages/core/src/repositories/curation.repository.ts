@@ -131,6 +131,21 @@ export class CurationRepository {
       VALUES(?,?,?,?,?,?,'{}',?,'proposed',?,?,?,?,?,?)`).run(action.id,action.runId??null,action.kind,action.actor,JSON.stringify(action.entryIds),JSON.stringify(action.snapshot),action.confidence??null,JSON.stringify(action.payload),JSON.stringify(action.versions),action.key,action.now,action.undoExpiresAt??null,action.now);
     return {...this.sqlite.prepare('SELECT * FROM curation_actions WHERE idempotency_key=?').get(action.key) as any,wasCreated:inserted.changes===1};
   }
+  /** Pending proposals, oldest first, optionally limited to actions touching `scope` (keyset pagination). */
+  listQueue(options:{scope?:string;limit:number;after?:[string,string]|null}) {
+    const after=options.after??null;
+    const rows=this.sqlite.prepare(`SELECT a.id,a.kind,a.actor,a.confidence,a.entry_ids,a.payload,a.created_at FROM curation_actions a
+      WHERE a.status='proposed' AND (? IS NULL OR (a.created_at,a.id)>(?,?))
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(a.expected_versions) v WHERE json_extract(v.value,'$.scope')=?))
+      ORDER BY a.created_at,a.id LIMIT ?`).all(after?.[0]??null,after?.[0]??'',after?.[1]??'',options.scope??null,options.scope??null,options.limit+1) as any[];
+    return rows;
+  }
+  /** Shallow-merge `patch` into the action payload (used to record who applied it and any override). */
+  mergeActionPayload(id:string, patch:Record<string,unknown>) {
+    const row=this.sqlite.prepare('SELECT payload FROM curation_actions WHERE id=?').get(id) as {payload:string}|undefined;
+    if(!row)return;let current:any={};try{current=JSON.parse(row.payload)??{}}catch{}
+    this.sqlite.prepare('UPDATE curation_actions SET payload=? WHERE id=?').run(JSON.stringify({...current,...patch}),id);
+  }
   applyAction(id:string, now:string, mutation:(payload:any, snapshot:any)=>void):boolean {
     try { return this.transaction(()=>{
       const action=this.sqlite.prepare("SELECT * FROM curation_actions WHERE id=? AND status='proposed'").get(id) as any;

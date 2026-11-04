@@ -54,6 +54,8 @@ import {
 import { registerCleanupRoutes } from './cleanup-routes.js';
 import { createCurationScheduler, sqliteCurationStore } from './curation-scheduler.js';
 import { registerCurationRoutes } from './curation-routes.js';
+import { createCurationStateWriter } from './curation-state.js';
+import { collectDbHealth, createEventLoopSampler } from './db-health.js';
 import { modelManager, ownedModelNames, ollamaModels, canonicalModelName } from './curation-models.js';
 import { resolveWorkerUrl } from './worker-path.js';
 import {
@@ -104,7 +106,7 @@ const VERSION_RESOLVED = APP_VERSION !== UNKNOWN_VERSION;
 type DeployStep = UpgradeDeployStep;
 
 /** Skills deployed to ~/.claude/skills and ~/.copilot/skills. */
-const COGNISTORE_SKILLS = ['cognistore-query', 'cognistore-capture', 'cognistore-plan'] as const;
+const COGNISTORE_SKILLS = ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain'] as const;
 
 /** Get the last deployed version from ~/.cognistore/.version */
 function getDeployedVersion(): string | null {
@@ -1199,7 +1201,7 @@ Pass an array to addKnowledge to create multiple entries at once.
       const skillsDir = resolve(TEMPLATES_PATH, 'skills');
       const home = homedir();
 
-      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
         const srcDir = resolve(skillsDir, 'claude-code', name);
         if (existsSync(srcDir)) {
           const destDir = resolve(home, '.claude', 'skills', name);
@@ -1220,7 +1222,7 @@ Pass an array to addKnowledge to create multiple entries at once.
         }
       }
 
-      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
         const srcDir = resolve(skillsDir, 'copilot', name);
         if (existsSync(srcDir)) {
           const destDir = resolve(home, '.copilot', 'skills', name);
@@ -1669,7 +1671,7 @@ Pass an array to addKnowledge to create multiple entries at once.
       await step('Copilot hooks cleaned', () => configManager.removeCopilotHooks(), results, errors);
 
       // 3. Remove skills
-      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
         const claudeDir = resolve(home, '.claude', 'skills', name);
         if (existsSync(claudeDir)) { rmSync(claudeDir, { recursive: true, force: true }); results.push(`Skill ${name} removed (Claude)`); }
         // Remove new directory format
@@ -2391,11 +2393,24 @@ Pass an array to addKnowledge to create multiple entries at once.
     log: message => log('warn', message),
   });
   app.addHook('onClose', async () => { await curationScheduler.dispose(); });
+  const curationState = createCurationStateWriter({ db: getRawSqlite, log: message => log('warn', message) });
+  const eventLoopSampler = createEventLoopSampler();
   registerCurationRoutes(app, {
     sdk, scheduler: curationScheduler, store: curationStore, db: getRawSqlite,
     settings: getCachedSettings, models: modelManager, ensureReady, excluded: curationExcluded, sendError,
+    state: curationState,
   });
   curationScheduler.start();
+  // Pending count for the agent hooks; also refreshed after every curation mutation.
+  void curationState.refresh();
+  const curationStateTimer = setInterval(() => { void curationState.refresh(); }, 60_000);
+  curationStateTimer.unref();
+  app.addHook('onClose', async () => { clearInterval(curationStateTimer); eventLoopSampler.stop(); });
+
+  app.get('/api/system/db-health', async (_request, reply) => {
+    const ready = ensureReady(reply); if (ready) return ready;
+    return collectDbHealth(getRawSqlite()!, eventLoopSampler.snapshot);
+  });
 
   registerCleanupRoutes(app, {
     sdk,

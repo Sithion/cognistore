@@ -124,8 +124,24 @@ async function exerciseAllTools(): Promise<Record<string, unknown>> {
   return out;
 }
 
-test('only optional supersedes extensions differ from the frozen input contract', async () => {
+/** Tools introduced in 2.6 (Round 10, agent curation). The frozen snapshot covers only the 2.5.4 set. */
+const ADDED_IN_26 = ['getCurationQueue', 'resolveCuration', 'supersedeKnowledge'];
+
+test('2.6 agent curation tools are present with the intended annotations and required inputs', async () => {
   const { tools } = await client.listTools();
+  const by = Object.fromEntries(tools.filter((t) => ADDED_IN_26.includes(t.name)).map((t) => [t.name, t]));
+  expect(Object.keys(by).sort()).toEqual([...ADDED_IN_26].sort());
+  expect(by.getCurationQueue.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+  expect(by.resolveCuration.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+  expect(by.supersedeKnowledge.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+  expect((by.resolveCuration.inputSchema as { required: string[] }).required.sort()).toEqual(['decision', 'itemId', 'reason']);
+  expect((by.supersedeKnowledge.inputSchema as { required: string[] }).required.sort()).toEqual(['newId', 'oldIds', 'reason']);
+});
+
+test('only optional supersedes extensions differ from the frozen input contract', async () => {
+  const { tools: allTools } = await client.listTools();
+  // Tools added after the frozen v2.5.4 snapshot are additive (contract 1.2) and checked in their own test below.
+  const tools = allTools.filter((t) => !ADDED_IN_26.includes(t.name));
   const current = [...tools].sort((a, b) => a.name.localeCompare(b.name));
   const snap: Snapshot = JSON.parse(readFileSync(SNAPSHOT, 'utf-8'));
   expect(current.map((t) => t.name)).toEqual((snap.tools as { name: string }[]).map((t) => t.name));
