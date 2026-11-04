@@ -385,6 +385,19 @@ WHERE substr(content, 1, 15) = '[SUPERSEDED by '
   )
   AND type != 'system'
   AND NOT EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'keep');
+
+-- Round 10: carry the pending legacy cleanup candidates into the curation queue.
+-- Legacy rows have no entry snapshots, so they enter as informational flag
+-- actions (the suggested change is kept in the payload); the next curation run
+-- re-proposes executable actions. Idempotent through the unique idempotency key.
+INSERT OR IGNORE INTO curation_actions(id, kind, actor, entry_ids, payload, status, idempotency_key, created_at, updated_at)
+SELECT lower(hex(randomblob(16))), 'flag', 'legacy-cleanup', c.entry_ids,
+  json_object('reason', 'Legacy cleanup candidate (' || c.category || ')',
+              'suggestedKind', CASE c.category WHEN 'duplicate_group' THEN 'merge' ELSE 'trash' END,
+              'legacy', json_object('candidateId', c.id, 'reportId', c.report_id, 'category', c.category)),
+  'proposed', 'legacy-cleanup:' || c.id, c.updated_at, c.updated_at
+FROM cleanup_candidates c
+WHERE c.status = 'pending' AND json_valid(c.entry_ids) AND json_array_length(c.entry_ids) > 0;
 `,
   '2.4.5': `-- cognistore:atomic-script
 ALTER TABLE knowledge_entries ADD COLUMN content_hash TEXT;

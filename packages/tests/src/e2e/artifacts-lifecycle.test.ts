@@ -213,7 +213,7 @@ test.describe.serial(`agent artifacts lifecycle — ${scenario} (real sidecar, s
     }
 
     // Skills on every platform; the user's own skill untouched.
-    for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+    for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
       expect(existsSync(join(home, '.claude/skills', name, 'SKILL.md')), `claude ${name}`).toBe(true);
       expect(existsSync(join(home, '.copilot/skills', name, 'SKILL.md')), `copilot ${name}`).toBe(true);
       expect(existsSync(join(home, '.config/opencode/skills', name, 'SKILL.md')), `opencode ${name}`).toBe(true);

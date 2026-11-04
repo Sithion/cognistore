@@ -11,6 +11,7 @@ export type UI = {
   url: string;
   entryId: string;
   planId: string;
+  dbPath: string;
   call(path: string, init?: RequestInit): Promise<Response>;
 };
 
@@ -66,7 +67,7 @@ export const test = base.extend<{ ui: UI }>({
         needsUpgrade: false, fromVersion: null,
         toVersion: '2.5.4', isFirstInstall: false,
       } }));
-      await use({ url, entryId: entry.id, planId: plan.id, call });
+      await use({ url, entryId: entry.id, planId: plan.id, dbPath: join(home, '.cognistore', 'knowledge.db'), call });
     } finally {
       await stopSidecar(child);
       await new Promise<void>(done => mock.server.close(() => done()));

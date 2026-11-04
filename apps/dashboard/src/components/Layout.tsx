@@ -3,12 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarProvider, SidebarTrigger } from './ui/sidebar.js';
 import { applicationRoutes } from '../navigation/routes.js';
+import { api } from '../api/client.js';
 
 declare const __APP_VERSION__: string;
 const navItems = applicationRoutes.filter((route) => route.sidebar).map((route) => ({
   path: route.path,
-  key: route.id === 'knowledge' ? 'home' : route.id === 'plans' ? 'plans' : route.id === 'insights-knowledge' ? 'stats' : route.id === 'providers' ? 'providers' : 'settings',
-  icon: route.id === 'knowledge' ? '🔍' : route.id === 'plans' ? '📋' : route.id === 'insights-knowledge' ? '📊' : '🔌',
+  key: route.id === 'knowledge' ? 'home' : route.id === 'plans' ? 'plans' : route.id === 'curation' ? 'curation' : route.id === 'insights-knowledge' ? 'stats' : route.id === 'providers' ? 'providers' : 'settings',
+  icon: route.id === 'knowledge' ? '🔍' : route.id === 'plans' ? '📋' : route.id === 'curation' ? '🧹' : route.id === 'insights-knowledge' ? '📊' : '🔌',
 }));
 const activePath = (pathname: string, path: string) => path === '/' ? pathname === '/' || pathname.startsWith('/knowledge') : pathname === path || pathname.startsWith(`${path}/`);
 
@@ -17,6 +18,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('cognistore.sidebar.collapsed') === 'true');
   useEffect(() => { localStorage.setItem('cognistore.sidebar.collapsed', String(collapsed)); }, [collapsed]);
+  // Pending curation count for the sidebar badge; silent on failure (background read).
+  const [pending, setPending] = useState(0);
+  useEffect(() => { let live = true; api.getCurationOverview().then(o => { if (live) setPending(o.pending); }).catch(() => {}); return () => { live = false; }; }, [location.pathname, location.search]);
   return <SidebarProvider defaultOpen={!collapsed}>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar data-testid="app-sidebar">
@@ -25,7 +29,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <SidebarTrigger onClick={() => setCollapsed((value) => !value)}>{collapsed ? '→' : '←'}</SidebarTrigger>
         </SidebarHeader>
         <SidebarContent><nav aria-label="Primary"><SidebarMenu>
-          {navItems.map((item) => { const scope = new URLSearchParams(location.search).get('scope'); return <SidebarMenuItem key={item.path}><Link to={{ pathname: item.path, search: scope ? `?${new URLSearchParams({ scope })}` : '' }} aria-current={activePath(location.pathname, item.path) ? 'page' : undefined} className={`sidebar-link${activePath(location.pathname, item.path) ? ' is-active' : ''}`} title={t(`nav.${item.key}`)} aria-label={t(`nav.${item.key}`)}><span aria-hidden="true">{item.icon}</span>{!collapsed && <span>{t(`nav.${item.key}`)}</span>}</Link></SidebarMenuItem>; })}
+          {navItems.map((item) => { const scope = new URLSearchParams(location.search).get('scope'); return <SidebarMenuItem key={item.path}><Link to={{ pathname: item.path, search: scope ? `?${new URLSearchParams({ scope })}` : '' }} aria-current={activePath(location.pathname, item.path) ? 'page' : undefined} className={`sidebar-link${activePath(location.pathname, item.path) ? ' is-active' : ''}`} title={t(`nav.${item.key}`)} aria-label={t(`nav.${item.key}`)}><span aria-hidden="true">{item.icon}</span>{!collapsed && <span>{t(`nav.${item.key}`)}</span>}{item.key === 'curation' && pending > 0 && <span data-testid="curation-badge" className="ml-auto rounded-full bg-primary px-2 text-xs text-primary-foreground">{pending}</span>}</Link></SidebarMenuItem>; })}
         </SidebarMenu></nav></SidebarContent>
         {!collapsed && <div style={{ padding: 12, fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center' }}>v{__APP_VERSION__}</div>}
       </Sidebar>

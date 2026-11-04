@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { round8Shell } from './round8-shell.js';
+import { round10Curation } from './round10-curation.js';
 
 const resources = {
   en: {
@@ -734,7 +735,7 @@ i18n.on('languageChanged', (lng) => {
   localStorage.setItem(LANG_KEY, lng);
 });
 
-for (const [lng, translation] of Object.entries(round8Shell)) {
+for (const [lng, translation] of [...Object.entries(round8Shell), ...Object.entries(round10Curation)]) {
   i18n.addResourceBundle(lng, 'translation', translation, true, true);
 }
 

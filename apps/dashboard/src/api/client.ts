@@ -195,6 +195,17 @@ export const api = {
 
   // Cleanup cycle
   getCleanupReport: () => request<CleanupReportResponse>('/api/cleanup/report'),
+  getCurationOverview: () => request<CurationOverview>('/api/curation/overview'),
+  getCurationQueue: (limit = 50) => request<{ actions: CurationQueueAction[]; nextCursor: string | null }>(`/api/curation/queue?limit=${limit}`),
+  getCurationAction: (id: string) =>
+    request<{ action: CurationAction & { entries: { id: string; title: string; content: string }[] } }>(`/api/curation/actions/${encodeURIComponent(id)}`),
+  runCuration: () => request<{ runId: string }>('/api/curation/run', { method: 'POST' }),
+  getCurationRun: (id: string) => request<{ run: { id: string; status: string } }>(`/api/curation/runs/${encodeURIComponent(id)}`),
+  curationBatch: (operation: 'apply' | 'reject', ids: string[]) =>
+    request<CurationBatchResult>('/api/curation/batch', { method: 'POST', body: JSON.stringify({ operation, ids }) }, LONG_TIMEOUT_MS),
+  undoCuration: (id: string) => request<{ action: CurationAction }>(`/api/curation/actions/${encodeURIComponent(id)}/undo`, { method: 'POST' }),
+  restoreTrashed: (id: string) => request<{ restored: boolean }>(`/api/curation/entries/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
+  getDbHealth: () => request<DbHealth>('/api/system/db-health'),
   getCleanupPendingCount: () => request<{ pendingCount: number }>('/api/cleanup/pending-count'),
   runCleanupReport: () =>
     request<{ created: boolean; report: CleanupReport }>('/api/cleanup/report/run', { method: 'POST' }),
@@ -444,7 +455,32 @@ export interface TokenUsageAggregates {
   cacheEfficiency: number;
 }
 
+// ── Curation (Round 10) ──
+export type CurationAutonomy = 'off' | 'suggest' | 'auto-safe' | 'auto';
+export interface CurationAction {
+  id: string; kind: string; status: string; confidence: number | null; titles: (string | null)[]; entryIds: string[];
+  actor?: string; appliedAt?: string | null; undoExpiresAt?: string | null;
+}
+export interface CurationQueueAction extends CurationAction { reason?: string }
+export interface CurationOverview {
+  lastRun: { id: string; startedAt: string; finishedAt: string | null; trigger: string; model: string; stats: Record<string, unknown> } | null;
+  pending: number;
+  applied: CurationAction[];
+  trash: { count: number; items: { id: string; title: string; trashedAt: string | null; expiresAt: string | null }[] };
+  autonomy: CurationAutonomy;
+}
+export interface CurationBatchResult { results: { id: string; ok: boolean; error?: string }[] }
+export interface DbHealth {
+  sizeBytes: number; tables: { name: string; rows: number }[]; telemetryShare: number; lastVacuumAt: string | null;
+  eventLoopLagMs: { p50: number; p99: number; max: number };
+}
+
 export interface AppSettings {
+  curationAutonomy?: CurationAutonomy;
+  curationModel?: string;
+  curationClusterThreshold?: number;
+  curationTrashRetentionDays?: number;
+  curationIdleMinutes?: number;
   autoUpdate: boolean;
   dateRangePreset: '1d' | '1w' | '1m' | '1y' | '2y' | 'custom';
   lastSelectedRange: { from: string; to: string } | null;

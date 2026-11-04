@@ -14,7 +14,7 @@ export type JobPayloads = {
   exportToFile: { include: string[]; version: string; exportedAt?: string };
   'curation.run': CurationJobOptions;
   'curation.resume': CurationJobOptions & { runId:string };
-  'curation.apply': { actionId:string };
+  'curation.apply': { actionId:string; actor?:string; draftOverride?:{ title:string; content:string } };
   'curation.reject': { actionId:string };
   'curation.undo': { actionId:string };
   'curation.purge': { autonomy:'off'|'suggest'|'auto-safe'|'auto'; retentionDays:number; batchSize?:number };

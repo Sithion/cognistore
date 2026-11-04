@@ -434,6 +434,7 @@ export class ConfigManager {
   static readonly COGNISTORE_DENY_TOOLS = [
     'mcp__cognistore__deleteKnowledge',
     'mcp__cognistore__deletePlanTask',
+    'mcp__cognistore__resolveCuration',
   ];
 
   // Global enforcement hooks. Script files live under ~/.cognistore/hooks/ (removed
@@ -874,11 +875,11 @@ export class ConfigManager {
 
   /**
    * Install OpenCode skills from templates.
-   * Copies SKILL.md files for cognistore-query, cognistore-plan, cognistore-capture
+   * Copies SKILL.md files for cognistore-query, cognistore-plan, cognistore-capture, cognistore-maintain
    * into ~/.config/opencode/skills/ (no hooks subdirectories).
    */
   async setupOpenCodeSkills(templatesDir: string): Promise<void> {
-    const skillNames = ['cognistore-query', 'cognistore-capture', 'cognistore-plan'];
+    const skillNames = ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain'];
     for (const name of skillNames) {
       const srcDir = join(templatesDir, 'skills', 'opencode', name);
       const destDir = join(ConfigManager.OPENCODE_SKILLS_DIR, name);
@@ -917,7 +918,7 @@ export class ConfigManager {
    * Remove OpenCode skill directories from ~/.config/opencode/skills/
    */
   removeOpenCodeSkills(): void {
-    for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+    for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
       const dir = join(ConfigManager.OPENCODE_SKILLS_DIR, name);
       if (existsSync(dir)) {
         rmSync(dir, { recursive: true, force: true });

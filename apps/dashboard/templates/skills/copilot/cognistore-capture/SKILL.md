@@ -95,3 +95,8 @@ Patterns compound across every future project — actively look for them.
 Before capturing knowledge, ensure active plans are complete:
 1. `listPlanTasks(planId)` — if any tasks are not `completed`, update them first
 2. Only after plan tracking is current, proceed with knowledge capture
+
+## Avoid duplicates and supersessions
+
+- Search before adding. If an entry on the topic already exists, use `cognistore-updateKnowledge` to update it instead of adding a near copy.
+- If the new entry REPLACES older ones, pass `supersedes: [<old ids>]` when adding or updating. Never prefix a title with SUPERSEDED.

@@ -8,6 +8,7 @@ import { StatsPage, PlanStatsPage } from './pages/StatsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { WidgetsPage } from './pages/WidgetsPage.js';
 import { PlansPage } from './pages/PlansPage.js';
+import { CurationPage } from './pages/CurationPage.js';
 import { TokenConsumptionPage } from './pages/TokenConsumptionPage.js';
 import { ProvidersPage } from './pages/ProvidersPage.js';
 import { SetupPage } from './pages/SetupPage.js';
@@ -209,7 +210,7 @@ export function App() {
                 <Route path="/widgets" element={<LegacyRedirect />} />
                 <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
                 <Route path="/settings/*" element={<SettingsPage />} />
-                <Route path="/curation/*" element={<SettingsPage />} />
+                <Route path="/curation/*" element={<CurationPage />} />
                 <Route path="/integrations/agents" element={<SettingsPage />} />
                 <Route path="/integrations/providers" element={<ProvidersPage />} />
                 <Route path="/integrations/widgets" element={<WidgetsPage />} />

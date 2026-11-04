@@ -73,3 +73,8 @@ Only capture knowledge that **saves future sessions significant time**:
 | `cognistore-deleteKnowledge` | Remove outdated entry |
 | `cognistore-listTags` | Browse all tags |
 | `cognistore-healthCheck` | Verify system status |
+
+## Superseded results and contradictions
+
+- Ignore results whose status is superseded; they are kept only for history.
+- If you find two entries that contradict each other, report it with `cognistore-resolveCuration(itemId: <entry id>, decision: "flag", reason: "...")` so the curation queue shows it to the user.

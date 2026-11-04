@@ -202,3 +202,9 @@ test('removePermissions is a no-op when no cognistore rules are present', async 
   expect(r.removed).toBe(false);
   expect(bakCount()).toBe(0);
 });
+
+test('resolveCuration is on the deny list so the user decides whether the agent may apply curation', () => {
+  expect(ConfigManager.COGNISTORE_DENY_TOOLS).toContain('mcp__cognistore__resolveCuration');
+  expect(ConfigManager.COGNISTORE_DENY_TOOLS).not.toContain('mcp__cognistore__getCurationQueue');
+  expect(ConfigManager.COGNISTORE_DENY_TOOLS).not.toContain('mcp__cognistore__supersedeKnowledge');
+});

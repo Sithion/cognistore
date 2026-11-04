@@ -22,7 +22,7 @@ export async function dispatchJobWithConnection<K extends JobKind>(kind: K, payl
   }
   if(kind==='curation.apply'||kind==='curation.reject'||kind==='curation.undo'){
     const engine=new CurationEngine(new CurationRepository(sqlite));const id=(payload as {actionId:string}).actionId;
-    if(kind==='curation.apply'){const applied=engine.apply(id);await checkpoint?.({phase:kind,done:1,total:1});return {applied} as JobResults[K];}
+    if(kind==='curation.apply'){const p=payload as JobPayloads['curation.apply'];const applied=engine.apply(id,{actor:p.actor,draftOverride:p.draftOverride});await checkpoint?.({phase:kind,done:1,total:1});return {applied} as JobResults[K];}
     if(kind==='curation.reject'){engine.reject(id);await checkpoint?.({phase:kind,done:1,total:1});return {rejected:true} as JobResults[K];}
     const result=engine.undo(id);await checkpoint?.({phase:kind,done:1,total:1});return result as JobResults[K];
   }

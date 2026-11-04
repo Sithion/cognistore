@@ -272,14 +272,50 @@ Update multiple plan tasks at once (batch status changes). Useful for marking se
 
 Each update object follows the same schema as `updatePlanTask`. Returns an array of updated tasks.
 
+### getCurationQueue
+
+List pending curation proposals, oldest first, with short entry excerpts. Read-only.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scope` | string | No | — | Only proposals touching this scope |
+| `limit` | number | No | 10 | Maximum proposals (1–25) |
+
+Returns `{ actions, nextCursor }`. Each action carries `id`, `kind`, `confidence`, `reason`, `entryIds` and at most 3 entry excerpts of 600 characters.
+
+### resolveCuration
+
+Resolve a curation item. Annotated `destructiveHint` and denied by default in Claude Code permissions.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `itemId` | uuid | Yes | Action id for `apply`/`reject`; knowledge entry id for `flag` |
+| `decision` | enum | Yes | `apply`, `reject` or `flag` |
+| `reason` | string | Yes | 1–500 characters |
+| `mergedTitle` / `mergedContent` | string | No | Replace a merge draft; must be given together and only with `apply` |
+
+Returns `{ applied: true, id, actor }`, `{ rejected: true, id }` or `{ flagged: true, actionId }`. Errors are returned as JSON, never thrown: `{ error: 'not_found' | 'stale' | 'invalid', detail? }`. The actor is recorded as `agent:<platform>`. After a successful call the server updates `~/.cognistore/agent-maintenance.json`.
+
+### supersedeKnowledge
+
+Mark older entries as superseded by a newer one in the same scope. Entries tagged `keep` or of type `system` are never touched.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `oldIds` | uuid[] | Yes | 1–20 entries to supersede |
+| `newId` | uuid | Yes | The entry that replaces them |
+| `reason` | string | Yes | 1–500 characters |
+
+Returns `{ superseded, by, reason }`, or `{ error: 'not_found' | 'invalid', detail? }` (self-supersede, protected entry, different scope).
+
 ## Tool Annotations
 
 Tools are annotated with hints for MCP clients:
 
 | Annotation | Tools | Purpose |
 |------------|-------|---------|
-| `readOnlyHint: true` | `getKnowledge`, `listTags`, `healthCheck`, `listPlans`, `listPlanTasks`, `getPlanChain`, `getTokenUsage` | Signals the tool does not modify knowledge content. `getKnowledge` still updates the `last_read_at` / `read_count` retention counters of the entries it returns — it never modifies an entry's content, tags or `version` |
-| `destructiveHint: true` | `deleteKnowledge`, `deletePlanTask` | Signals the tool permanently removes data |
+| `readOnlyHint: true` | `getKnowledge`, `listTags`, `healthCheck`, `listPlans`, `listPlanTasks`, `getPlanChain`, `getTokenUsage`, `getCurationQueue` | Signals the tool does not modify knowledge content. `getKnowledge` still updates the `last_read_at` / `read_count` retention counters of the entries it returns — it never modifies an entry's content, tags or `version` |
+| `destructiveHint: true` | `deleteKnowledge`, `deletePlanTask`, `resolveCuration` | Signals the tool permanently removes data |
 
 
 ## Version compatibility

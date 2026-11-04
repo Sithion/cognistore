@@ -33,10 +33,11 @@ The Tauri app's setup wizard creates resources; the uninstall button must remove
 | Add `cognistore` to `~/.claude.json` | Remove entry via ConfigManager |
 | Add `cognistore` to `~/.copilot/mcp-config.json` | Remove entry via ConfigManager |
 | Add `cognistore` to `~/.config/opencode/opencode.json` | Remove entry via ConfigManager |
-| Inject `mcp__cognistore` server-scope allow rule + a `permissions.deny` entry for each destructive tool (`deleteKnowledge`, `deletePlanTask`) in `~/.claude/settings.json` | Remove the allow rule, our deny entries, and any legacy `mcp__cognistore__*` allow entries via ConfigManager (the user's own deny rules are left alone) |
+| Inject `mcp__cognistore` server-scope allow rule + a `permissions.deny` entry for each destructive tool (`deleteKnowledge`, `deletePlanTask`, `resolveCuration`) in `~/.claude/settings.json` | Remove the allow rule, our deny entries, and any legacy `mcp__cognistore__*` allow entries via ConfigManager (the user's own deny rules are left alone) |
 | Copy global hook scripts to `~/.cognistore/hooks/{claude-code,copilot}/` | Removed with `~/.cognistore` directory |
 | Inject hooks into `~/.claude/settings.json` (`hooks` key) | Remove cognistore hook entries via `ConfigManager.removeHooks` |
 | Write `~/.copilot/hooks/hooks.json` reminder hooks | Remove cognistore entries via `ConfigManager.removeCopilotHooks` |
+| Copy Claude/Copilot/OpenCode skill `cognistore-maintain` (alongside the other `cognistore-*` skills) | Remove the skill directories with the others |
 | Copy Claude skills to `~/.claude/skills/cognistore-*/` | Remove skill directories |
 | Copy Copilot skills to `~/.copilot/skills/cognistore-*/` | Remove skill directories |
 | App installed in /Applications/ (macOS) | Self-delete via rmSync |

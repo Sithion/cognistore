@@ -79,3 +79,8 @@ Example: You query and find a `decision` entry about "chose SQLite for storage".
 | `mcp__cognistore__deleteKnowledge` | Remove outdated entry |
 | `mcp__cognistore__listTags` | Browse all tags |
 | `mcp__cognistore__healthCheck` | Verify system status |
+
+## Superseded results and contradictions
+
+- Ignore results whose status is superseded; they are kept only for history.
+- If you find two entries that contradict each other, report it with `mcp__cognistore__resolveCuration(itemId: <entry id>, decision: "flag", reason: "...")` so the curation queue shows it to the user.
