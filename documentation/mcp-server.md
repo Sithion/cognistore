@@ -272,6 +272,13 @@ Update multiple plan tasks at once (batch status changes). Useful for marking se
 
 Each update object follows the same schema as `updatePlanTask`. Returns an array of updated tasks.
 
+### Curation tools (contract 1.2)
+
+The server exposes three curation tools, matching `apps/mcp-server/src/server.ts`.
+`getCurationQueue` is read-only; `resolveCuration` is annotated destructive and
+denied by default in Claude Code permissions; `supersedeKnowledge` is a write
+tool. Their inputs and results are described below.
+
 ### getCurationQueue
 
 List pending curation proposals, oldest first, with short entry excerpts. Read-only.
@@ -281,7 +288,7 @@ List pending curation proposals, oldest first, with short entry excerpts. Read-o
 | `scope` | string | No | — | Only proposals touching this scope |
 | `limit` | number | No | 10 | Maximum proposals (1–25) |
 
-Returns `{ actions, nextCursor }`. Each action carries `id`, `kind`, `confidence`, `reason`, `entryIds` and at most 3 entry excerpts of 600 characters.
+Returns `{ actions, nextCursor }`. Each action carries `id`, `kind`, `confidence`, optional `reason`, `entryIds` and short entry excerpts.
 
 ### resolveCuration
 

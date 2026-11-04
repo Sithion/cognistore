@@ -34,6 +34,25 @@ available. It uses bounded rowid pages and a list-subquery membership check
 because the standalone FTS table's id column is unindexed. Only non-system
 entries are repaired; keyword search and export also exclude system entries.
 
+## Curation engine (2.6)
+
+The curation engine in `packages/core/src/services/curation-engine.ts` applies
+deterministic rules and optional local-model judgments, while
+`packages/core/src/repositories/curation.repository.ts` persists runs, proposals,
+verdicts, snapshots, and entry status. Bounded runs execute through the
+JobRunner worker and resume from saved checkpoints. The default autonomy level
+is `suggest`: actions enter a persistent proposal queue for review. Other
+configured levels are `off`, `auto-safe`, and `auto`. Applied actions retain
+before/after snapshots and support guarded undo; trashed entries remain
+restorable until the configured trash retention expires.
+
+Semantic retrieval uses sqlite-vec KNN with an adaptive window that skips
+inactive entries, excluding archived, superseded, and trashed knowledge from
+active retrieval. Token usage uses permanent daily rollups alongside
+configurable raw-history retention (90 days by default). Embedding maintenance
+runs in bounded worker pages; publication rechecks source identity and update
+time so concurrent edits are not overwritten.
+
 ## High-Level Architecture
 
 ```

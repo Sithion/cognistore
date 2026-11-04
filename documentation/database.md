@@ -49,9 +49,32 @@ pair. Current writers maintain hashes transactionally. Old inserts leave NULL
 and old content edits invalidate hashes. Bounded worker repair fills them.
 Import rechecks NULL hashes and dedup candidates under its final immediate
 lock after embedding; interference triggers bounded repair and retry.
+
 The index is nonunique and candidates are content-checked. An import matching a
 system entry is stored as a `pattern` entry, since imports cannot create system
 knowledge.
+
+## Curation schema (migration 2.4.6)
+
+Migration `2.4.6.sql` adds `knowledge_entries.status` (`active`, `superseded`,
+`archived`, or `trashed`; default `active`), `superseded_by`, `curated_at`, and
+`trashed_at`. It creates `curation_runs` for resumable run state and leases,
+`curation_actions` for proposals and applied/reversible changes with before and
+after snapshots, expected versions, payload, idempotency key, and undo expiry,
+`curation_verdicts` for pair judgments keyed by content hashes and versions,
+and the singleton `curation_activity` timestamp. The migration marks valid
+legacy supersession markers as `superseded` when their target is eligible.
+
+Indexes cover active entries by scope and update time or content hash, status
+and timestamps for trashed and curated entries, run/status and verdict-pair
+lookups, and unique non-null curation action idempotency keys. Pending legacy
+`cleanup_candidates` rows are copied into `curation_actions` as proposed
+`flag` actions; the suggested `merge` or `trash` kind remains in the payload
+because those rows lack the snapshots required for executable actions.
+
+Raw `token_usage` rows are retained for 90 days by default; the retention is
+configurable. Daily rollups preserve totals after pruning. Heatmaps and session
+details use retained raw history.
 
 ## FTS repair coverage
 

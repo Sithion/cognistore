@@ -378,11 +378,11 @@ O agente que já está usando o CogniStore tem um modelo muito melhor que o loca
 
 ## Fase R — Release gate (v2.6.0)
 
-- [ ] R.1 `pnpm verify` verde no CI (inclui `@perf` com orçamento — falha se regredir > 20%).
-- [ ] R.2 Teste de upgrade real: cópia dos bancos das máquinas do usuário (42 MB e 70 MB) + fixtures T.3 → app novo → diagnóstico (`scripts/diagnose-db.mjs`) antes/depois.
+- [x] R.1 `pnpm verify` verde no CI (inclui `@perf` com orçamento — falha se regredir > 20%). — **Rodada 11**: PR #109 em `5a58dac` verde, exceto `version-check`/`release-version-guard` (esperado até o bump).
+- [x] R.2 (banco de 46 MB feito na Rodada 11; o de 70 MB é do mantenedor) Teste de upgrade real: cópia dos bancos das máquinas do usuário (42 MB e 70 MB) + fixtures T.3 → app novo → diagnóstico (`scripts/diagnose-db.mjs`) antes/depois.
 - [ ] R.3 Auto-update Tauri 2.5.2 → 2.6.0 testado em Linux e macOS; MCP via `npx` na versão pinada.
 - [ ] R.4 Bump de versão sincronizado (`pnpm bump 2.6.0` — package.json, Cargo.toml; `check-release-version.mjs`).
-- [ ] R.5 Docs: `database.md`, `architecture.md`, `mcp-server.md`, `api-reference.md`, `frontend.md`, README (screenshots novos), `PATCH-NOTES.md`.
+- [x] R.5 (Rodada 11; screenshots novos do README são do mantenedor) Docs: `database.md`, `architecture.md`, `mcp-server.md`, `api-reference.md`, `frontend.md`, README (screenshots novos), `PATCH-NOTES.md`.
 - [ ] R.6 Ligar `auto-safe` da curadoria por padrão só depois de 2 semanas em `suggest` no uso real sem falso positivo.
 
 ---
@@ -419,6 +419,7 @@ Reordenado após a Rodada 1: o congelamento tem causa concreta e barata de ataca
 
 ## Diário de execução
 
+- 2026-11-04 — **Rodada 11 preparada, aguardando os gates do mantenedor.** R.1, R.2 (banco de 46 MB: migrações até 2.4.6 em 71 ms, integridade ok, cópia somente leitura) e R.5 feitos; R.3, R.4 (bump), squash do #109, tag e publish são do mantenedor, com o runbook em `documentation/plans/reports/2026-11-04-rodada-11.md`. R.6 depende de duas semanas de uso real.
 - 2026-11-04 — **Rodada 10 APROVADA pelo gerente, com ressalvas.** Clone limpo de `12dfe26`: `pnpm verify --coverage` verde, compat 63/63, @perf 21/21 (search 23,2 ms, listRecent 0,3/2,4 ms, stats 13,4 ms), `--repeat-each=20` verde nos 8 testes novos/alterados, auditoria sem novidade; CI do PR #109 vermelho apenas em version-check e release-version-guard. Ressalvas: migração legada vira propostas `flag` (sem snapshots não há ação executável); 4.3 sem "último VACUUM" (campo `null`); reviewers perf/invariants não puderam ser lançados (hook reescreve o prompt) e foram substituídos por checagem em sessão; sem axe na nova página. Relatório: `documentation/plans/reports/2026-11-04-rodada-10.md`.
 - 2026-11-04 — **Rodada 9 APROVADA pelo gerente.** Clone limpo de `6e19e60`: `pnpm verify --coverage` verde, compat 60/60, @perf 21/21, `--repeat-each=20` verde em todos os testes novos (curation-r9 200, judge 600, compat 80), auditoria sem novidade; CI do PR #109 verde exceto version-check e release-version-guard. A validação achou duas regressões de performance reais (B.16 busca 10→140 ms; B.17 listRecent profundo 2→44 ms), corrigidas antes da aprovação, além do B.15 (flake de porta). Curadoria entregue com `suggest` por padrão; acurácia do juiz com modelo real não medida (não ativar `auto-safe`). Ver [relatório](reports/2026-11-04-rodada-9.md).
 - 2026-11-03 — **Rodada 8 APROVADA pelo gerente.** Em clone limpo de `986292c`, `pnpm verify --coverage` ficou verde (68,27% de cobertura global; segundo escopo 60,76%), matrizes de compatibilidade 55/55, CI do PR #109 verde nos jobs de build/teste, MCP sem toolchain, osv-scan, perf, Rust, bundle do sidecar e type-check. O único @perf local instável foi transitório sob carga, passou em isolamento e nas duas execuções de CI, então o limite ficou inalterado; bundle gzip 432.470 B (1,171× Rodada 7, abaixo do teto 1,30). U.2–U.5 e T.8/T.9 foram entregues nos limites descritos no [relatório da Rodada 8](reports/2026-11-03-rodada-8.md); U.2.11, U.2.12, status MCP por plataforma, Insights com scope e orçamento de renderização para 10k seguem abertos.

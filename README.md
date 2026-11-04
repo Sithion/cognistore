@@ -25,6 +25,17 @@ CogniStore is a desktop application that gives your AI coding agents a persisten
 
 The app acts as an [MCP](https://modelcontextprotocol.io/) server for **Claude Code**, **GitHub Copilot**, and **OpenCode**, allowing your AI assistant to store and retrieve knowledge with semantic search powered by local embeddings.
 
+## What's new in 2.6
+
+- Faster duplicate detection, semantic search, recent-entry listing, and token aggregates; background workers keep maintenance off the sidecar event loop.
+- Knowledge curation proposes changes for review by default (`suggest`), with guarded undo and a restorable trash.
+- A refreshed dashboard adds grouped navigation, a command palette, dark-default theming, and a dedicated Curation page.
+- Agents can review and resolve proposals with the `getCurationQueue`, `resolveCuration`, and `supersedeKnowledge` MCP tools.
+- The Curation page reports database size, table counts, telemetry share, and event-loop lag.
+- Daily token rollups preserve totals while raw token history uses configurable retention, defaulting to 90 days.
+
+See [PATCH-NOTES.md](PATCH-NOTES.md) for the complete list of changes.
+
 ## Features
 
 - **Local-only, authenticated API** — the sidecar binds `127.0.0.1` and every route requires a token the desktop shell holds. Loopback alone is not treated as a trust boundary.

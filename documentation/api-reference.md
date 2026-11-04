@@ -73,6 +73,35 @@ Exempt: static assets and the SPA shell, which the webview must fetch before any
 
 **File:** `apps/dashboard/server/index.ts`
 
+## Curation
+
+All endpoints below require the sidecar token. Invalid inputs return `400`;
+maintenance or state conflicts return `409` where applicable; missing runs,
+actions, or entries return `404`. Responses shown are JSON.
+
+| Method and path | Request | Success response | Errors |
+|---|---|---|---|
+| `POST /api/curation/run` | Optional `{ "runId": "uuid" }` | `202` `{ "runId": "uuid", ... }` from the scheduler | `400` invalid body; scheduler `409`/`503` conflicts |
+| `GET /api/curation/runs/:id` | UUID path parameter | `{ "run": { "id", "status", "started_at", "trigger", ... } }` | `400` invalid id; `404` unknown run |
+| `GET /api/curation/queue` | Optional `scope`, `limit` (1–100, default 50), `cursor` | `{ "actions": [...], "nextCursor": string|null }` | `400` invalid query or cursor |
+| `GET /api/curation/actions/:id` | UUID path parameter | `{ "action": { ...summary, "entries": [...] } }` | `400` invalid id; `404` unknown action |
+| `POST /api/curation/actions/:id/apply` | Empty or omitted body | `{ "action": <summary> }` | `400` invalid request; `404` unknown action; `409` stale/protected/conflicting or maintenance; `503` unavailable |
+| `POST /api/curation/actions/:id/reject` | Empty or omitted body | `{ "action": <summary> }` | `400`, `404`, `409`, `503` |
+| `POST /api/curation/actions/:id/undo` | Empty or omitted body | `{ "action": <summary> }` | `400`, `404`, `409`, `503` |
+| `GET /api/curation/overview` | None | `{ "lastRun", "pending", "applied", "trash": { "count", "items" }, "autonomy" }` | Readiness errors |
+| `POST /api/curation/batch` | `{ "operation": "apply" or "reject", "ids": ["uuid", ...] }` (1–50) | `{ "results": [{ "id", "ok", "error?" }] }`; per-item errors are `not_found`, `stale`, or `conflict` | `400` invalid body; `409` maintenance |
+| `POST /api/curation/entries/:id/restore` | Empty or omitted body | `{ "restored": true, "entryId": "uuid", "actionId": "uuid" }` | `400` invalid request; `404` missing entry; `409` not trashed, no eligible undo, or maintenance; propagated `503` |
+| `POST /api/curation/model/prepare` | Empty or omitted body; uses configured model | Model manager preparation result | `400` invalid body/model; `503` preparation unavailable |
+
+### GET /api/system/db-health
+
+Returns `{ "sizeBytes", "tables": [{ "name", "rows" }],
+"telemetryShare", "lastVacuumAt", "eventLoopLagMs": { "p50", "p99",
+"max" } }`. `telemetryShare` is the fraction of `token_usage` plus
+`knowledge_entries` rows that are token usage rows. `lastVacuumAt` is currently
+`null` because the sidecar does not record vacuum events. Readiness errors may
+be returned if the database is not ready.
+
 ## Health & Status
 
 ### GET /api/health
