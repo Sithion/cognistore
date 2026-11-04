@@ -4,6 +4,15 @@
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.
 
+### Round 9 — Curation engine
+- Curation defaults to `suggest`: deterministic rules and local-model judgments share a persistent proposal queue.
+- Indexed active-entry filtering excludes archived, superseded, and trashed knowledge from active retrieval and statistics.
+- Bounded worker runs resume from saved checkpoints; applied actions support guarded undo, and trash retains restoration data until its configured retention expires.
+- Optional `supersedes` on existing knowledge writes applies atomically; similar-entry hints help prevent accidental duplication.
+- Local judgment uses validated structured output, configurable models, and deterministic processing when Ollama is unavailable.
+- Explicit curation-model preparation records installation ownership so uninstall preserves pre-existing models.
+- Synthetic evaluation fixtures and compatibility coverage exercise curation without including private knowledge.
+
 ### Round 8 — Navigation and dashboard
 - Grouped, collapsible navigation, addressable detail panels and Settings sections, command palette, keyboard shortcuts, and URL-backed filters.
 - Dashboard screens use the approved shadcn/ui design system with light, dark, and system themes.

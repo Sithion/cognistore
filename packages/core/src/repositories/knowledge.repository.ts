@@ -163,6 +163,20 @@ export class KnowledgeRepository {
     return entry ?? null;
   }
 
+  /** Indexed exact-content lookup; never match another scope or inactive entry. */
+  async findExactDuplicate(input: CreateKnowledgeInput) {
+    const row = this.sqlite.prepare(`SELECT id FROM knowledge_entries
+      WHERE content_hash = ? AND scope = ? AND type = ? AND status = 'active'
+      ORDER BY created_at, id LIMIT 1`).get(contentHash(input.title, input.content), input.scope, input.type) as { id: string } | undefined;
+    // Backfill may still be pending, and the invalidation trigger clears the hash
+    // when an identical title/content update computes the same hash as before.
+    const match = row ?? this.sqlite.prepare(`SELECT id FROM knowledge_entries
+      WHERE content_hash IS NULL AND scope = ? AND type = ? AND status = 'active'
+        AND title = ? AND content = ? ORDER BY created_at, id LIMIT 1`)
+      .get(input.scope, input.type, input.title, input.content) as { id: string } | undefined;
+    return match ? this.findById(match.id) : null;
+  }
+
   transitionStatus(id: string, status: 'active' | 'superseded' | 'archived' | 'trashed', supersededBy: string | null = null): boolean {
     const now = new Date().toISOString();
     const changed = this.sqlite.transaction(() => this.sqlite.prepare(`UPDATE knowledge_entries SET status = ?, superseded_by = ?, curated_at = ?, trashed_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND status != ?`)

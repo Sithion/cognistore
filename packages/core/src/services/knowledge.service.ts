@@ -260,8 +260,16 @@ export class KnowledgeService {
   async add(input: CreateKnowledgeInput): Promise<KnowledgeEntry & KnowledgeWriteAdvisory> {
     const { skipDedup, ...rest } = input;
     rest.tags = this.normalizeTags(rest.tags);
-    const claims = this.repository.prepareSupersession(undefined, rest, rest.supersedes);
+    const duplicate = skipDedup ? null : await this.repository.findExactDuplicate(rest);
+    const claims = this.repository.prepareSupersession(duplicate?.id, rest, rest.supersedes);
     const embedding = await this.embeddingProvider.embed(this.buildEmbeddingText(rest.title, rest.content, rest.tags));
+    if (duplicate) {
+      // Undefined provenance is omitted by update(), preserving the original author.
+      const entry = await this.repository.update(duplicate.id, { ...rest, embedding }, claims, duplicate.version);
+      if (!entry) throw new Error('Exact duplicate disappeared during update');
+      this.logOp('write');
+      return { ...this.toKnowledgeEntry(entry), deduplicated: true, similarExisting: [] };
+    }
     const advisory = skipDedup ? { similarExisting: [] } : await this.advisory(embedding, rest.scope);
     const entry = await this.repository.create({ ...rest, embedding }, claims);
     this.logOp('write');

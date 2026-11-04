@@ -1,0 +1,1922 @@
+[
+  {
+    "id": "duplicate-01",
+    "entries": [
+      {
+        "id": "duplicate-01-a",
+        "title": "The synthetic record",
+        "content": "The amber queue retries three times.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-the",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-01-b",
+        "title": "The synthetic record",
+        "content": "The amber queue makes at most three retries.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-the",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Both state the same retry ceiling."
+  },
+  {
+    "id": "duplicate-02",
+    "entries": [
+      {
+        "id": "duplicate-02-a",
+        "title": "Birch synthetic record",
+        "content": "Birch release 4 requires protocol 2.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-02-b",
+        "title": "Birch synthetic record",
+        "content": "Protocol 2 is required by Birch release 4.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The version and requirement are identical."
+  },
+  {
+    "id": "duplicate-03",
+    "entries": [
+      {
+        "id": "duplicate-03-a",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt never caches failed responses.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-03-b",
+        "title": "Cobalt synthetic record",
+        "content": "Failed responses are not cached by Cobalt.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Negation is preserved."
+  },
+  {
+    "id": "duplicate-04",
+    "entries": [
+      {
+        "id": "duplicate-04-a",
+        "title": "Dune synthetic record",
+        "content": "Dune health is served at https://dune.example.invalid/health.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-04-b",
+        "title": "Dune synthetic record",
+        "content": "Use https://dune.example.invalid/health for Dune health checks.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The same synthetic endpoint is restated."
+  },
+  {
+    "id": "duplicate-05",
+    "entries": [
+      {
+        "id": "duplicate-05-a",
+        "title": "Elm synthetic record",
+        "content": "Elm stores durations in milliseconds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-05-b",
+        "title": "Elm synthetic record",
+        "content": "Elm duration values use ms.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The unit abbreviation changes no meaning."
+  },
+  {
+    "id": "duplicate-06",
+    "entries": [
+      {
+        "id": "duplicate-06-a",
+        "title": "Fable synthetic record",
+        "content": "Fable workers stop after 40 tasks.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-06-b",
+        "title": "Fable synthetic record",
+        "content": "A Fable worker task limit is forty.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The numerical limits are equivalent."
+  },
+  {
+    "id": "duplicate-07",
+    "entries": [
+      {
+        "id": "duplicate-07-a",
+        "title": "Glint synthetic record",
+        "content": "Glint orders equal scores by ascending key.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-07-b",
+        "title": "Glint synthetic record",
+        "content": "Glint breaks score ties using keys in ascending order.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The same tie breaker is described."
+  },
+  {
+    "id": "duplicate-08",
+    "entries": [
+      {
+        "id": "duplicate-08-a",
+        "title": "Harbor synthetic record",
+        "content": "Harbor accepts only UTF-8 messages.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-08-b",
+        "title": "Harbor synthetic record",
+        "content": "Every accepted Harbor message must be UTF-8.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Both impose the same encoding restriction."
+  },
+  {
+    "id": "duplicate-09",
+    "entries": [
+      {
+        "id": "duplicate-09-a",
+        "title": "Iris synthetic record",
+        "content": "Iris disables tracing in production.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-09-b",
+        "title": "Iris synthetic record",
+        "content": "Production tracing is disabled for Iris.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Environment and policy match."
+  },
+  {
+    "id": "duplicate-10",
+    "entries": [
+      {
+        "id": "duplicate-10-a",
+        "title": "Juniper synthetic record",
+        "content": "Juniper signs the header, not the body.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-10-b",
+        "title": "Juniper synthetic record",
+        "content": "Only the header is signed in Juniper; the body is unsigned.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Both preserve the signed and unsigned portions."
+  },
+  {
+    "id": "duplicate-11",
+    "entries": [
+      {
+        "id": "duplicate-11-a",
+        "title": "Kite synthetic record",
+        "content": "Kite keeps one spare worker.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-11-b",
+        "title": "Kite synthetic record",
+        "content": "Kite maintains a single standby worker.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Spare and standby describe the same capacity."
+  },
+  {
+    "id": "duplicate-12",
+    "entries": [
+      {
+        "id": "duplicate-12-a",
+        "title": "Lumen synthetic record",
+        "content": "Lumen calls a successful dry run a rehearsal.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-12-b",
+        "title": "Lumen synthetic record",
+        "content": "In Lumen, rehearsal means a successful dry run.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The apparently informal term is explicitly defined."
+  },
+  {
+    "id": "duplicate-13",
+    "entries": [
+      {
+        "id": "duplicate-13-a",
+        "title": "Mica synthetic record",
+        "content": "Mica requires a lease before cleanup.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-13-b",
+        "title": "Mica synthetic record",
+        "content": "Cleanup in Mica requires first obtaining a lease.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The same ordering constraint is restated."
+  },
+  {
+    "id": "duplicate-14",
+    "entries": [
+      {
+        "id": "duplicate-14-a",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus v2 has no legacy decoder.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-14-b",
+        "title": "Nimbus synthetic record",
+        "content": "There is no legacy decoder in Nimbus version 2.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "The same versioned absence is stated."
+  },
+  {
+    "id": "duplicate-15",
+    "entries": [
+      {
+        "id": "duplicate-15-a",
+        "title": "Opal synthetic record",
+        "content": "Opal considers an empty batch successful.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "duplicate-15-b",
+        "title": "Opal synthetic record",
+        "content": "An Opal batch with zero items succeeds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "duplicate",
+    "winnerId": null,
+    "rationale": "Both define the same boundary behavior."
+  },
+  {
+    "id": "supersedes-01",
+    "entries": [
+      {
+        "id": "supersedes-01-a",
+        "title": "Amber synthetic record",
+        "content": "Amber policy revision 1: timeout is 20 seconds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-amber",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-01-b",
+        "title": "Amber synthetic record",
+        "content": "Amber policy revision 2 replaces revision 1: timeout is 35 seconds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-amber",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-01-b",
+    "rationale": "The explicit newer revision replaces the old limit."
+  },
+  {
+    "id": "supersedes-02",
+    "entries": [
+      {
+        "id": "supersedes-02-b",
+        "title": "Birch synthetic record",
+        "content": "Effective release 6, Birch replaces protocol 1 with protocol 3.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-02-a",
+        "title": "Birch synthetic record",
+        "content": "Birch currently uses protocol 1.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-02-b",
+    "rationale": "The stated effective release directs replacement."
+  },
+  {
+    "id": "supersedes-03",
+    "entries": [
+      {
+        "id": "supersedes-03-a",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt policy 1 permits caching errors.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-03-b",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt policy 2 replaces policy 1: do not cache errors.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-03-b",
+    "rationale": "Explicit policy replacement reverses the permission."
+  },
+  {
+    "id": "supersedes-04",
+    "entries": [
+      {
+        "id": "supersedes-04-b",
+        "title": "Dune synthetic record",
+        "content": "Dune endpoint revision 2 replaces revision 1 with https://new-dune.example.invalid.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-04-a",
+        "title": "Dune synthetic record",
+        "content": "Dune endpoint revision 1 is https://old-dune.example.invalid.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-04-b",
+    "rationale": "The newer endpoint is explicitly authoritative."
+  },
+  {
+    "id": "supersedes-05",
+    "entries": [
+      {
+        "id": "supersedes-05-a",
+        "title": "Elm synthetic record",
+        "content": "Elm retention policy 2 keeps logs for 14 days.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-05-b",
+        "title": "Elm synthetic record",
+        "content": "Elm retention policy 3 replaces policy 2 and keeps logs for 7 days.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-05-b",
+    "rationale": "A newer named policy reduces retention."
+  },
+  {
+    "id": "supersedes-06",
+    "entries": [
+      {
+        "id": "supersedes-06-b",
+        "title": "Fable synthetic record",
+        "content": "Fable setting revision 6 replaces revision 5 and disables compression.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-06-a",
+        "title": "Fable synthetic record",
+        "content": "Fable setting revision 5 enables compression.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-06-b",
+    "rationale": "A newer revision negates the older setting."
+  },
+  {
+    "id": "supersedes-07",
+    "entries": [
+      {
+        "id": "supersedes-07-a",
+        "title": "Glint synthetic record",
+        "content": "Glint chooses descending keys under policy A.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-07-b",
+        "title": "Glint synthetic record",
+        "content": "Glint policy B supersedes A and chooses ascending keys.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-07-b",
+    "rationale": "Explicit supersession determines direction."
+  },
+  {
+    "id": "supersedes-08",
+    "entries": [
+      {
+        "id": "supersedes-08-b",
+        "title": "Harbor synthetic record",
+        "content": "Harbor bulletin 2 replaces bulletin 1 and limits workers to 12.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-08-a",
+        "title": "Harbor synthetic record",
+        "content": "Harbor capacity bulletin 1 limits workers to 8.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-08-b",
+    "rationale": "The later bulletin changes the same limit."
+  },
+  {
+    "id": "supersedes-09",
+    "entries": [
+      {
+        "id": "supersedes-09-a",
+        "title": "Iris synthetic record",
+        "content": "Iris flag policy 1 makes tracing mandatory.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-09-b",
+        "title": "Iris synthetic record",
+        "content": "Iris flag policy 2 replaces policy 1: tracing is optional.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-09-b",
+    "rationale": "Mandatory and optional conflict under an explicit replacement."
+  },
+  {
+    "id": "supersedes-10",
+    "entries": [
+      {
+        "id": "supersedes-10-b",
+        "title": "Juniper synthetic record",
+        "content": "Juniper contract 4 replaces contract 3 and signs headers and bodies.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-10-a",
+        "title": "Juniper synthetic record",
+        "content": "Juniper contract 3 signs headers only.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-10-b",
+    "rationale": "The newer contract expands the signed surface."
+  },
+  {
+    "id": "supersedes-11",
+    "entries": [
+      {
+        "id": "supersedes-11-a",
+        "title": "Kite synthetic record",
+        "content": "Kite deployment rule 1 requires two approvals.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-11-b",
+        "title": "Kite synthetic record",
+        "content": "Kite deployment rule 2 replaces rule 1 and requires one approval.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-11-b",
+    "rationale": "The approval count is explicitly revised."
+  },
+  {
+    "id": "supersedes-12",
+    "entries": [
+      {
+        "id": "supersedes-12-b",
+        "title": "Lumen synthetic record",
+        "content": "Lumen glossary 2 replaces glossary 1: ready means validated.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-12-a",
+        "title": "Lumen synthetic record",
+        "content": "Lumen glossary 1 defines ready as queued.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-12-b",
+    "rationale": "The newer glossary resolves ambiguous wording."
+  },
+  {
+    "id": "supersedes-13",
+    "entries": [
+      {
+        "id": "supersedes-13-a",
+        "title": "Mica synthetic record",
+        "content": "Mica policy 1 allows cleanup without a lease.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-13-b",
+        "title": "Mica synthetic record",
+        "content": "Mica policy 2 replaces policy 1: cleanup requires a lease.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-13-b",
+    "rationale": "The newer requirement reverses an allowance."
+  },
+  {
+    "id": "supersedes-14",
+    "entries": [
+      {
+        "id": "supersedes-14-b",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus decoder policy 2 replaces policy 1 and removes the legacy decoder.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-14-a",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus decoder policy 1 keeps the legacy decoder.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-14-b",
+    "rationale": "The explicit replacement changes presence to absence."
+  },
+  {
+    "id": "supersedes-15",
+    "entries": [
+      {
+        "id": "supersedes-15-a",
+        "title": "Opal synthetic record",
+        "content": "Opal result policy 1 treats an empty batch as failure.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "supersedes-15-b",
+        "title": "Opal synthetic record",
+        "content": "Opal result policy 2 replaces policy 1: an empty batch succeeds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 2,
+        "contentHash": null
+      }
+    ],
+    "expected": "supersedes",
+    "winnerId": "supersedes-15-b",
+    "rationale": "The same boundary case is explicitly redefined."
+  },
+  {
+    "id": "complementary-01",
+    "entries": [
+      {
+        "id": "complementary-01-a",
+        "title": "Amber synthetic record",
+        "content": "Amber retries failed requests three times.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-amber",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-01-b",
+        "title": "Amber synthetic record",
+        "content": "Amber waits two seconds between retries.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-amber",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Count and interval jointly describe retries."
+  },
+  {
+    "id": "complementary-02",
+    "entries": [
+      {
+        "id": "complementary-02-a",
+        "title": "Birch synthetic record",
+        "content": "Birch release 4 requires protocol 2.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-02-b",
+        "title": "Birch synthetic record",
+        "content": "Birch release 4 negotiates encryption before messages.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Different compatible requirements describe one release."
+  },
+  {
+    "id": "complementary-03",
+    "entries": [
+      {
+        "id": "complementary-03-a",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt never caches errors.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-03-b",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt caches successful responses for one minute.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Success and failure rules coexist."
+  },
+  {
+    "id": "complementary-04",
+    "entries": [
+      {
+        "id": "complementary-04-a",
+        "title": "Dune synthetic record",
+        "content": "Dune health is at https://dune.example.invalid/health.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-04-b",
+        "title": "Dune synthetic record",
+        "content": "Dune health returns the queue depth.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Endpoint location and response semantics complement each other."
+  },
+  {
+    "id": "complementary-05",
+    "entries": [
+      {
+        "id": "complementary-05-a",
+        "title": "Elm synthetic record",
+        "content": "Elm measures duration in milliseconds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-05-b",
+        "title": "Elm synthetic record",
+        "content": "Elm rounds measured durations upward.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Units and rounding are independent aspects."
+  },
+  {
+    "id": "complementary-06",
+    "entries": [
+      {
+        "id": "complementary-06-a",
+        "title": "Fable synthetic record",
+        "content": "Fable stops workers after 40 tasks.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-06-b",
+        "title": "Fable synthetic record",
+        "content": "Fable drains in-flight tasks before stopping workers.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Limit and graceful stopping behavior coexist."
+  },
+  {
+    "id": "complementary-07",
+    "entries": [
+      {
+        "id": "complementary-07-a",
+        "title": "Glint synthetic record",
+        "content": "Glint ranks by descending score.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-07-b",
+        "title": "Glint synthetic record",
+        "content": "Glint breaks equal scores by ascending key.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Primary ordering and tie breaking complement each other."
+  },
+  {
+    "id": "complementary-08",
+    "entries": [
+      {
+        "id": "complementary-08-a",
+        "title": "Harbor synthetic record",
+        "content": "Harbor accepts UTF-8 messages.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-08-b",
+        "title": "Harbor synthetic record",
+        "content": "Harbor rejects messages larger than 4 KiB.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Encoding and size constraints are compatible."
+  },
+  {
+    "id": "complementary-09",
+    "entries": [
+      {
+        "id": "complementary-09-a",
+        "title": "Iris synthetic record",
+        "content": "Iris disables production tracing.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-09-b",
+        "title": "Iris synthetic record",
+        "content": "Iris enables tracing in its test environment.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Different environments have compatible policies."
+  },
+  {
+    "id": "complementary-10",
+    "entries": [
+      {
+        "id": "complementary-10-a",
+        "title": "Juniper synthetic record",
+        "content": "Juniper signs message headers.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-10-b",
+        "title": "Juniper synthetic record",
+        "content": "Juniper verifies header signatures before parsing the body.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Signing and verification are parts of one process."
+  },
+  {
+    "id": "complementary-11",
+    "entries": [
+      {
+        "id": "complementary-11-a",
+        "title": "Kite synthetic record",
+        "content": "Kite keeps a standby worker.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-11-b",
+        "title": "Kite synthetic record",
+        "content": "Kite promotes the standby when a primary fails.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Capacity and failover behavior add different information."
+  },
+  {
+    "id": "complementary-12",
+    "entries": [
+      {
+        "id": "complementary-12-a",
+        "title": "Lumen synthetic record",
+        "content": "Lumen calls validation a rehearsal.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-12-b",
+        "title": "Lumen synthetic record",
+        "content": "Lumen rehearsals do not publish results.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Terminology and side effects complement each other."
+  },
+  {
+    "id": "complementary-13",
+    "entries": [
+      {
+        "id": "complementary-13-a",
+        "title": "Mica synthetic record",
+        "content": "Mica acquires a lease before cleanup.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-13-b",
+        "title": "Mica synthetic record",
+        "content": "Mica renews the cleanup lease every minute.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Acquisition and renewal are different lifecycle steps."
+  },
+  {
+    "id": "complementary-14",
+    "entries": [
+      {
+        "id": "complementary-14-a",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus v1 supports the legacy decoder.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-14-b",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus v2 does not support the legacy decoder.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Explicitly separate versions coexist without replacing a current policy."
+  },
+  {
+    "id": "complementary-15",
+    "entries": [
+      {
+        "id": "complementary-15-a",
+        "title": "Opal synthetic record",
+        "content": "Opal accepts empty batches.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "complementary-15-b",
+        "title": "Opal synthetic record",
+        "content": "Opal reports an empty batch with count zero.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "complementary",
+    "winnerId": null,
+    "rationale": "Acceptance and reporting describe compatible behavior."
+  },
+  {
+    "id": "distinct-01",
+    "entries": [
+      {
+        "id": "distinct-01-a",
+        "title": "Amber synthetic record",
+        "content": "Amber north queue retries three times.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-amber",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-01-b",
+        "title": "Amber synthetic record",
+        "content": "Amber south queue retries three times.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-amber",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Near-identical text refers to different queues."
+  },
+  {
+    "id": "distinct-02",
+    "entries": [
+      {
+        "id": "distinct-02-a",
+        "title": "Birch synthetic record",
+        "content": "Birch client protocol is 2.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-02-b",
+        "title": "Birch synthetic record",
+        "content": "Birch server storage format is 2.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-birch",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "The number matches but the subjects differ."
+  },
+  {
+    "id": "distinct-03",
+    "entries": [
+      {
+        "id": "distinct-03-a",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt caches errors.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-03-b",
+        "title": "Cobalt synthetic record",
+        "content": "Cobalt does not cache errors.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-cobalt",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Contradiction without chronology supplies no directed replacement."
+  },
+  {
+    "id": "distinct-04",
+    "entries": [
+      {
+        "id": "distinct-04-a",
+        "title": "Dune synthetic record",
+        "content": "Dune endpoint is https://dune-a.example.invalid.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-04-b",
+        "title": "Dune synthetic record",
+        "content": "Dune endpoint is https://dune-b.example.invalid.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-dune",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Conflicting endpoints have no authority or version ordering."
+  },
+  {
+    "id": "distinct-05",
+    "entries": [
+      {
+        "id": "distinct-05-a",
+        "title": "Elm synthetic record",
+        "content": "Elm timeout is 10 milliseconds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-05-b",
+        "title": "Elm synthetic record",
+        "content": "Elm timeout is 10 seconds.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-elm",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Same number with different units is not equivalent."
+  },
+  {
+    "id": "distinct-06",
+    "entries": [
+      {
+        "id": "distinct-06-a",
+        "title": "Fable synthetic record",
+        "content": "Fable allows at most 40 tasks.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-06-b",
+        "title": "Fable synthetic record",
+        "content": "Fable requires at least 40 tasks.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-fable",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Upper and lower bounds differ."
+  },
+  {
+    "id": "distinct-07",
+    "entries": [
+      {
+        "id": "distinct-07-a",
+        "title": "Glint synthetic record",
+        "content": "Glint sorts keys ascending.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-07-b",
+        "title": "Glint synthetic record",
+        "content": "Glint sorts keys descending.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-glint",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Opposite instructions lack revision evidence."
+  },
+  {
+    "id": "distinct-08",
+    "entries": [
+      {
+        "id": "distinct-08-a",
+        "title": "Harbor synthetic record",
+        "content": "Harbor may accept UTF-8 messages.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-08-b",
+        "title": "Harbor synthetic record",
+        "content": "Harbor accepts only UTF-8 messages.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-harbor",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Permission does not establish exclusivity."
+  },
+  {
+    "id": "distinct-09",
+    "entries": [
+      {
+        "id": "distinct-09-a",
+        "title": "Iris synthetic record",
+        "content": "Iris production tracing is disabled.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-09-b",
+        "title": "Iris synthetic record",
+        "content": "Iris production tracing might be disabled.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-iris",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "A possibility is not an established fact."
+  },
+  {
+    "id": "distinct-10",
+    "entries": [
+      {
+        "id": "distinct-10-a",
+        "title": "Juniper synthetic record",
+        "content": "Juniper signs headers only.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-10-b",
+        "title": "Juniper synthetic record",
+        "content": "Juniper signs bodies only.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-juniper",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Different signed surfaces conflict without a replacement signal."
+  },
+  {
+    "id": "distinct-11",
+    "entries": [
+      {
+        "id": "distinct-11-a",
+        "title": "Kite synthetic record",
+        "content": "Kite west cluster keeps one spare.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-11-b",
+        "title": "Kite synthetic record",
+        "content": "Kite east cluster keeps one spare.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-kite",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "The same capacity on different clusters is a separate fact."
+  },
+  {
+    "id": "distinct-12",
+    "entries": [
+      {
+        "id": "distinct-12-a",
+        "title": "Lumen synthetic record",
+        "content": "Lumen is ready when queued.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-12-b",
+        "title": "Lumen synthetic record",
+        "content": "Lumen is ready when validated.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-lumen",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Ambiguous ready states have no stated precedence."
+  },
+  {
+    "id": "distinct-13",
+    "entries": [
+      {
+        "id": "distinct-13-a",
+        "title": "Mica synthetic record",
+        "content": "Mica cleanup requires a lease.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-13-b",
+        "title": "Mica synthetic record",
+        "content": "Mica cleanup does not require a lease.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-mica",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Negation cannot be collapsed into duplication."
+  },
+  {
+    "id": "distinct-14",
+    "entries": [
+      {
+        "id": "distinct-14-a",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus decoder accepts format 1.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-14-b",
+        "title": "Nimbus synthetic record",
+        "content": "Nimbus decoder emits format 1.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-nimbus",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Input and output facts are semantically different."
+  },
+  {
+    "id": "distinct-15",
+    "entries": [
+      {
+        "id": "distinct-15-a",
+        "title": "Opal synthetic record",
+        "content": "Opal batch alpha has zero items.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      },
+      {
+        "id": "distinct-15-b",
+        "title": "Opal synthetic record",
+        "content": "Opal batch beta has zero items.",
+        "tags": [
+          "synthetic"
+        ],
+        "scope": "workspace:fictional-opal",
+        "type": "decision",
+        "version": 1,
+        "contentHash": null
+      }
+    ],
+    "expected": "distinct",
+    "winnerId": null,
+    "rationale": "Near-identical observations concern different batches."
+  }
+]

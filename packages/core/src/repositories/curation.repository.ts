@@ -9,7 +9,7 @@ export interface CurationSnapshotV1 {
   incomingReferences: Record<string, string[]>;
   // Optional in v1: relation edits retain referrer rows; their vectors stay untouched.
   incomingEntries?: Record<string, Record<string, unknown>>;
-  planRelations: { planId: string; knowledgeId: string; relationType: string; createdAt: string }[];
+  planRelations: { id?: number; planId: string; knowledgeId: string; relationType: string; createdAt: string }[];
 }
 
 export class CurationRepository {
@@ -49,7 +49,7 @@ export class CurationRepository {
       const refs=this.sqlite.prepare(`SELECT id FROM knowledge_entries WHERE ${batch.map(()=>"EXISTS (SELECT 1 FROM json_each(knowledge_entries.related_ids) WHERE value = ?)").join(' OR ')} ORDER BY id`).all(...batch) as {id:string}[];
       for (const ref of refs) if (!unique.includes(ref.id)) referrers.add(ref.id);
       for (const id of batch) incomingReferences[id]=refs.filter(ref=>Boolean(this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE id=? AND EXISTS (SELECT 1 FROM json_each(related_ids) WHERE value=?)').get(ref.id,id))).map(ref=>ref.id);
-      planRelations.push(...this.sqlite.prepare(`SELECT plan_id AS planId, knowledge_id AS knowledgeId, relation_type AS relationType, created_at AS createdAt FROM plan_relations WHERE knowledge_id IN (${marks}) ORDER BY knowledge_id,plan_id,relation_type`).all(...batch) as CurationSnapshotV1['planRelations']);
+      planRelations.push(...this.sqlite.prepare(`SELECT id, plan_id AS planId, knowledge_id AS knowledgeId, relation_type AS relationType, created_at AS createdAt FROM plan_relations WHERE knowledge_id IN (${marks}) ORDER BY knowledge_id,plan_id,relation_type`).all(...batch) as CurationSnapshotV1['planRelations']);
     }
     for (const id of [...referrers].sort()) {
       if (unique.includes(id)) continue;
@@ -193,6 +193,12 @@ export class CurationRepository {
       }
       // Finish every guard before writing: returning false must never commit a partial restore.
       if (Object.entries(restore).some(([entryId,row]) => row.purged || !this.getEntry(entryId) || protectedEntry(row) || protectedEntry(this.getEntry(entryId)))) return false;
+      for (const relation of before.planRelations) {
+        if (relation.id === undefined) continue; // Legacy v1 snapshots omitted row IDs.
+        const occupied = this.sqlite.prepare('SELECT knowledge_id AS knowledgeId FROM plan_relations WHERE id=?').get(relation.id) as {knowledgeId:string}|undefined;
+        // Rows belonging to the action are removed below; unrelated rows must survive.
+        if (occupied && !ids.includes(occupied.knowledgeId)) return false;
+      }
       for(const [entryId,row] of Object.entries(restore)){
         const r=row as any;
         const columns=['title','content','content_hash','tags','type','scope','source','version','expires_at','confidence_score','related_ids','agent_id','platform','created_at','updated_at','last_read_at','read_count','status','superseded_by','curated_at','trashed_at'];
@@ -207,7 +213,9 @@ export class CurationRepository {
         this.sqlite.prepare('UPDATE knowledge_entries SET related_ids=? WHERE id=?').run(JSON.stringify(relatedIds),entryId);
       }
       this.sqlite.prepare('DELETE FROM plan_relations WHERE knowledge_id IN (SELECT value FROM json_each(?))').run(JSON.stringify(JSON.parse(a.entry_ids)));
-      for(const rel of before.planRelations)this.sqlite.prepare('INSERT OR IGNORE INTO plan_relations(plan_id,knowledge_id,relation_type,created_at) VALUES(?,?,?,?)').run(rel.planId,rel.knowledgeId,rel.relationType,rel.createdAt);
+      // Explicit INTEGER PRIMARY KEY inserts preserve identity and let SQLite maintain
+      // the AUTOINCREMENT high-water mark without rewinding IDs allocated meanwhile.
+      for(const rel of before.planRelations)this.sqlite.prepare('INSERT INTO plan_relations(id,plan_id,knowledge_id,relation_type,created_at) VALUES(?,?,?,?,?)').run(rel.id??null,rel.planId,rel.knowledgeId,rel.relationType,rel.createdAt);
       this.sqlite.prepare("UPDATE curation_actions SET status='undone',updated_at=? WHERE id=?").run(now,id);return true;
     });
   }
@@ -235,12 +243,17 @@ function protectedEntry(row:any):boolean {
 function snapshotMatches(current:CurationSnapshotV1, expected:CurationSnapshotV1):boolean {
   const references = (refs:Record<string,string[]>) => Object.fromEntries(Object.entries(refs).map(([id,values]) => [id,[...values].sort()]));
   const relations = (rows:CurationSnapshotV1['planRelations']) => [...rows].sort((a,b) => a.knowledgeId.localeCompare(b.knowledgeId)||a.planId.localeCompare(b.planId)||a.relationType.localeCompare(b.relationType));
+  const currentRelations = current.planRelations.map(row => {
+    const prior = expected.planRelations.find(rel => rel.planId === row.planId && rel.knowledgeId === row.knowledgeId && rel.relationType === row.relationType);
+    if (prior && prior.id === undefined) { const {id, ...legacy} = row; return legacy; }
+    return row;
+  });
   return expected.version === 1
     && isDeepStrictEqual(current.entries, expected.entries)
     && isDeepStrictEqual(current.outgoingRelatedIds, expected.outgoingRelatedIds)
     && isDeepStrictEqual(references(current.incomingReferences), references(expected.incomingReferences))
     && (expected.incomingEntries === undefined || isDeepStrictEqual(current.incomingEntries, expected.incomingEntries))
-    && isDeepStrictEqual(relations(current.planRelations), relations(expected.planRelations));
+    && isDeepStrictEqual(relations(currentRelations), relations(expected.planRelations));
 }
 function bounded(n:number){return Math.max(1,Math.min(500,Math.floor(Number.isFinite(n)?n:100)));}
 function boundedItems(n:number){return Math.max(1,Math.min(5000,Math.floor(Number.isFinite(n)?n:500)));}
