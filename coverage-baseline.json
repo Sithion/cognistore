@@ -1,0 +1,52 @@
+{
+  "integration: config": {
+    "lines": 90.3,
+    "branches": 69,
+    "lineTotal": 946
+  },
+  "integration: core": {
+    "lines": 77.7,
+    "branches": 70.6,
+    "lineTotal": 6616
+  },
+  "integration: dashboard-server": {
+    "lines": 76.7,
+    "branches": 57.9,
+    "lineTotal": 4124
+  },
+  "integration: embeddings": {
+    "lines": 73.4,
+    "branches": 60,
+    "lineTotal": 369
+  },
+  "integration: mcp-server (bundle)": {
+    "lines": 48.5,
+    "branches": 65.5,
+    "lineTotal": 7892
+  },
+  "integration: providers": {
+    "lines": 61.2,
+    "branches": 47.3,
+    "lineTotal": 1056
+  },
+  "integration: sdk": {
+    "lines": 75.5,
+    "branches": 66.8,
+    "lineTotal": 1139
+  },
+  "integration: shared": {
+    "lines": 100,
+    "branches": 100,
+    "lineTotal": 578
+  },
+  "unit: core": {
+    "lines": 93.3,
+    "branches": 77.6,
+    "lineTotal": 2328
+  },
+  "unit: dashboard-server": {
+    "lines": 90.8,
+    "branches": 88.3,
+    "lineTotal": 87
+  }
+}

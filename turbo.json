@@ -6,17 +6,13 @@
         "^build"
       ],
       "outputs": [
-        "dist/**"
+        "dist/**",
+        "dist-server/**"
       ]
     },
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "lint": {
-      "dependsOn": [
-        "^build"
-      ]
     },
     "test": {
       "dependsOn": [
@@ -29,6 +25,18 @@
     "type-check": {
       "dependsOn": [
         "^build"
+      ]
+    },
+    "@cognistore/core#clean-assets": {
+      "cache": false
+    },
+    "@cognistore/core#build": {
+      "dependsOn": [
+        "^build",
+        "@cognistore/core#clean-assets"
+      ],
+      "outputs": [
+        "dist/**"
       ]
     }
   }

@@ -1,6 +1,6 @@
 {
   "name": "@cognistore/core",
-  "version": "2.5.4",
+  "version": "2.6.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -12,24 +12,26 @@
     }
   },
   "scripts": {
+    "clean-assets": "rm -rf dist/db/migrations dist/db/seeds",
     "build": "tsc && rm -rf dist/db/migrations dist/db/seeds && cp -r src/db/migrations dist/db/migrations && cp -r src/db/seeds dist/db/seeds",
     "clean": "rm -rf dist",
-    "test": "if find . -name '*.test.ts' -o -name '*.spec.ts' | grep -q .; then npx playwright test; else echo 'No tests found, skipping'; fi",
+    "test": "vitest run",
     "db:generate": "pnpm build && drizzle-kit generate",
     "db:push": "pnpm build && drizzle-kit push",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@cognistore/shared": "workspace:*",
-    "better-sqlite3": "^12.8.0",
-    "drizzle-orm": "^0.45.0",
-    "sqlite-vec": "^0.1.7",
-    "zod": "^4.6.6"
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.0",
-    "@types/better-sqlite3": "^7.6.13",
-    "drizzle-kit": "^0.31.0",
-    "typescript": "^5.7.0"
+    "@types/better-sqlite3": "^9.6.0",
+    "@vitest/coverage-v8": "5.1.0",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^5.7.0",
+    "vitest": "5.1.0"
   }
 }

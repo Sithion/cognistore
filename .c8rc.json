@@ -1,0 +1,21 @@
+{
+  "temp-directory": "coverage/integration/.v8",
+  "report-dir": "coverage/integration",
+  "reporter": [
+    "text-summary",
+    "json-summary",
+    "lcov"
+  ],
+  "exclude-after-remap": false,
+  "include": [
+    "packages/*/dist/**",
+    "apps/dashboard/dist-server/**",
+    "apps/mcp-server/dist/**"
+  ],
+  "exclude": [
+    "packages/tests/**",
+    "**/node_modules/**",
+    "**/db/migrations/**",
+    "apps/mcp-server/dist/jobs/**"
+  ]
+}

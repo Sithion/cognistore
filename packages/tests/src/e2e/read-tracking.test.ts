@@ -10,8 +10,8 @@ import { KnowledgeType } from '@cognistore/shared';
  * end-to-end through `search`, not by calling the repository directly.
  */
 
-/** The mark is deferred with setImmediate, so let the event loop turn first. */
-const flushDeferredWrites = () => new Promise((r) => setTimeout(r, 20));
+/** Read marks are buffered (plan v2.6, 1A.3); write them now. */
+const flushDeferredWrites = async (ctx: TestContext) => { ctx.service.flushPendingWrites(); };
 
 async function seed(ctx: TestContext, title: string) {
   return ctx.service.add({
@@ -46,14 +46,14 @@ test.describe('@e2e read tracking', () => {
 
     const results = await ctx.service.search('VEC[1,0,0] Tracked', { trackRead: true, threshold: 0 });
     expect(results.some((r) => r.entry.id === e.id)).toBe(true);
-    await flushDeferredWrites();
+    await flushDeferredWrites(ctx);
 
     const first = rowOf(ctx, e.id);
     expect(first.lastReadAt).not.toBeNull();
     expect(first.readCount).toBe(1);
 
     await ctx.service.search('VEC[1,0,0] Tracked', { trackRead: true, threshold: 0 });
-    await flushDeferredWrites();
+    await flushDeferredWrites(ctx);
     expect(rowOf(ctx, e.id).readCount).toBe(2);
   });
 
@@ -62,7 +62,7 @@ test.describe('@e2e read tracking', () => {
     const before = rowOf(ctx, e.id);
 
     await ctx.service.search('VEC[1,0,0] Untouched', { trackRead: true, threshold: 0 });
-    await flushDeferredWrites();
+    await flushDeferredWrites(ctx);
 
     const after = rowOf(ctx, e.id);
     expect(after.updatedAt).toBe(before.updatedAt);
@@ -74,19 +74,19 @@ test.describe('@e2e read tracking', () => {
     const e = await seed(ctx, 'Browsed');
 
     await ctx.service.search('VEC[1,0,0] Browsed', { threshold: 0 });
-    await flushDeferredWrites();
+    await flushDeferredWrites(ctx);
 
     expect(rowOf(ctx, e.id).lastReadAt).toBeNull();
     expect(rowOf(ctx, e.id).readCount).toBe(0);
   });
 
-  test('a deferred mark landing after the database closed does not crash the process', async () => {
+  test('a buffered mark flushed after the database closed does not crash the process', async () => {
     // Short-lived MCP processes and the test suite itself close the DB right
-    // after a search. The deferred write must fail silently, not take down the
-    // process with an unhandled rejection.
+    // after a search. The buffered write must fail silently, not take down the
+    // process with an exception.
     await seed(ctx, 'Closing');
     await ctx.service.search('VEC[1,0,0] Closing', { trackRead: true, threshold: 0 });
     ctx.sqlite.close();
-    await flushDeferredWrites();
+    await flushDeferredWrites(ctx);
   });
 });

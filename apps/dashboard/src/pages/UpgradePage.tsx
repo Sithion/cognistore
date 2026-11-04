@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Check, Circle, LoaderCircle, TriangleAlert } from 'lucide-react';
+import { Button } from '../components/ui/button.js';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.js';
 import { api, ApiError, type UpgradeStepStatus, type UpgradeRunResult } from '../api/client.js';
 
 declare const __APP_VERSION__: string;
@@ -26,26 +29,17 @@ const STEP_LABELS: Record<string, string> = {
   skills: 'Skills',
   hooks: 'Hooks',
   version: 'Save Version',
+  'incremental-vacuum': 'Compact database (optional)',
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function StepIcon({ status }: { status: string }) {
-  if (status === 'success') return <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>;
-  if (status === 'error') return <span style={{ color: '#ef4444', fontSize: 18 }}>✗</span>;
-  if (status === 'warning') return <span style={{ color: '#f59e0b', fontSize: 16 }}>!</span>;
-  if (status === 'skipped') return <span style={{ color: 'var(--text-secondary)', fontSize: 16 }}>–</span>;
-  if (status === 'running') {
-    return (
-      <span style={{ display: 'inline-block', width: 16, height: 16 }}>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite' }}>
-          <circle cx="8" cy="8" r="6" fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="22 16" strokeLinecap="round" />
-        </svg>
-      </span>
-    );
-  }
-  return <span style={{ color: 'var(--text-secondary)', fontSize: 16 }}>○</span>;
+  if (status === 'success') return <Check className="size-4 text-primary" />;
+  if (status === 'error') return <TriangleAlert className="size-4 text-destructive" />;
+  if (status === 'warning') return <TriangleAlert className="size-4 text-amber-500" />;
+  if (status === 'running') return <LoaderCircle className="size-4 animate-spin text-primary" />;
+  return <Circle className="size-4 text-muted-foreground" />;
 }
 
 export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; onComplete: () => void }) {
@@ -152,7 +146,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
       if (result.success) succeed();
       else setError('Some steps did not complete. You can retry the update.');
     } catch {
-      setError('The update could not be completed. You can retry it.');
+      setError('The update could not be completed. Check your connection and try again.');
     } finally {
       setPolling(false);
     }
@@ -177,7 +171,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
   const pct = done ? 100 : Math.min(95, Math.round((steps.length / total) * 100));
 
   return (
-    <div style={{
+    <main style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       height: '100vh', background: 'var(--bg-main)',
       flexDirection: 'column', gap: 0,
@@ -186,7 +180,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
       <div style={{ width: 440, padding: 32 }}>
         {/* Version Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🧠</div>
+          <div className="mb-3 text-3xl font-semibold text-primary" aria-hidden="true">C</div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
             Updating CogniStore
           </h1>
@@ -200,7 +194,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
             <span style={{ color: 'var(--accent)', fontSize: 18 }}>→</span>
             <span style={{
               padding: '4px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              backgroundColor: 'var(--accent)', color: '#fff',
+              backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
             }}>
               v{__APP_VERSION__}
             </span>
@@ -208,15 +202,7 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
         </div>
 
         {/* Progress Bar */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ height: 4, backgroundColor: 'var(--bg-input)', borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{
-              width: `${pct}%`, height: '100%',
-              backgroundColor: done ? '#22c55e' : 'var(--accent)',
-              borderRadius: 2, transition: 'width 0.5s ease',
-            }} />
-          </div>
-        </div>
+        <div className="mb-6"><progress aria-label="Upgrade progress" value={pct} max={100} className="h-2 w-full accent-primary" /></div>
 
         {/* Steps */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -275,20 +261,12 @@ export function UpgradePage({ fromVersion, onComplete }: { fromVersion: string; 
           )}
           {error && (
             <>
-              <p style={{ color: 'var(--error)', fontSize: 13, marginBottom: 12 }}>{error}</p>
-              <button
-                onClick={retry}
-                style={{
-                  padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  backgroundColor: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
-                }}
-              >
-                Retry
-              </button>
+              <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>
+              <Button onClick={retry}>Retry update</Button>
             </>
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

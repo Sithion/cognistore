@@ -1,5 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { round8Shell } from './round8-shell.js';
+import { round10Curation } from './round10-curation.js';
 
 const resources = {
   en: {
@@ -64,6 +66,8 @@ const resources = {
         staleEmpty: 'No stale entries.',
         duplicates: 'Possible duplicates',
         dupEmpty: 'No duplicates found.',
+        checkDuplicates: 'Check for duplicates',
+        checkingDuplicates: 'Checking for duplicates…',
         groupTitle: '{{count}} similar entries',
         deleteOthers: 'Keep selected, delete {{count}}',
         confirmGroupDelete: 'Delete {{count}} entries from this group? The selected entry is kept. This cannot be undone.',
@@ -206,6 +210,7 @@ const resources = {
         activity: 'Activity', models: 'Models', cacheEfficiency: 'Cache Efficiency',
         timeOfDay: 'Time of Day', topProjects: 'Top Projects', topSessions: 'Top Sessions',
         noData: 'No token usage data for this range yet.',
+        retentionNotice: 'The heatmap and top sessions cover the last {{days}} days. Daily totals keep the full history. <settingsLink>Configure retention in Settings</settingsLink>.',
         projectCol: 'Project', sessionsCol: 'Sessions', modelCol: 'Model', tokensCol: 'Tokens',
         durationCol: 'Duration', startedCol: 'Started', sessionIdCol: 'Session',
         unknown: 'unknown',
@@ -297,6 +302,8 @@ const resources = {
         staleEmpty: 'Sin entradas obsoletas.',
         duplicates: 'Posibles duplicados',
         dupEmpty: 'No se encontraron duplicados.',
+        checkDuplicates: 'Buscar duplicados',
+        checkingDuplicates: 'Buscando duplicados…',
         groupTitle: '{{count}} entradas similares',
         deleteOthers: 'Mantener seleccionada, eliminar {{count}}',
         confirmGroupDelete: '¿Eliminar {{count}} entradas de este grupo? La entrada seleccionada se conserva. Esto no se puede deshacer.',
@@ -439,6 +446,7 @@ const resources = {
         activity: 'Actividad', models: 'Modelos', cacheEfficiency: 'Eficiencia de Caché',
         timeOfDay: 'Hora del Día', topProjects: 'Proyectos Principales', topSessions: 'Sesiones Principales',
         noData: 'Aún no hay datos de uso de tokens para este rango.',
+        retentionNotice: 'El mapa de actividad y las sesiones principales cubren los últimos {{days}} días. Los totales diarios conservan todo el historial. <settingsLink>Configura la retención en Ajustes</settingsLink>.',
         projectCol: 'Proyecto', sessionsCol: 'Sesiones', modelCol: 'Modelo', tokensCol: 'Tokens',
         durationCol: 'Duración', startedCol: 'Iniciada', sessionIdCol: 'Sesión',
         unknown: 'desconocido',
@@ -530,6 +538,8 @@ const resources = {
         staleEmpty: 'Sem entradas obsoletas.',
         duplicates: 'Possíveis duplicados',
         dupEmpty: 'Nenhum duplicado encontrado.',
+        checkDuplicates: 'Verificar duplicatas',
+        checkingDuplicates: 'Verificando duplicatas…',
         groupTitle: '{{count}} entradas similares',
         deleteOthers: 'Manter selecionada, excluir {{count}}',
         confirmGroupDelete: 'Excluir {{count}} entradas deste grupo? A entrada selecionada é mantida. Isso não pode ser desfeito.',
@@ -672,6 +682,7 @@ const resources = {
         activity: 'Atividade', models: 'Modelos', cacheEfficiency: 'Eficiência de Cache',
         timeOfDay: 'Hora do Dia', topProjects: 'Projetos Principais', topSessions: 'Sessões Principais',
         noData: 'Sem dados de uso de tokens para este intervalo ainda.',
+        retentionNotice: 'O mapa de calor e as principais sessões abrangem os últimos {{days}} dias. Os totais diários mantêm todo o histórico. <settingsLink>Configure a retenção em Configurações</settingsLink>.',
         projectCol: 'Projeto', sessionsCol: 'Sessões', modelCol: 'Modelo', tokensCol: 'Tokens',
         durationCol: 'Duração', startedCol: 'Iniciada', sessionIdCol: 'Sessão',
         unknown: 'desconhecido',
@@ -724,4 +735,7 @@ i18n.on('languageChanged', (lng) => {
   localStorage.setItem(LANG_KEY, lng);
 });
 
-export default i18n;
+for (const [lng, translation] of [...Object.entries(round8Shell), ...Object.entries(round10Curation)]) {
+  i18n.addResourceBundle(lng, 'translation', translation, true, true);
+}
+

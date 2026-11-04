@@ -44,8 +44,33 @@ test('injectPermissions creates settings.json with the server-scope rule when no
 
   const cfg = JSON.parse(readFileSync(settings, 'utf-8'));
   expect(cfg.permissions.allow).toEqual([SERVER_RULE]);
+  // The destructive tools are denied from the first write, not from the first
+  // upgrade (plan v2.6, T.5).
+  expect(cfg.permissions.deny).toEqual([...ConfigManager.COGNISTORE_DENY_TOOLS]);
   // A freshly-created file needs no backup — there was nothing to preserve.
   expect(bakCount()).toBe(0);
+});
+
+test('removePermissions deletes the settings.json that injectPermissions created', async () => {
+  const created = await cm.injectPermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS);
+  expect(created.action).toBe('created');
+  const r = await cm.removePermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS, { fileCreatedBySetup: true });
+  expect(r.removed).toBe(true);
+  expect(readdirSync(dir).filter((f) => f === 'settings.json')).toEqual([]);
+});
+
+test('removePermissions never deletes a settings.json the user had, even an empty one', async () => {
+  writeFileSync(settings, '{}');
+  await cm.injectPermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS);
+  await cm.removePermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS);
+  expect(JSON.parse(readFileSync(settings, 'utf-8'))).toEqual({});
+});
+
+test('removePermissions keeps the user\'s other keys and drops only the lists it emptied', async () => {
+  writeFileSync(settings, JSON.stringify({ theme: 'dark', permissions: { ask: ['Bash(git push:*)'] } }));
+  await cm.injectPermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS);
+  await cm.removePermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS);
+  expect(JSON.parse(readFileSync(settings, 'utf-8'))).toEqual({ theme: 'dark', permissions: { ask: ['Bash(git push:*)'] } });
 });
 
 test('injectPermissions migrates legacy per-tool rules, preserving user rules and other keys', async () => {
@@ -176,4 +201,10 @@ test('removePermissions is a no-op when no cognistore rules are present', async 
   const r = await cm.removePermissions(settings, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS);
   expect(r.removed).toBe(false);
   expect(bakCount()).toBe(0);
+});
+
+test('resolveCuration is on the deny list so the user decides whether the agent may apply curation', () => {
+  expect(ConfigManager.COGNISTORE_DENY_TOOLS).toContain('mcp__cognistore__resolveCuration');
+  expect(ConfigManager.COGNISTORE_DENY_TOOLS).not.toContain('mcp__cognistore__getCurationQueue');
+  expect(ConfigManager.COGNISTORE_DENY_TOOLS).not.toContain('mcp__cognistore__supersedeKnowledge');
 });

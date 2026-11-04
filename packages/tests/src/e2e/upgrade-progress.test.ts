@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { type Server } from 'node:http';
 import { type ChildProcess } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,7 +26,9 @@ import {
  * that (it only redirects settings.json), so the sandbox is `HOME` itself,
  * which `os.homedir()` honours on POSIX. The guard below refuses to run if the
  * override somehow resolves back to the developer's home, and afterAll proves
- * the real files were never touched.
+ * the upgrade's writes all landed in the sandbox. It never reads the real home:
+ * comparing its mtimes failed whenever a running Claude Code touched
+ * ~/.claude.json (plan v2.6, T.10b).
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,33 +57,20 @@ let baseUrl: string;
 let tmpRoot: string;
 let readServerLog: () => string = () => '';
 let appVersion: string;
-/** existsSync + mtimeMs of files this suite must never touch. */
-let realHomeSnapshot: Record<string, string> = {};
 
-/** Every real-home path this upgrade would write if the HOME override failed.
- *  Mirrors redeployArtifacts + clearNpxMcpCache — keep it in step with them. */
-const WATCHED = () => [
-  join(homedir(), '.claude.json'),
-  join(homedir(), '.claude', 'settings.json'),
-  join(homedir(), '.claude', 'CLAUDE.md'),
-  join(homedir(), '.claude', 'skills'),
-  join(homedir(), '.claude', 'mcp-config.json'),
-  join(homedir(), '.copilot'),
-  join(homedir(), '.copilot', 'mcp-config.json'),
-  join(homedir(), '.config', 'opencode'),
-  join(homedir(), '.cognistore', '.version'),
-  join(homedir(), '.cognistore', 'hooks'),
-  join(homedir(), '.npm', '_npx'),
+/** HOME-relative paths the upgrade writes (redeployArtifacts). Mirrors it —
+ *  keep it in step. All of them must appear under the sandbox HOME. */
+const UPGRADE_WRITES = [
+  ['.claude.json'],
+  ['.claude', 'settings.json'],
+  ['.claude', 'CLAUDE.md'],
+  ['.claude', 'skills'],
+  ['.claude', 'mcp-config.json'],
+  ['.copilot', 'mcp-config.json'],
+  ['.config', 'opencode'],
+  ['.cognistore', 'hooks'],
+  // .cognistore/.version is left out: a degraded run legitimately skips it.
 ];
-
-function snapshotPaths(paths: string[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const p of paths) {
-    try { out[p] = existsSync(p) ? String(statSync(p).mtimeMs) : 'absent'; }
-    catch { out[p] = 'unreadable'; }
-  }
-  return out;
-}
 
 const getProgress = async (): Promise<Progress> =>
   (await (await authFetch(`${baseUrl}/api/upgrade/progress`)).json()) as Progress;
@@ -93,7 +82,6 @@ test.describe.serial('upgrade progress (real sidecar, sandboxed HOME)', () => {
     test.skip(!existsSync(SERVER_ENTRY), `built sidecar missing at ${SERVER_ENTRY} — run \`pnpm build\` first`);
 
     appVersion = JSON.parse(readFileSync(DASHBOARD_PKG, 'utf-8')).version;
-    realHomeSnapshot = snapshotPaths(WATCHED());
 
     const model = 'nomic-embed-text';
     tmpRoot = mkdtempSync(join(tmpdir(), 'cognistore-upgrade-'));
@@ -137,10 +125,11 @@ test.describe.serial('upgrade progress (real sidecar, sandboxed HOME)', () => {
   test.afterAll(async () => {
     await stopSidecar(child);
     await new Promise<void>((res) => (mock?.server ? mock.server.close(() => res()) : res()));
+    // The whole point of the HOME override: every artifact the upgrade writes
+    // resolved through homedir() to the sandbox, so none went to the real home.
+    const missing = UPGRADE_WRITES.map((p) => join(...p)).filter((p) => !existsSync(join(tmpRoot, p)));
     try { rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* ignore */ }
-    // The whole point of the HOME override: prove the developer's own config
-    // (and npx cache) came through untouched.
-    expect(snapshotPaths(WATCHED())).toEqual(realHomeSnapshot);
+    expect(missing).toEqual([]);
   });
 
   test('reports an upgrade is due and starts idle with no steps', async () => {

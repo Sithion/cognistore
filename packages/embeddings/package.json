@@ -1,6 +1,6 @@
 {
   "name": "@cognistore/embeddings",
-  "version": "2.5.4",
+  "version": "2.6.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,7 @@
     "@cognistore/shared": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@playwright/test": "^1.50.0"
+    "@playwright/test": "^1.64.1",
+    "typescript": "^5.7.0"
   }
 }

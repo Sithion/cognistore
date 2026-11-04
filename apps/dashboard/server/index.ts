@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve, sep } from 'node:path';
 import { execSync, execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync, copyFileSync, appendFileSync, renameSync, realpathSync, openSync, readSync, closeSync, fstatSync, constants as fsConstants } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, cpSync, readdirSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, statSync, chmodSync, copyFileSync, appendFileSync, renameSync, realpathSync, openSync, readSync, closeSync, fstatSync, createReadStream, constants as fsConstants } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
@@ -27,6 +28,9 @@ import {
   DEFAULT_EMBEDDING_MODEL,
 } from '@cognistore/shared';
 import { registerAuth, isAllowedOrigin, TOKEN_HEADER, type AuthConfig } from './auth.js';
+import { createPerfMonitor } from './perf-monitor.js';
+import { createDuplicatesCache } from './duplicates-cache.js';
+import { duplicateFingerprint, sweepStaleExports, type SQLiteDatabase } from '@cognistore/core';
 import {
   UNKNOWN_VERSION,
   buildMcpEntry as buildMcpEntryPure,
@@ -37,13 +41,23 @@ import {
 } from './mcp-entry.js';
 import {
   readSettings,
+  readSettingsAsync,
+  getCachedSettings,
+  refreshSettingsCache,
+  patchSettingsAsync,
   writeSettings,
   sanitizeSettings,
   isValidOllamaModelName,
-  SETTINGS_DEFAULTS,
   type AppSettings,
+  type CreatedConfigFile,
 } from './settings.js';
-import { registerCleanupRoutes, maybeGenerateReport } from './cleanup-routes.js';
+import { registerCleanupRoutes } from './cleanup-routes.js';
+import { createCurationScheduler, sqliteCurationStore } from './curation-scheduler.js';
+import { registerCurationRoutes } from './curation-routes.js';
+import { createCurationStateWriter } from './curation-state.js';
+import { collectDbHealth, createEventLoopSampler } from './db-health.js';
+import { modelManager, ownedModelNames, ollamaModels, canonicalModelName } from './curation-models.js';
+import { resolveWorkerUrl } from './worker-path.js';
 import {
   createUpgradeProgress,
   deployWentWell,
@@ -92,7 +106,7 @@ const VERSION_RESOLVED = APP_VERSION !== UNKNOWN_VERSION;
 type DeployStep = UpgradeDeployStep;
 
 /** Skills deployed to ~/.claude/skills and ~/.copilot/skills. */
-const COGNISTORE_SKILLS = ['cognistore-query', 'cognistore-capture', 'cognistore-plan'] as const;
+const COGNISTORE_SKILLS = ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain'] as const;
 
 /** Get the last deployed version from ~/.cognistore/.version */
 function getDeployedVersion(): string | null {
@@ -167,9 +181,6 @@ if (!VERSION_RESOLVED) {
 // argument), unlike the display preferences that lived here before.
 
 // ─── External knowledge providers (~/.cognistore/providers.json) ─────
-/** Fallback when settings are unreadable at uninstall time. */
-const DEFAULT_CLEANUP_MODEL = SETTINGS_DEFAULTS.cleanupLlmModel;
-
 const PROVIDERS_FILE = resolve(INSTALL_DIR, 'providers.json');
 type ProvidersConfig = ReturnType<typeof providersConfigSchema.parse>;
 
@@ -228,10 +239,31 @@ async function start() {
   let sdkReady = false;
   let sdkError: string | null = null;
   let retryInterval: ReturnType<typeof setInterval> | null = null;
+  let tokenRetentionDays = readSettings().tokenUsageRetentionDays;
+  let pruneRunning = false;
+  let pruneController: AbortController | null = null;
+  let prunePromise: Promise<void> | null = null;
+
+  const stopPruneBeforeVacuum = async () => {
+    if (!pruneRunning) return;
+    pruneController?.abort();
+    await prunePromise?.catch(() => {});
+  };
+
+  // Event-loop lag + slow DB op / SQLITE_BUSY monitoring (plan v2.6, 0.2).
+  // Re-attached on every (re)init because upgrade paths close and reopen the DB.
+  const perfMonitor = createPerfMonitor({ logFile: LOG_FILE });
 
   const tryInitSDK = async () => {
     try {
       await sdk.initialize();
+      void sweepStaleExports().catch(() => {});
+      try {
+        const raw = getRawSqlite();
+        if (raw) perfMonitor.attach(raw as unknown as SQLiteDatabase);
+      } catch (e) {
+        log('warn', `Perf instrumentation not attached: ${e instanceof Error ? e.message : String(e)}`);
+      }
       sdkReady = true;
       sdkError = null;
       if (retryInterval) {
@@ -330,20 +362,67 @@ Pass an array to addKnowledge to create multiple entries at once.
   // from the still-retained raw window (MAX-merge, catches any stale/other-process
   // writer) BEFORE pruning the raw log, then cleanup + WAL checkpoint.
   setInterval(() => {
-    if (!sdkReady) return;
-    try { sdk.reconcileOperationsDaily(); sdk.cleanupOldOperations(); sdk.cleanupCompletedPlanEmbeddings(730); sdk.walCheckpoint(); } catch { /* silent */ }
-    // Cleanup report. Awaited inside its own async IIFE with a catch: an
-    // unhandled rejection escaping a setInterval callback would crash the
-    // sidecar, and this path talks to the DB and (on preview) to Ollama.
-    void (async () => { await maybeGenerateReport({ sdk, log }); })().catch(() => { /* logged inside */ });
+    if (!sdkReady || upgradeRunning || pruneRunning) return;
+    try { sdk.reconcileOperationsDaily(); sdk.cleanupOldOperations(); sdk.cleanupCompletedPlanEmbeddings(730); sdk.walCheckpoint(); sdk.optimize(); } catch { /* silent */ }
+    void (async () => {
+      if (upgradeRunning) return;
+      if (tokenRetentionDays > 0 && !pruneRunning) {
+      pruneRunning = true;
+      pruneController = new AbortController();
+      prunePromise = (async () => { try {
+        const cutoffDay = new Date(Date.now() - tokenRetentionDays * 86400000).toISOString().slice(0, 10);
+        await sdk.pruneTokenUsageBefore(`${cutoffDay}T00:00:00.000Z`, { signal: pruneController.signal });
+      } catch (e: any) { log('warn', `Token usage retention failed: ${e?.message ?? e}`); }
+      finally { pruneRunning = false; pruneController = null; prunePromise = null; } })();
+      await prunePromise;
+      }
+      const raw = getRawSqlite();
+      try {
+        const mode = raw?.prepare('PRAGMA auto_vacuum').get() as { auto_vacuum?: number } | undefined;
+        const free = raw?.prepare('PRAGMA freelist_count').get() as { freelist_count?: number } | undefined;
+        const pages = raw?.prepare('PRAGMA page_count').get() as { page_count?: number } | undefined;
+        if (mode?.auto_vacuum === 2 && Number(free?.freelist_count) > Math.max(1000, Number(pages?.page_count) * 0.05)) {
+          await sdk.incrementalVacuum(resolveWorkerUrl('vacuum-worker')).catch((e: any) => {
+            log('warn', `Incremental vacuum failed: ${e?.message ?? e}`);
+          });
+        }
+      } catch (e: any) { log('warn', `Incremental vacuum check failed: ${e?.message ?? e}`); }
+    })();
   }, 6 * 60 * 60 * 1000);
 
-  // Token usage scan every 5 minutes — incremental, idempotent.
-  setInterval(() => {
-    if (sdkReady) { sdk.scanTokenUsage().catch((e) => log('warn', `Token scan failed: ${e?.message ?? e}`)); }
-  }, 5 * 60 * 1000);
+  // Token usage scan — incremental, idempotent. Adaptive cadence (plan v2.6,
+  // 1A.4): every 5 minutes while agents are producing usage, every 30 once a
+  // pass finds nothing new. POST /api/token-usage/scan still scans on demand.
+  const TOKEN_SCAN_ACTIVE_MS = 5 * 60 * 1000;
+  const TOKEN_SCAN_IDLE_MS = 30 * 60 * 1000;
+  const scheduleTokenScan = (delayMs: number) => {
+    setTimeout(async () => {
+      let next = TOKEN_SCAN_ACTIVE_MS;
+      if (sdkReady && !upgradeRunning) {
+        try {
+          const result = await sdk.scanTokenUsage();
+          next = result.inserted > 0 ? TOKEN_SCAN_ACTIVE_MS : TOKEN_SCAN_IDLE_MS;
+        } catch (e: any) {
+          log('warn', `Token scan failed: ${e?.message ?? e}`);
+        }
+      }
+      scheduleTokenScan(next);
+    }, delayMs);
+  };
+  scheduleTokenScan(TOKEN_SCAN_ACTIVE_MS);
 
   const app = Fastify({ logger: true });
+
+  // Route inventory for the API test suite (plan v2.6, T.7): with
+  // COGNISTORE_ROUTE_MANIFEST set, every registered route is written to that
+  // file once the server listens, straight from Fastify, so a route without a
+  // test cannot hide. Unset in production; no route is added.
+  const routeManifest: { method: string; url: string }[] = [];
+  if (process.env.COGNISTORE_ROUTE_MANIFEST) {
+    app.addHook('onRoute', (r) => {
+      for (const method of [r.method].flat()) routeManifest.push({ method, url: r.url });
+    });
+  }
 
   const authConfig: AuthConfig = {
     token: process.env.SIDECAR_TOKEN || '',
@@ -368,6 +447,10 @@ Pass an array to addKnowledge to create multiple entries at once.
   // is inherited by all of them — and it matches on the resolved path, never on
   // an `/api/` prefix, which would be allow-by-default.
   registerAuth(app, authConfig);
+  app.addHook('onRequest', async request => {
+    if (request.url.split('?')[0].startsWith('/api/')) curationScheduler.noteActivity();
+  });
+
 
   // Generic error responses in production.
   //
@@ -379,7 +462,9 @@ Pass an array to addKnowledge to create multiple entries at once.
   app.setErrorHandler((error: any, request, reply) => {
     const ref = randomUUID().slice(0, 8);
     log('error', `[${ref}] ${request.method} ${request.url}: ${error?.message ?? error}`);
-    const status = error?.statusCode ?? 500;
+    // The SDK rejects bad input with ValidationError (no statusCode): that is the
+    // caller's fault, a 400 — not a 500 that reads like a server failure.
+    const status = error?.statusCode ?? (error?.code === 'VALIDATION_ERROR' ? 400 : 500);
     reply.code(status);
     return reply.send(
       isProd && status >= 500
@@ -429,7 +514,11 @@ Pass an array to addKnowledge to create multiple entries at once.
     wildcard: false,
   });
 
-  app.setNotFoundHandler(async (_request, reply) => {
+  app.setNotFoundHandler(async (request, reply) => {
+    // The SPA fallback is for page routes. An unknown API path answered with
+    // index.html and a 200, so a typo or a route a newer client expects looked
+    // like success and failed later as a JSON parse error.
+    if ((request.url || '').split('?')[0].startsWith('/api/')) return sendError(reply, 404, 'Not found');
     return reply.sendFile('index.html');
   });
 
@@ -453,6 +542,14 @@ Pass an array to addKnowledge to create multiple entries at once.
   type RawSqlite = { prepare: (sql: string) => any; exec: (sql: string) => unknown; transaction?: (fn: any) => any };
   const getRawSqlite = (): RawSqlite | undefined =>
     ((sdk as any).sqlite ?? (sdk as any).db?.sqlite) as RawSqlite | undefined;
+
+  const duplicatesCache = createDuplicatesCache<Awaited<ReturnType<typeof sdk.findDuplicateGroups>>>(() => {
+    try {
+      const sqlite = getRawSqlite();
+      if (sqlite) return duplicateFingerprint(sqlite as SQLiteDatabase, 0.9);
+    } catch { /* fall through */ }
+    return 'unavailable';
+  });
 
   // ─── Setup endpoints ───────────────────────────────────────────
 
@@ -604,13 +701,25 @@ Pass an array to addKnowledge to create multiple entries at once.
    * ~/.copilot/hooks/hooks.json (Copilot, reminder-only). Idempotent — safe to re-run
    * on setup, upgrade, and redeploy. Copilot failures are non-fatal.
    */
+  /**
+   * Remember that setup created `file` from nothing, so uninstall may delete it
+   * once only setup's own keys are left (setup/uninstall symmetry, plan v2.6 T.5).
+   */
+  function noteIfCreated(file: CreatedConfigFile, result: { action: string } | null | undefined): void {
+    if (result?.action !== 'created') return;
+    try {
+      const current = readSettings().createdConfigFiles;
+      if (!current.includes(file)) writeSettings({ createdConfigFiles: [...current, file] });
+    } catch { /* best effort: without the record uninstall only cleans the file */ }
+  }
+
   async function deployGlobalHooks(): Promise<void> {
     const hooksDir = await configManager.setupHooks(TEMPLATES_PATH);
     if (hooksDir) {
-      await configManager.injectHooks(
+      noteIfCreated('claude-settings', await configManager.injectHooks(
         ConfigManager.CLAUDE_SETTINGS,
         ConfigManager.buildClaudeHookConfig(hooksDir)
-      );
+      ));
     }
     try {
       await configManager.setupCopilotHooks(TEMPLATES_PATH);
@@ -693,8 +802,8 @@ Pass an array to addKnowledge to create multiple entries at once.
       await configManager.setupMcpConfig(ConfigManager.MCP_CONFIG, claudeEntry);
       try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, claudeEntry); } catch { /* optional */ }
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, copilotEntry); } catch { /* optional */ }
-      try { await configManager.setupOpenCodeMcp(opencodeEntry); } catch { /* optional */ }
-      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
+      try { noteIfCreated('opencode-config', await configManager.setupOpenCodeMcp(opencodeEntry)); } catch { /* optional */ }
+      try { noteIfCreated('claude-settings', await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS)); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
       push({ step: 'mcp-configs', status: 'success' });
     } catch (e: any) {
       push({ step: 'mcp-configs', status: 'error', message: e.message });
@@ -1078,10 +1187,10 @@ Pass an array to addKnowledge to create multiple entries at once.
 
       try { await configManager.setupMcpConfig(ConfigManager.CLAUDE_JSON, claudeEntry); results.push('Claude JSON config set'); } catch { /* optional */ }
       try { await configManager.setupMcpConfig(ConfigManager.COPILOT_MCP_CONFIG, copilotEntry); results.push('Copilot MCP config set'); } catch { /* optional */ }
-      try { await configManager.setupOpenCodeMcp(opencodeEntry); results.push('OpenCode MCP config set'); } catch { /* optional */ }
+      try { noteIfCreated('opencode-config', await configManager.setupOpenCodeMcp(opencodeEntry)); results.push('OpenCode MCP config set'); } catch { /* optional */ }
 
       // Inject tool permissions for auto-approve (read + write)
-      try { await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS); results.push('Claude permissions injected'); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
+      try { noteIfCreated('claude-settings', await configManager.injectPermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS)); results.push('Claude permissions injected'); } catch (e: any) { console.warn('[CogniStore] Permission injection failed:', e.message); }
 
       // Global enforcement hooks. Skill-dir hooks never registered with Claude Code;
       // real global hooks must live in ~/.claude/settings.json (and ~/.copilot/hooks/).
@@ -1092,7 +1201,7 @@ Pass an array to addKnowledge to create multiple entries at once.
       const skillsDir = resolve(TEMPLATES_PATH, 'skills');
       const home = homedir();
 
-      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
         const srcDir = resolve(skillsDir, 'claude-code', name);
         if (existsSync(srcDir)) {
           const destDir = resolve(home, '.claude', 'skills', name);
@@ -1113,7 +1222,7 @@ Pass an array to addKnowledge to create multiple entries at once.
         }
       }
 
-      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
         const srcDir = resolve(skillsDir, 'copilot', name);
         if (existsSync(srcDir)) {
           const destDir = resolve(home, '.copilot', 'skills', name);
@@ -1180,6 +1289,7 @@ Pass an array to addKnowledge to create multiple entries at once.
   /** Guards every path that writes deployed artifacts, so the startup self-heal,
    *  /api/upgrade/run and /api/redeploy can never interleave on the same files. */
   let upgradeRunning = false;
+  let uninstallRunning = false;
   /** Resolves when the in-flight deploy finishes; lets callers wait instead of 409. */
   let inFlightDeploy: Promise<unknown> | null = null;
   /** Live view of the running upgrade, polled by the upgrade screen. */
@@ -1187,6 +1297,13 @@ Pass an array to addKnowledge to create multiple entries at once.
   app.get('/api/upgrade/progress', async () => upgradeProgress.snapshot());
 
   app.post('/api/upgrade/run', async (request, reply) => {
+    const upgradeBody = request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+      ? request.body as Record<string, unknown> : {};
+    const hasVacuumRequest = Object.prototype.hasOwnProperty.call(upgradeBody, 'skipIncrementalVacuum');
+    if (hasVacuumRequest && typeof upgradeBody.skipIncrementalVacuum !== 'boolean') {
+      return sendError(reply, 400, 'skipIncrementalVacuum must be a boolean');
+    }
+    const skipIncrementalVacuum = !hasVacuumRequest || upgradeBody.skipIncrementalVacuum === true;
     // The UI auto-POSTs this on window load, which can land while the startup
     // self-heal is still running. Wait it out rather than 409-ing, which the
     // client would surface as a failed upgrade.
@@ -1198,10 +1315,40 @@ Pass an array to addKnowledge to create multiple entries at once.
     // thing again — re-embed probe, npx cache wipe and all.
     if (VERSION_RESOLVED && getDeployedVersion() === APP_VERSION) {
       const last = upgradeProgress.lastRun();
-      if (last === null) {
-        // Nothing ran this boot: already current. Say so explicitly rather than
-        // returning an empty list, which reads as a completed upgrade with no steps.
-        return { success: true, noop: true, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results: [] as DeployStep[] };
+      if (!skipIncrementalVacuum) {
+        upgradeRunning = true;
+        await stopPruneBeforeVacuum();
+        const ownsPruneFlag = !pruneRunning;
+        if (ownsPruneFlag) pruneRunning = true;
+        upgradeProgress.beginTransient(getDeployedVersion());
+        upgradeProgress.setStep('incremental-vacuum');
+        const from = getDeployedVersion();
+        let results: DeployStep[];
+        try {
+          const outcome = await sdk.enableIncrementalVacuum(resolveWorkerUrl('vacuum-worker'));
+          const message = outcome.alreadyIncremental ? 'Incremental vacuum already enabled' : outcome.checkpointBusy
+            ? 'Enabled incremental vacuum; the WAL will be truncated at the next checkpoint'
+            : 'Enabled incremental vacuum';
+          results = [{ step: 'incremental-vacuum', status: 'success', message }];
+        } catch (e: any) {
+          // Optional step: any failure is a warning, never a failed upgrade.
+          log('warn', `Optional incremental vacuum failed: ${e?.message ?? e}`);
+          results = [{ step: 'incremental-vacuum', status: 'warning', message: e?.message ?? String(e) }];
+        } finally {
+          upgradeProgress.recordTransient(results![0]);
+          upgradeProgress.finishTransient();
+          if (ownsPruneFlag) pruneRunning = false;
+          upgradeRunning = false;
+        }
+        return { success: deployWentWell(results), noop: false, fromVersion: from, toVersion: APP_VERSION, results };
+      }
+      // An explicit default-skip request is still a normal replay. If an
+      // earlier run (including startup self-heal) recorded its own state,
+      // preserve that response. The opt-in branch above intentionally precedes
+      // this in-memory replay guard.
+      if (last === null || (last.steps.length === 1 && last.steps[0].step === 'incremental-vacuum')) {
+        // Nothing ran this boot: already current. Report the default opt-out.
+        return { success: true, noop: true, fromVersion: getDeployedVersion(), toVersion: APP_VERSION, results: [{ step: 'incremental-vacuum', status: 'skipped', message: 'Skipped by default' }] as DeployStep[] };
       }
       if (deployWentWell(last.steps)) {
         // `last.fromVersion` is the version that run started from — re-reading
@@ -1214,6 +1361,7 @@ Pass an array to addKnowledge to create multiple entries at once.
       // boot. Fall through and genuinely run it again, which is what Retry means.
     }
     upgradeRunning = true;
+    let ownsPruneFlag = false;
     // Captured before Step 5 overwrites the marker.
     const fromVersion = getDeployedVersion();
     // Only now that this request owns the upgrade: a reset before the guard
@@ -1328,7 +1476,7 @@ Pass an array to addKnowledge to create multiple entries at once.
                   console.log(`[CogniStore] Re-embedded ${reembedded} entries`);
                 } catch (e: any) {
                   record({ step: 'reembed', status: 'error', message: e.message });
-                }
+                } finally { duplicatesCache.clear(); }
               } else {
                 record({ step: 'reembed', status: 'error', message: 'SDK re-init failed after dropping vec tables' });
               }
@@ -1344,9 +1492,9 @@ Pass an array to addKnowledge to create multiple entries at once.
       // COUNT(knowledge_embeddings_rowids), but that count excludes nothing —
       // reembedAll() iterated a query that DID exclude system-owned entries, so
       // the two counts could never agree and this step dropped and rebuilt the
-      // entire vector index on every single upgrade run, forever, and left it
-      // empty if the run was ever interrupted. embedMissing() targets exactly
-      // the ids that are actually missing and only ever inserts/upserts.
+      // entire vector index on every single upgrade run until v2.5.2 replaced
+      // that path. It also left the index empty if interrupted. embedMissing()
+      // targets exactly the ids that are missing and only inserts/upserts.
       try {
         if (sdkReady) {
           const coverage = await sdk.embeddingCoverage();
@@ -1383,7 +1531,7 @@ Pass an array to addKnowledge to create multiple entries at once.
               record({ step: 'integrity', status: 'skipped', message: `Ollama unavailable — ${coverage.missingEntries + coverage.missingPlans} embeddings still missing, will backfill on next upgrade` });
               console.warn('[CogniStore] Upgrade: skipping embedding backfill (Ollama cannot embed)');
             } else {
-              const result = await sdk.embedMissing();
+      const result = await sdk.embedMissing();
               // Only a run that made NO progress at all is an error. A partial
               // backfill left the index strictly better than it found it, and
               // marking it `error` would make saveDeployedVersion() refuse to
@@ -1400,7 +1548,7 @@ Pass an array to addKnowledge to create multiple entries at once.
         }
       } catch (e: any) {
         record({ step: 'integrity', status: 'error', message: e.message });
-      }
+      } finally { duplicatesCache.clear(); }
 
       // Steps 2-4b: re-deploy every on-disk artifact (shared with /api/redeploy).
       // Its steps are recorded through `onStep` as they complete — the returned
@@ -1423,15 +1571,41 @@ Pass an array to addKnowledge to create multiple entries at once.
       } catch (e: any) {
         record({ step: 'version', status: 'error', message: e.message });
       }
+      if (skipIncrementalVacuum) {
+        record({ step: 'incremental-vacuum', status: 'skipped', message: 'Skipped by default' });
+      } else {
+        await stopPruneBeforeVacuum();
+        ownsPruneFlag = !pruneRunning;
+        if (ownsPruneFlag) pruneRunning = true;
+        upgradeProgress.setStep('incremental-vacuum');
+        try {
+          const outcome = await sdk.enableIncrementalVacuum(resolveWorkerUrl('vacuum-worker'));
+          const message = outcome.alreadyIncremental ? 'Incremental vacuum already enabled' : outcome.checkpointBusy
+            ? 'Enabled incremental vacuum; the WAL will be truncated at the next checkpoint'
+            : 'Enabled incremental vacuum';
+          record({ step: 'incremental-vacuum', status: 'success', message });
+        } catch (e: any) {
+          record({ step: 'incremental-vacuum', status: 'warning', message: e?.message ?? 'Vacuum failed' });
+        } finally {
+          if (ownsPruneFlag) { pruneRunning = false; ownsPruneFlag = false; }
+        }
+      }
     })();
 
     inFlightDeploy = run;
     try {
       await run;
     } finally {
+      if (ownsPruneFlag) pruneRunning = false;
       upgradeRunning = false;
       inFlightDeploy = null;
       upgradeProgress.finish();
+    }
+    if (deployWentWell(upgradeProgress.lastRun()?.steps ?? [])) {
+      const raw = getRawSqlite();
+      if (raw?.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get()) {
+        void sdk.run('hashBackfill', {}).catch((e) => log('warn', `Content hash backfill failed: ${e instanceof Error ? e.message : e}`));
+      }
     }
 
     // Read the results back from the single list that collected them.
@@ -1462,6 +1636,10 @@ Pass an array to addKnowledge to create multiple entries at once.
   // ─── Uninstall endpoint ────────────────────────────────────────
 
   app.post<{ Body: { removeOllama?: boolean } | undefined }>('/api/uninstall', async (_request, reply) => {
+    if (uninstallRunning) return sendError(reply, 409, 'Uninstall already running');
+    uninstallRunning = true;
+    await curationScheduler.dispose();
+    await modelManager.dispose();
     const step = async (label: string, fn: () => unknown, results: string[], errors: string[]) => {
       try { await fn(); results.push(label); }
       catch (e) { errors.push(`${label}: ${e}`); }
@@ -1482,13 +1660,18 @@ Pass an array to addKnowledge to create multiple entries at once.
       await step('MCP config cleaned', () => configManager.removeMcpEntry(ConfigManager.MCP_CONFIG, 'cognistore'), results, errors);
       await step('Claude JSON cleaned', () => configManager.removeMcpEntry(ConfigManager.CLAUDE_JSON, 'cognistore'), results, errors);
       await step('Copilot MCP cleaned', () => configManager.removeMcpEntry(ConfigManager.COPILOT_MCP_CONFIG, 'cognistore'), results, errors);
-      await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp(), results, errors);
-      await step('Claude permissions cleaned', () => configManager.removePermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS), results, errors);
-      await step('Claude hooks cleaned', () => configManager.removeHooks(ConfigManager.CLAUDE_SETTINGS), results, errors);
+      // Read before ~/.cognistore (and settings.json with it) is removed below.
+      const created = new Set<CreatedConfigFile>((() => {
+        try { return readSettings().createdConfigFiles; } catch { return []; }
+      })());
+      const claudeSettingsOpts = { fileCreatedBySetup: created.has('claude-settings') };
+      await step('OpenCode MCP cleaned', () => configManager.removeOpenCodeMcp({ fileCreatedBySetup: created.has('opencode-config') }), results, errors);
+      await step('Claude permissions cleaned', () => configManager.removePermissions(ConfigManager.CLAUDE_SETTINGS, ConfigManager.COGNISTORE_AUTO_ALLOW_TOOLS, claudeSettingsOpts), results, errors);
+      await step('Claude hooks cleaned', () => configManager.removeHooks(ConfigManager.CLAUDE_SETTINGS, claudeSettingsOpts), results, errors);
       await step('Copilot hooks cleaned', () => configManager.removeCopilotHooks(), results, errors);
 
       // 3. Remove skills
-      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan']) {
+      for (const name of ['cognistore-query', 'cognistore-capture', 'cognistore-plan', 'cognistore-maintain']) {
         const claudeDir = resolve(home, '.claude', 'skills', name);
         if (existsSync(claudeDir)) { rmSync(claudeDir, { recursive: true, force: true }); results.push(`Skill ${name} removed (Claude)`); }
         // Remove new directory format
@@ -1502,22 +1685,11 @@ Pass an array to addKnowledge to create multiple entries at once.
       configManager.removeOpenCodeSkills(); results.push('OpenCode skills removed');
       configManager.removeOpenCodePlugins(); results.push('OpenCode plugins removed');
 
-      // 4. Remove the Ollama models this app pulled: the embedding model, and
-      //    the merge model if a consolidation preview ever downloaded it.
-      //
-      //    execFileSync with an argument array, never a shell string: the
-      //    cleanup model name comes from settings.json, which the user can edit
-      //    and PUT /api/settings can write. The name is re-validated here too,
-      //    because reading it and trusting it are different things.
-      //
-      //    Settings are read BEFORE the ~/.cognistore removal below, or the file
-      //    would already be gone by the time we needed the model name.
-      const cleanupModel = (() => {
-        try {
-          const configured = readSettings().cleanupLlmModel;
-          return isValidOllamaModelName(configured) ? configured : DEFAULT_CLEANUP_MODEL;
-        } catch { return DEFAULT_CLEANUP_MODEL; }
-      })();
+      // 4. Capture model ownership before settings removal. Selected model
+      // names confer no ownership; pre-existing and unrecorded models survive.
+      // Keep the embedding removal policy and deduplicate shared chat models.
+      await modelManager.settled();
+      const ownedModels = ownedModelNames(await readSettingsAsync());
       const embeddingModel = process.env.OLLAMA_MODEL || 'nomic-embed-text';
       if (isValidOllamaModelName(embeddingModel)) {
         // Setup always pulls this one, so a failure here is worth reporting.
@@ -1525,15 +1697,9 @@ Pass an array to addKnowledge to create multiple entries at once.
           execFileSync('ollama', ['rm', embeddingModel], { stdio: 'pipe', timeout: 30000 });
         }, results, errors);
       }
-      // The merge model is pulled lazily, on the first consolidation preview, so
-      // most uninstalls never had it. `ollama rm` on a model that was never
-      // pulled is the normal case, not an error — reporting it would tell the
-      // user their uninstall partly failed when nothing did.
-      if (isValidOllamaModelName(cleanupModel) && cleanupModel !== embeddingModel) {
-        try {
-          execFileSync('ollama', ['rm', cleanupModel], { stdio: 'pipe', timeout: 30000 });
-          results.push(`Ollama model removed (${cleanupModel})`);
-        } catch { /* never pulled, or Ollama already gone */ }
+      for (const model of ownedModels) {
+        if (isValidOllamaModelName(embeddingModel) && model === canonicalModelName(embeddingModel)) continue;
+        await step(`Ollama model removed (${model})`, () => ollamaModels().remove(model), results, errors);
       }
 
       // 5. Uninstall Ollama — OPT-IN, and only what we installed.
@@ -1886,20 +2052,24 @@ Pass an array to addKnowledge to create multiple entries at once.
     const opts: { days?: number; minConfidence?: number; limit?: number } = {};
     if (q.days) opts.days = Number(q.days);
     if (q.minConfidence) opts.minConfidence = Number(q.minConfidence);
-    if (q.limit) opts.limit = Number(q.limit);
+    opts.limit = Math.min(500, Math.max(1, Math.floor(Number(q.limit) || 100)));
     return sdk.findStaleEntries(opts);
   });
 
   // Returns duplicate GROUPS (connected components), not raw pairs — N copies of
-  // an entry render as one group. Single consumer: the Settings health panel.
+  // an entry render as one group. Single consumer: the Settings health panel,
+  // which calls it only on demand ("Check for duplicates"). The result is cached
+  // per base fingerprint; `x-cognistore-cache` says whether this call reused it.
   app.get('/api/health/duplicates', async (request, reply) => {
     const err = ensureReady(reply);
     if (err) return err;
     const q = request.query as any;
     const opts: { threshold?: number; limit?: number } = {};
     if (q.threshold) opts.threshold = Number(q.threshold);
-    if (q.limit) opts.limit = Number(q.limit);
-    return sdk.findDuplicateGroups(opts);
+    opts.limit = Math.min(500, Math.max(1, Math.floor(Number(q.limit) || 100)));
+    const { value, hit } = await duplicatesCache.get(JSON.stringify(opts), () => sdk.findDuplicateGroups(opts));
+    reply.header('x-cognistore-cache', hit ? 'hit' : 'miss');
+    return value;
   });
 
   app.get('/api/knowledge/recent', async (request, reply) => {
@@ -1967,7 +2137,7 @@ Pass an array to addKnowledge to create multiple entries at once.
     const body = request.body as any;
     const { query, includeExternal, providers, ...options } = body;
     if (!query || typeof query !== 'string') {
-      throw new Error('Query is required and must be a string');
+      return sendError(reply, 400, 'Query is required and must be a string');
     }
     // `providers: []` means "no specific filter" not "enable external search" —
     // only treat a non-empty array as an explicit external-search request.
@@ -2043,40 +2213,34 @@ Pass an array to addKnowledge to create multiple entries at once.
     const includeParam = ((request.query as any).include || 'knowledge,plans') as string;
     const include = includeParam.split(',').map(s => s.trim());
 
-    const exportData: Record<string, unknown> = {
-      version: APP_VERSION,
-      exportedAt: new Date().toISOString(),
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.raw.once('aborted', abort);
+    reply.raw.once('close', () => { if (!reply.raw.writableFinished) abort(); });
+    let file: { path: string; bytes: number } | undefined;
+    let stream: ReturnType<typeof createReadStream> | undefined;
+    let released = false;
+    const release = async () => {
+      if (released || !file) return;
+      released = true;
+      await sdk.releaseExport(file.path).catch(() => {});
     };
-
-    if (include.includes('knowledge')) {
-      const entries = await sdk.listAllKnowledge();
-      exportData.knowledge = entries.map(e => ({
-        title: e.title, content: e.content, tags: e.tags, type: e.type,
-        scope: e.scope, source: e.source, confidenceScore: e.confidenceScore,
-        agentId: e.agentId,
-        createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
-        updatedAt: e.updatedAt instanceof Date ? e.updatedAt.toISOString() : e.updatedAt,
-      }));
+    reply.raw.once('finish', () => { void release(); });
+    reply.raw.once('error', () => { void release(); });
+    reply.raw.once('close', () => { void release(); });
+    try {
+      file = await sdk.exportToFile({ include, version: APP_VERSION, signal: controller.signal });
+      if (controller.signal.aborted) { await release(); return reply; }
+      reply.header('Content-Disposition', 'attachment; filename="cognistore-export.json"');
+      reply.type('application/json');
+      stream = createReadStream(file.path);
+      stream.once('error', () => { void release(); if (!reply.raw.destroyed) reply.raw.destroy(); });
+      return reply.send(stream);
+    } catch (error) {
+      await release();
+      if (controller.signal.aborted) return reply;
+      throw error;
     }
-
-    if (include.includes('plans')) {
-      const plans = sdk.listAllPlans();
-      exportData.plans = plans.map(p => {
-        const tasks = sdk.listPlanTasks(p.id);
-        return {
-          title: p.title, content: p.content, tags: p.tags, scope: p.scope,
-          source: p.source, status: p.status,
-          createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
-          tasks: tasks.map(t => ({
-            description: t.description, status: t.status, priority: t.priority,
-            notes: t.notes, position: t.position,
-          })),
-        };
-      });
-    }
-
-    reply.header('Content-Disposition', 'attachment; filename="cognistore-export.json"');
-    return exportData;
   });
 
   // ─── Import endpoint ──────────────────────────────────────
@@ -2091,6 +2255,8 @@ Pass an array to addKnowledge to create multiple entries at once.
     }
     try {
       const body = parsed.data;
+      const controller = new AbortController();
+      request.raw.once('aborted', () => controller.abort());
       const include = body.include;
       const result: Record<string, unknown> = {};
 
@@ -2098,11 +2264,11 @@ Pass an array to addKnowledge to create multiple entries at once.
         // Second guard (the schema already bounds/strips): never import a
         // privileged system entry — rewrite it to a normal pattern entry.
         const sanitized = body.knowledge.map((e) => e.type === 'system' ? { ...e, type: 'pattern' } : e);
-        result.knowledge = await sdk.importKnowledge(sanitized as any);
+        result.knowledge = await sdk.importKnowledge(sanitized as any, { signal: controller.signal });
       }
 
       if (include.includes('plans') && body.plans) {
-        result.plans = await sdk.importPlans(body.plans);
+        result.plans = await sdk.importPlans(body.plans, { signal: controller.signal });
       }
 
       if (Object.keys(result).length === 0) {
@@ -2206,6 +2372,46 @@ Pass an array to addKnowledge to create multiple entries at once.
   // The per-route origin guard that used to live here is gone: it covered 7 of
   // 76 routes and took a security policy in as a route-module dependency. The
   // global onRequest hook from ./auth.ts now covers everything by default.
+  await refreshSettingsCache();
+  const curationStore = sqliteCurationStore(getRawSqlite);
+  const curationExcluded = () => upgradeRunning || uninstallRunning || KnowledgeSDK.maintenanceRunning;
+  const curationScheduler = createCurationScheduler({
+    settings: getCachedSettings, store: curationStore,
+    ready: () => sdkReady, excluded: curationExcluded,
+    recordActivity: at => sdk.recordCurationActivity(at),
+    activityReliable: () => sdk.curationActivityReliable,
+    dispatch: async (options, resume, signal) => {
+      // Availability and ownership are different: an installed 3B model can
+      // serve as fallback without granting uninstall ownership to this app.
+      const installed = new Set([...options.installedCurationModels, ...getCachedSettings().installedCleanupModels]);
+      try {
+        if (await ollamaModels().available('llama3.2:3b')) installed.add('llama3.2:3b');
+      } catch { /* Deterministic curation still works while Ollama is offline. */ }
+      const payload = { ...options, installedCurationModels: [...installed] };
+      return resume ? sdk.resumeCuration(options.runId, payload, { signal }) : sdk.runCuration(payload, { signal });
+    },
+    log: message => log('warn', message),
+  });
+  app.addHook('onClose', async () => { await curationScheduler.dispose(); });
+  const curationState = createCurationStateWriter({ db: getRawSqlite, log: message => log('warn', message) });
+  const eventLoopSampler = createEventLoopSampler();
+  registerCurationRoutes(app, {
+    sdk, scheduler: curationScheduler, store: curationStore, db: getRawSqlite,
+    settings: getCachedSettings, models: modelManager, ensureReady, excluded: curationExcluded, sendError,
+    state: curationState,
+  });
+  curationScheduler.start();
+  // Pending count for the agent hooks; also refreshed after every curation mutation.
+  void curationState.refresh();
+  const curationStateTimer = setInterval(() => { void curationState.refresh(); }, 60_000);
+  curationStateTimer.unref();
+  app.addHook('onClose', async () => { clearInterval(curationStateTimer); eventLoopSampler.stop(); });
+
+  app.get('/api/system/db-health', async (_request, reply) => {
+    const ready = ensureReady(reply); if (ready) return ready;
+    return collectDbHealth(getRawSqlite()!, eventLoopSampler.snapshot);
+  });
+
   registerCleanupRoutes(app, {
     sdk,
     ensureReady,
@@ -2448,13 +2654,14 @@ Pass an array to addKnowledge to create multiple entries at once.
 
   app.put<{ Body: Partial<AppSettings> }>('/api/settings', async (request, reply) => {
     const body = request.body;
-    if (!body || typeof body !== 'object') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
       reply.code(400);
       return { error: 'Body must be an object' };
     }
-    // sanitizeSettings also runs inside writeSettings; calling it here keeps the
+    // sanitizeSettings also runs inside the serialized writer; calling it here keeps the
     // response honest about what was actually stored.
-    const merged = writeSettings(sanitizeSettings(body));
+    const merged = await patchSettingsAsync(sanitizeSettings(body));
+    tokenRetentionDays = merged.tokenUsageRetentionDays;
     // The always-on flag is read by the SDK for federated search.
     sdk.reloadProviders();
     return merged;
@@ -2615,28 +2822,14 @@ Pass an array to addKnowledge to create multiple entries at once.
 
   await app.listen({ port: PORT, host: '127.0.0.1' });
   log('info', `Server listening on http://localhost:${PORT}`);
+  if (process.env.COGNISTORE_ROUTE_MANIFEST) {
+    await writeFile(process.env.COGNISTORE_ROUTE_MANIFEST, JSON.stringify(routeManifest, null, 2));
+  }
   // Readiness handshake with the Tauri shell. It reads this on the child's own
   // stdout pipe, which no other process can write to — that unforgeability is
   // what replaced echoing the identity token from /api/health.
   // Must stay identical to READY_MARKER in src-tauri/src/sidecar.rs.
   console.log('COGNISTORE_SIDECAR_READY');
-
-  /**
-   * Catch up on the cleanup report shortly after boot, so a machine that is never
-   * up for a full 6-hour tick still gets one.
-   *
-   * Deferred by a minute and gated on COGNISTORE_MANAGED for two independent
-   * reasons: duplicate detection runs a synchronous per-entry KNN scan that would
-   * block the event loop during startup, and the e2e suite spawns this server
-   * against the developer's real HOME — an ungated run would rewrite their
-   * ~/.cognistore/settings.json on every test run.
-   */
-  if (process.env.COGNISTORE_MANAGED === '1') {
-    setTimeout(() => {
-      if (!sdkReady) return;
-      void (async () => { await maybeGenerateReport({ sdk, log }); })().catch(() => { /* logged inside */ });
-    }, 60_000).unref();
-  }
 
   /**
    * Self-heal deployed artifacts when this build is newer than what is on disk.
@@ -2702,6 +2895,10 @@ Pass an array to addKnowledge to create multiple entries at once.
     if (initOk) {
       log('info', 'SDK initialized successfully');
       await seedSystemKnowledge();
+      const raw = getRawSqlite();
+      if (raw?.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get()) {
+        void sdk.run('hashBackfill', {}).catch((e) => log('warn', `Startup content hash backfill failed: ${e instanceof Error ? e.message : e}`));
+      }
       void initialTokenScan();
     } else {
       log('warn', `SDK initialization failed (degraded mode): ${sdkError}`);
@@ -2710,6 +2907,10 @@ Pass an array to addKnowledge to create multiple entries at once.
         if (ok) {
           log('info', 'SDK initialized (recovered from degraded mode)');
           await seedSystemKnowledge();
+          const raw = getRawSqlite();
+          if (raw?.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get()) {
+            void sdk.run('hashBackfill', {}).catch((e) => log('warn', `Startup content hash backfill failed: ${e instanceof Error ? e.message : e}`));
+          }
           void initialTokenScan();
         }
       }, 10000);
@@ -2717,8 +2918,10 @@ Pass an array to addKnowledge to create multiple entries at once.
   })();
 
   const shutdown = async () => {
-    if (sdkReady) await sdk.close();
+    pruneController?.abort();
+    perfMonitor.stop();
     await app.close();
+    if (sdkReady) await sdk.close();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

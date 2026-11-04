@@ -19,22 +19,32 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const SERVER_ENTRY = resolve(__dirname, '../../../apps/dashboard/dist-server/index.js');
 
 /** nomic-embed-text native width; the server truncates to 256 via Matryoshka. */
-export const EMBED_DIMS_NATIVE = 768;
+const EMBED_DIMS_NATIVE = 768;
 
-export function getFreePort(): Promise<number> {
-  return new Promise((res, rej) => {
+// Ports come from a range owned by this Playwright worker, below the OS ephemeral
+// range (32768+). Asking the OS for port 0 and closing it again races with other
+// workers (and with outgoing connections) that can be handed the very same port
+// before the sidecar binds it (EADDRINUSE flake, B.15).
+const PORT_RANGE_BASE = 20000;
+const PORT_RANGE_SIZE = 300;
+let portCursor = 0;
+
+function tryBind(port: number): Promise<boolean> {
+  return new Promise((res) => {
     const srv = createServer();
-    srv.listen(0, '127.0.0.1', () => {
-      const addr = srv.address();
-      if (addr && typeof addr === 'object') {
-        const { port } = addr;
-        srv.close(() => res(port));
-      } else {
-        srv.close(() => rej(new Error('could not get a free port')));
-      }
-    });
-    srv.on('error', rej);
+    srv.once('error', () => res(false));
+    srv.listen(port, '127.0.0.1', () => srv.close(() => res(true)));
   });
+}
+
+export async function getFreePort(): Promise<number> {
+  const worker = Number(process.env.TEST_WORKER_INDEX ?? process.env.TEST_PARALLEL_INDEX ?? 0) || 0;
+  const start = PORT_RANGE_BASE + (worker % 32) * PORT_RANGE_SIZE;
+  for (let attempt = 0; attempt < PORT_RANGE_SIZE; attempt++) {
+    const port = start + (portCursor++ % PORT_RANGE_SIZE);
+    if (await tryBind(port)) return port;
+  }
+  throw new Error('could not get a free port');
 }
 
 /** Deterministic 768-d unit-ish vector derived from the prompt text. */
@@ -131,10 +141,18 @@ export async function waitForSidecar(baseUrl: string, timeoutMs = 45_000): Promi
   return false;
 }
 
-/** SIGTERM, then SIGKILL if it lingers. */
+/**
+ * SIGTERM, wait for the exit (up to 5 s), then SIGKILL if it lingers. A SIGKILL
+ * skips the V8 coverage dump, so a fixed short wait lost the sidecar's coverage
+ * whenever its shutdown (closing the job worker) took longer than that wait.
+ */
 export async function stopSidecar(child: ChildProcess | undefined): Promise<void> {
-  if (!child || child.killed) return;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((res) => child.once('exit', () => res()));
   child.kill('SIGTERM');
-  await new Promise((res) => setTimeout(res, 300));
-  if (!child.killed) child.kill('SIGKILL');
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([exited, new Promise((res) => { timer = setTimeout(res, 5000); })]);
+  clearTimeout(timer);
+  // `killed` only says a signal was sent; exitCode says whether it actually exited.
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
 }

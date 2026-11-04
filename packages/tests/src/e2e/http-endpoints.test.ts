@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { type Server } from 'node:http';
 import { type ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, unlinkSync, existsSync } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import {
   authFetch,
@@ -12,6 +12,7 @@ import {
   spawnSidecar,
   waitForSidecar,
   stopSidecar,
+  TEST_TOKEN,
 } from '../sidecar-helpers.js';
 
 /**
@@ -53,11 +54,13 @@ test.describe.serial('dashboard HTTP endpoints (real sidecar + mock Ollama)', ()
       // homedir(), so without this any route that persists a setting rewrites
       // the developer's real ~/.cognistore on every test run.
       COGNISTORE_HOME: join(tmpRoot, 'cognistore-home'),
+      // The startup token scan reads homedir()/.claude/projects; keep it off the real HOME.
+      HOME: tmpRoot,
       OLLAMA_HOST: `http://127.0.0.1:${mock.port}`,
       OLLAMA_MODEL: model,
       DASHBOARD_PORT: String(port),
       DASHBOARD_DIST_PATH: distDir,
-      SIDECAR_TOKEN: 'test-token',
+      SIDECAR_TOKEN: TEST_TOKEN,
     });
     child = spawned.child;
     readServerLog = spawned.readLog;
@@ -188,7 +191,7 @@ test.describe.serial('dashboard HTTP endpoints (real sidecar + mock Ollama)', ()
           content: 'points at a cognistore secret file',
           tags: ['t'],
           scope: `workspace:deputy-${name}`,
-          planFilePath: join(homedir(), '.cognistore', name),
+          planFilePath: join(tmpRoot, '.cognistore', name),
         }),
       });
       expect(created.status).toBe(201);
@@ -200,7 +203,7 @@ test.describe.serial('dashboard HTTP endpoints (real sidecar + mock Ollama)', ()
   });
 
   test('reports exists:false for an allow-listed but missing file (fd ENOENT path)', async () => {
-    const missing = join(homedir(), '.claude', 'plans', `httptest-missing-${Date.now()}.md`);
+    const missing = join(tmpRoot, '.claude', 'plans', `httptest-missing-${Date.now()}.md`);
     const created = await authFetch(`${baseUrl}/api/plans`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -215,7 +218,7 @@ test.describe.serial('dashboard HTTP endpoints (real sidecar + mock Ollama)', ()
   });
 
   test('reads a real file under an allow-listed root via the fd', async () => {
-    const planFile = join(homedir(), '.claude', 'plans', `httptest-plan-${Date.now()}.md`);
+    const planFile = join(tmpRoot, '.claude', 'plans', `httptest-plan-${Date.now()}.md`);
     mkdirSync(dirname(planFile), { recursive: true });
     const content = '# Plan\n\nfd-read content with "quotes" and a tail line.\n';
     writeFileSync(planFile, content);

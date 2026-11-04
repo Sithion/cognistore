@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -170,15 +171,8 @@ test.describe('@e2e global shadow detection', () => {
 
 test.describe('@e2e generated configs stay pinned', () => {
   test('setupOpenCodeMcp keeps the caller command instead of the hardcoded npx', async () => {
-    const { ConfigManager } = await import('@cognistore/config');
-
     const home = mkdtempSync(resolve(tmpdir(), 'cognistore-opencode-'));
-    const originalHome = process.env.HOME;
-    process.env.HOME = home;
     try {
-      // ConfigManager resolves its static paths from homedir() at import time in
-      // some builds, so assert against whatever path it reports back.
-      const cm = new ConfigManager();
       const entry = buildMcpEntry({
         platform: 'opencode',
         installDir: home,
@@ -187,16 +181,30 @@ test.describe('@e2e generated configs stay pinned', () => {
         env: {},
       });
 
-      const result = await cm.setupOpenCodeMcp(entry as unknown as Record<string, unknown>);
-      const written = JSON.parse(readFileSync(result.path, 'utf-8'));
+      // ConfigManager freezes its static paths from homedir() when the module is
+      // first imported, so setting HOME inside this process is too late: the old
+      // version of this test overwrote the developer's real opencode.json. The
+      // write runs in a child process whose HOME is the temp dir from the start.
+      const script = [
+        "import { ConfigManager } from '@cognistore/config';",
+        'const result = await new ConfigManager().setupOpenCodeMcp(JSON.parse(process.env.ENTRY));',
+        'process.stdout.write(result.path);',
+      ].join('\n');
+      const path = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        cwd: resolve(__dirname, '../..'),
+        env: { ...process.env, HOME: home, USERPROFILE: home, ENTRY: JSON.stringify(entry) },
+        encoding: 'utf-8',
+      });
+
+      expect(path.startsWith(home + sep)).toBe(true);
+      expect(path.startsWith(homedir() + sep)).toBe(false);
+      const written = JSON.parse(readFileSync(path, 'utf-8'));
       const command: string[] = written.mcp.cognistore.command;
 
       expect(command).toEqual([resolve('/nvm/v24.14.0/bin', 'npx'), '-y', `${MCP_PACKAGE}@2.3.6`]);
       // The old hardcoded literal discarded both the pinned npx path and the spec.
       expect(command).not.toEqual(['npx', '-y', MCP_PACKAGE]);
     } finally {
-      if (originalHome === undefined) delete process.env.HOME;
-      else process.env.HOME = originalHome;
       rmSync(home, { recursive: true, force: true });
     }
   });

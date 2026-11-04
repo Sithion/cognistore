@@ -65,6 +65,25 @@ export function isStaticPath(pathname: string): boolean {
   return /\.(js|css|map|png|jpg|jpeg|svg|ico|webp|woff2?|ttf)$/i.test(pathname);
 }
 
+/** Exact application documents served by the dashboard SPA. */
+export function isAppDocumentPath(pathname: string): boolean {
+  if (pathname.startsWith('//') || pathname.includes('\\')) return false;
+  if (/%2f|%5c/i.test(pathname)) return false;
+  let decoded: string;
+  try { decoded = decodeURIComponent(pathname); } catch { return false; }
+  if (decoded.includes('\\') || decoded.includes('//') || decoded.split('/').some((part) => part === '.' || part === '..')) return false;
+  const detail = '[^/]+';
+  const exact = new Set([
+    '/', '/knowledge', '/knowledge/tags', '/plans', '/curation', '/curation/history', '/curation/trash',
+    '/insights', '/insights/knowledge', '/insights/plans', '/insights/tokens',
+    '/integrations/agents', '/integrations/providers', '/integrations/widgets',
+    '/settings', '/settings/general', '/settings/models', '/settings/curation', '/settings/telemetry', '/settings/advanced',
+    '/system/health', '/system/about', '/stats', '/stats/plans', '/tokens', '/providers', '/widgets',
+    '/_design', '/_design/gallery',
+  ]);
+  return exact.has(decoded) || new RegExp(`^/(?:knowledge|plans)/${detail}$`).test(decoded) || /^\/_design\/k\/[^/]+$/.test(decoded);
+}
+
 /** Exact-match, allow-listed API paths. */
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname);
@@ -121,8 +140,9 @@ export function authorize(
 ): AuthVerdict {
   const { pathname, origin, host, token } = input;
 
-  // Static assets and the SPA shell: no data, no token.
-  if (isStaticPath(pathname)) return { ok: true };
+  // Static files retain their existing contract. Application documents are
+  // separately allow-listed after Host and Origin checks.
+  if (isStaticPath(pathname) && !isAppDocumentPath(pathname)) return { ok: true };
 
   // Host is checked even for allow-listed API paths — rebinding must not reach
   // anything, including liveness.
@@ -133,6 +153,12 @@ export function authorize(
   // A present Origin must be ours, whatever the path.
   if (origin !== undefined && !isAllowedOrigin(origin, cfg.port)) {
     return { ok: false, code: 403, reason: 'Forbidden' };
+  }
+
+  if (isAppDocumentPath(pathname)) {
+    return input.method === 'GET' || input.method === 'HEAD'
+      ? { ok: true }
+      : { ok: false, code: 403, reason: 'Forbidden' };
   }
 
   if (isPublicPath(pathname)) return { ok: true };

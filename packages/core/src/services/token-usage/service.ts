@@ -24,6 +24,10 @@ export class TokenUsageService {
     return this.scanner.scanAll();
   }
 
+  pruneBefore(cutoff: string, opts?: { signal?: AbortSignal }): Promise<number> {
+    return this.repo.pruneBefore(cutoff, opts);
+  }
+
   getAggregates(filter: TokenUsageFilter): TokenUsageAggregates {
     const totals = this.repo.totals(filter);
     const byDay = this.repo.byDay(filter);

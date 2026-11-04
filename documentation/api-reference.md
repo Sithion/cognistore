@@ -4,6 +4,49 @@
 
 The Fastify sidecar server exposes a REST API consumed by the React frontend. It binds `127.0.0.1` on a port in the 3210-3309 range.
 
+## Token usage retention setting
+
+Settings include `tokenUsageRetentionDays`: default 90, integer 0 through 36500;
+zero retains raw usage forever. Maintenance deletes at most 5000 raw rows per
+transaction and yields between batches. Invalid values use 90.
+
+Daily totals remain permanent. Hourly and session detail uses retained raw rows.
+Days follow the stored timestamp's lexical date prefix, including offsets.
+Retained partial-day edges are exact; outside retention a partial-day edge
+uses the whole rollup day and may overcount the requested hours.
+NULL and empty-string projects remain distinct groups.
+Existing token response fields are unchanged.
+
+## Optional incremental vacuum upgrade
+
+`POST /api/upgrade/run` accepts boolean `skipIncrementalVacuum`, default true.
+Explicit false opts into a pending one-time rewrite, including on an already
+current installation and after restart. Invalid types return 400 before replay
+guards. An earlier default skip does not prevent later opt-in.
+The `incremental-vacuum` progress step reports running and terminal status.
+Mode-2 databases are not rewritten. Skipping this optional step leaves an
+otherwise successful upgrade complete.
+This applies on both the current-install opt-in and full-upgrade paths. Insufficient
+free disk space or a database lock is reported as a warning; the opt-in rewrite
+holds the database write lock, so close agent sessions before opting in.
+
+## Background import
+
+`POST /api/import` retains its request and response shapes.
+Knowledge and plan imports run in the worker. Knowledge deduplication uses
+indexed hashes and bounded repair rather than loading the entire table.
+System import sanitization remains in force.
+
+## Background export
+
+`GET /api/export` preserves its JSON schema and download filename.
+The worker serializes a consistent snapshot in bounded pages, and the sidecar
+streams a private temporary file. Completion, error, disconnect, cancellation,
+and runner shutdown remove the temporary file and its directory. The response is
+streamed with chunked transfer encoding and has no `Content-Length` header. A
+startup sweep removes stale `cognistore-export-*` directories. Long read
+snapshots can delay WAL checkpoint reclamation until export completes.
+
 ## Authentication
 
 **Every route requires the sidecar token** (since v2.5.0). Loopback is not a trust boundary: any other local process, and any page served by any other local HTTP server, sits inside it — and `POST /api/uninstall` takes no body, so a body-less `fetch(..., {mode:'no-cors'})` from an ordinary web page was a CORS-simple request that ran the whole teardown.
@@ -24,9 +67,40 @@ Exempt: static assets and the SPA shell, which the webview must fetch before any
 
 `GET /api/health` no longer returns the token. The shell proves the sidecar's identity over the child process's stdout instead.
 
-**Errors:** in production, 5xx responses carry a generic message plus a `ref` correlation id; the detail is in `~/.cognistore/cognistore.log`.
+**Errors:** in production, 5xx responses carry a generic message plus a `ref` correlation id; the detail is in `~/.cognistore/cognistore.log`. Input the SDK rejects (a `ValidationError`, e.g. `POST /api/knowledge` without `source`) is a **400**, not a 500. An unknown `/api/...` path is a **404** `{ "error": "Not found" }`; only non-API paths fall back to the SPA shell.
+
+**Route inventory:** with `COGNISTORE_ROUTE_MANIFEST=<file>` the sidecar writes every route Fastify registered to that file once it listens. `packages/tests/src/api/sidecar-api.test.ts` reads it and fails on any `/api` route that no test names, and it sweeps every route for the token and Origin checks. A new route needs a test, and this file is the place for a plain call. The variable is for tests only; the shell never sets it.
 
 **File:** `apps/dashboard/server/index.ts`
+
+## Curation
+
+All endpoints below require the sidecar token. Invalid inputs return `400`;
+maintenance or state conflicts return `409` where applicable; missing runs,
+actions, or entries return `404`. Responses shown are JSON.
+
+| Method and path | Request | Success response | Errors |
+|---|---|---|---|
+| `POST /api/curation/run` | Optional `{ "runId": "uuid" }` | `202` `{ "runId": "uuid", ... }` from the scheduler | `400` invalid body; scheduler `409`/`503` conflicts |
+| `GET /api/curation/runs/:id` | UUID path parameter | `{ "run": { "id", "status", "started_at", "trigger", ... } }` | `400` invalid id; `404` unknown run |
+| `GET /api/curation/queue` | Optional `scope`, `limit` (1–100, default 50), `cursor` | `{ "actions": [...], "nextCursor": string|null }` | `400` invalid query or cursor |
+| `GET /api/curation/actions/:id` | UUID path parameter | `{ "action": { ...summary, "entries": [...] } }` | `400` invalid id; `404` unknown action |
+| `POST /api/curation/actions/:id/apply` | Empty or omitted body | `{ "action": <summary> }` | `400` invalid request; `404` unknown action; `409` stale/protected/conflicting or maintenance; `503` unavailable |
+| `POST /api/curation/actions/:id/reject` | Empty or omitted body | `{ "action": <summary> }` | `400`, `404`, `409`, `503` |
+| `POST /api/curation/actions/:id/undo` | Empty or omitted body | `{ "action": <summary> }` | `400`, `404`, `409`, `503` |
+| `GET /api/curation/overview` | None | `{ "lastRun", "pending", "applied", "trash": { "count", "items" }, "autonomy" }` | Readiness errors |
+| `POST /api/curation/batch` | `{ "operation": "apply" or "reject", "ids": ["uuid", ...] }` (1–50) | `{ "results": [{ "id", "ok", "error?" }] }`; per-item errors are `not_found`, `stale`, or `conflict` | `400` invalid body; `409` maintenance |
+| `POST /api/curation/entries/:id/restore` | Empty or omitted body | `{ "restored": true, "entryId": "uuid", "actionId": "uuid" }` | `400` invalid request; `404` missing entry; `409` not trashed, no eligible undo, or maintenance; propagated `503` |
+| `POST /api/curation/model/prepare` | Empty or omitted body; uses configured model | Model manager preparation result | `400` invalid body/model; `503` preparation unavailable |
+
+### GET /api/system/db-health
+
+Returns `{ "sizeBytes", "tables": [{ "name", "rows" }],
+"telemetryShare", "lastVacuumAt", "eventLoopLagMs": { "p50", "p99",
+"max" } }`. `telemetryShare` is the fraction of `token_usage` plus
+`knowledge_entries` rows that are token usage rows. `lastVacuumAt` is currently
+`null` because the sidecar does not record vacuum events. Readiness errors may
+be returned if the database is not ready.
 
 ## Health & Status
 

@@ -83,3 +83,13 @@ export function searchFts(sqlite: Database.Database, query: string, k: number): 
   `);
   return stmt.all(match, k) as FtsResult[];
 }
+
+/** Return FTS matches whose authoritative entry metadata is active, in bounded pages. */
+export function searchFtsActive(sqlite: Database.Database, query: string, k: number): FtsResult[] {
+  const match = sanitizeFtsQuery(query);
+  if (!match) return [];
+  return sqlite.prepare(`SELECT f.id, bm25(${FTS_TABLE_NAME}) AS bm25
+    FROM ${FTS_TABLE_NAME} f JOIN knowledge_entries e ON e.id = f.id
+    WHERE ${FTS_TABLE_NAME} MATCH ? AND e.status = 'active'
+    ORDER BY bm25 LIMIT ?`).all(match, k) as FtsResult[];
+}

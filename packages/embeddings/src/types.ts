@@ -16,6 +16,3 @@ export interface OllamaTagsResponse {
   }>;
 }
 
-export interface OllamaPullResponse {
-  status: string;
-}

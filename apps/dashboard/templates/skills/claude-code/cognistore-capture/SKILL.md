@@ -198,3 +198,8 @@ Patterns are the most valuable knowledge type — they compound across every fut
 Before capturing knowledge, ensure active plans are complete:
 1. `listPlanTasks(planId)` — if any tasks are not `completed`, update them first
 2. Only after plan tracking is current, proceed with knowledge capture
+
+## Avoid duplicates and supersessions
+
+- Search before adding. If an entry on the topic already exists, use `mcp__cognistore__updateKnowledge` to update it instead of adding a near copy.
+- If the new entry REPLACES older ones, pass `supersedes: [<old ids>]` when adding or updating. Never prefix a title with SUPERSEDED.

@@ -1,4 +1,4 @@
-import { eq, ne, sql, and, or, isNull } from 'drizzle-orm';
+import { eq, ne, sql, and, or, isNull, type SQL } from 'drizzle-orm';
 import { type Database, type SQLiteDatabase } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema/knowledge.js';
 import {
@@ -6,7 +6,7 @@ import {
   updateEmbedding,
   deleteEmbedding,
   searchKnn,
-  getEmbeddingById,
+  readEmbeddingBatch,
   insertPlanEmbedding,
   updatePlanEmbedding,
   deletePlanEmbedding,
@@ -16,12 +16,16 @@ import {
   insertFts,
   updateFts,
   deleteFts,
-  searchFts,
+  searchFtsActive,
   ftsCount,
   type FtsResult,
 } from '../db/schema/fts.js';
+import { scanDuplicatePairs, invalidateDuplicateScan } from '../services/duplicate-scan.js';
+import { groupPairs } from '../services/duplicate-pairs.js';
 import type { CreateKnowledgeInput, UpdateKnowledgeInput, SearchOptions } from '@cognistore/shared';
 import { DEFAULT_SEARCH_LIMIT, DEFAULT_SIMILARITY_THRESHOLD, isPlanStatus } from '@cognistore/shared';
+import { CurationRepository } from './curation.repository.js';
+import { contentHash } from '../jobs/content-hash.js';
 
 // Retention window for the operations_log table. Must exceed the largest
 // window the dashboard can request: /api/metrics/activity clamps its range to
@@ -35,6 +39,75 @@ export class KnowledgeRepository {
     private sqlite: SQLiteDatabase
   ) {}
 
+  /** Advisory ranking is exact-scope, active-only cosine similarity. */
+  async findAdvisoryNeighbours(embedding: number[], scope: string, excludeId?: string) {
+    const rows = this.sqlite.prepare(`SELECT id,title FROM knowledge_entries
+      WHERE scope=? AND status='active' AND id!=?`).all(scope, excludeId ?? '') as {id:string;title:string}[];
+    const vectors = new Map(readEmbeddingBatch(this.sqlite, rows.map(row => row.id)).map(row => [row.id,
+      new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4)]));
+    const norm = Math.hypot(...embedding);
+    return rows.flatMap(row => {
+      const vector = vectors.get(row.id);
+      if (!vector || vector.length !== embedding.length) return [];
+      const similarity = embedding.reduce((sum, x, i) => sum + x * vector[i], 0) / (norm * Math.hypot(...vector));
+      return similarity >= 0.88 ? [{ ...row, similarity: Math.min(1, similarity) }] : [];
+    }).sort((a,b) => b.similarity-a.similarity || a.id.localeCompare(b.id)).slice(0,5);
+  }
+
+  prepareSupersession(sourceId: string | undefined, source: {type:string;tags:string[];scope:string}, ids: string[] = []) {
+    const unique = [...new Set(ids)];
+    if (!unique.length) return [];
+    const curation = new CurationRepository(this.sqlite);
+    const protectedRow = (row: any) => row.type === 'system' || (Array.isArray(row.tags) ? row.tags : JSON.parse(row.tags ?? '[]')).includes('keep');
+    if (protectedRow(source)) throw new Error('Protected supersession source');
+    if (sourceId) {
+      const current = curation.getEntry(sourceId);
+      if (!current || protectedRow(current) || current.status !== 'active') throw new Error('Invalid supersession source');
+    }
+    return unique.map(id => {
+      if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || id === sourceId) throw new Error('Invalid supersedes ID or self-reference');
+      const row = curation.getEntry(id);
+      if (!row || protectedRow(row) || row.status !== 'active' || row.scope !== source.scope) throw new Error('Invalid, protected, inactive or cross-scope supersession target');
+      // New edges point from each target to the resulting source.
+      const seen = new Set<string>([id]);
+      let cursor = sourceId;
+      while (cursor) {
+        if (seen.has(cursor)) throw new Error('Supersession cycle');
+        seen.add(cursor);
+        cursor = curation.getEntry(cursor)?.superseded_by ?? undefined;
+      }
+      return { id, version: row.version, contentHash: row.content_hash, scope: row.scope };
+    });
+  }
+
+  private prepareUpdateSupersession(id: string, updates: UpdateKnowledgeInput) {
+    if (!updates.supersedes?.length) return [];
+    const current = new CurationRepository(this.sqlite).getEntry(id);
+    if (!current) throw new Error('Missing supersession source');
+    return this.prepareSupersession(id, {
+      type: updates.type ?? current.type,
+      tags: updates.tags ?? JSON.parse(current.tags),
+      scope: updates.scope ?? current.scope,
+    }, updates.supersedes);
+  }
+
+  private validateSupersession(sourceId: string | undefined, source: {type:string;tags:string[];scope:string}, claims: ReturnType<KnowledgeRepository['prepareSupersession']>) {
+    const current = this.prepareSupersession(sourceId, source, claims.map(row => row.id));
+    if (JSON.stringify(current) !== JSON.stringify(claims)) throw new Error('Stale supersession target');
+  }
+
+  private applySupersession(sourceId: string, claims: ReturnType<KnowledgeRepository['prepareSupersession']>, before: unknown, now: string) {
+    if (!claims.length) return;
+    const curation = new CurationRepository(this.sqlite);
+    const ids = [sourceId, ...claims.map(row => row.id)];
+    for (const claim of claims) curation.mutateEntry(claim.id, { status: 'superseded', supersededBy: sourceId }, now);
+    const actionId = crypto.randomUUID();
+    curation.createAction({ id: actionId, kind: 'supersedes', actor: 'user', entryIds: ids, snapshot: before,
+      payload: { sourceId, supersedes: claims.map(row => row.id) }, versions: Object.fromEntries(claims.map(row => [row.id, row.version])),
+      key: actionId, now });
+    curation.markActionApplied(actionId, now, curation.captureSnapshot(ids));
+  }
+
   /**
    * Entry row + embedding are committed atomically: a failed embedding insert
    * rolls the entry back instead of leaving an orphan row that semantic search
@@ -42,21 +115,24 @@ export class KnowledgeRepository {
    * better-sqlite3's .transaction() — the body must be fully synchronous; an
    * awaited drizzle insert opens an interleaving window where a concurrent
    * create() issues BEGIN on the same connection ("cannot start a transaction
-   * within a transaction"). FTS stays best-effort inside the txn.
+   * within a transaction"). FTS participates in the same atomic write.
    */
-  async create(input: CreateKnowledgeInput & { embedding: number[] }) {
+  async create(input: CreateKnowledgeInput & { embedding: number[] }, claims = this.prepareSupersession(undefined, input, input.supersedes)) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const insertTxn = this.sqlite.transaction(() => {
+      this.validateSupersession(undefined, input, claims);
+      const before = claims.length ? new CurationRepository(this.sqlite).captureSnapshot(claims.map(row => row.id)) : null;
       this.sqlite.prepare(
         `INSERT INTO knowledge_entries
-           (id, title, content, tags, type, scope, source, version, expires_at, confidence_score, related_ids, agent_id, platform, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
+           (id, title, content, content_hash, tags, type, scope, source, version, expires_at, confidence_score, related_ids, agent_id, platform, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id,
         input.title,
         input.content,
+        contentHash(input.title, input.content),
         JSON.stringify(input.tags ?? []),
         input.type,
         input.scope,
@@ -71,9 +147,10 @@ export class KnowledgeRepository {
       );
       // Inside the txn so a failure rolls back the entry row too.
       insertEmbedding(this.sqlite, id, input.embedding);
-      try { insertFts(this.sqlite, { id, title: input.title, content: input.content, tags: ftsTags(input.tags) }); } catch { /* FTS optional */ }
+      insertFts(this.sqlite, { id, title: input.title, content: input.content, tags: ftsTags(input.tags) });
+      this.applySupersession(id, claims, before, now);
     });
-    insertTxn();
+    insertTxn.immediate();
 
     return (await this.findById(id))!;
   }
@@ -86,73 +163,163 @@ export class KnowledgeRepository {
     return entry ?? null;
   }
 
-  async update(id: string, updates: UpdateKnowledgeInput & { embedding?: number[] }) {
+  /** Indexed exact-content lookup; never match another scope or inactive entry. */
+  async findExactDuplicate(input: CreateKnowledgeInput) {
+    const row = this.sqlite.prepare(`SELECT id FROM knowledge_entries
+      WHERE content_hash = ? AND scope = ? AND type = ? AND status = 'active'
+      ORDER BY created_at, id LIMIT 1`).get(contentHash(input.title, input.content), input.scope, input.type) as { id: string } | undefined;
+    // Backfill may still be pending, and the invalidation trigger clears the hash
+    // when an identical title/content update computes the same hash as before.
+    const match = row ?? this.sqlite.prepare(`SELECT id FROM knowledge_entries
+      WHERE content_hash IS NULL AND scope = ? AND type = ? AND status = 'active'
+        AND title = ? AND content = ? ORDER BY created_at, id LIMIT 1`)
+      .get(input.scope, input.type, input.title, input.content) as { id: string } | undefined;
+    return match ? this.findById(match.id) : null;
+  }
+
+  transitionStatus(id: string, status: 'active' | 'superseded' | 'archived' | 'trashed', supersededBy: string | null = null): boolean {
+    const now = new Date().toISOString();
+    const changed = this.sqlite.transaction(() => this.sqlite.prepare(`UPDATE knowledge_entries SET status = ?, superseded_by = ?, curated_at = ?, trashed_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND status != ?`)
+      .run(status, supersededBy, status === 'superseded' ? now : null, status === 'trashed' ? now : null, now, id, status).changes > 0).immediate();
+    if (changed) invalidateDuplicateScan(this.sqlite);
+    return changed;
+  }
+
+  findImportCandidates(hash: string): { id: string; title: string; content: string }[] {
+    return this.sqlite.prepare('SELECT id, title, content FROM knowledge_entries WHERE content_hash = ? AND type != \'system\'').all(hash) as { id: string; title: string; content: string }[];
+  }
+
+  listNullContentHashPage(afterId = '', limit = 250): { id: string; title: string; content: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT id, title, content, updated_at AS updatedAt FROM knowledge_entries
+      WHERE content_hash IS NULL AND id > ? ORDER BY id LIMIT ?`).all(afterId, limit) as { id: string; title: string; content: string; updatedAt: string }[];
+  }
+
+  publishContentHashPage(rows: { row: { id: string; title: string; content: string; updatedAt: string }; hash: string }[]): number {
+    const update = this.sqlite.prepare(`UPDATE knowledge_entries SET content_hash = ?
+      WHERE id = ? AND content_hash IS NULL AND title = ? AND content = ? AND updated_at = ?`);
+    let changes = 0;
+    this.sqlite.transaction(() => {
+      for (const item of rows) changes += update.run(item.hash, item.row.id, item.row.title, item.row.content, item.row.updatedAt).changes;
+    }).immediate();
+    return changes;
+  }
+
+  hasNullContentHash(): boolean {
+    return Boolean(this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE content_hash IS NULL LIMIT 1').get());
+  }
+
+  countNullContentHashes(): number {
+    return (this.sqlite.prepare('SELECT count(*) AS n FROM knowledge_entries WHERE content_hash IS NULL').get() as { n: number }).n;
+  }
+
+  finalizeKnowledgeImportBatch(items: { input: any; embedding: number[]; hash: string }[]): ('null-hash' | 'duplicate' | 'inserted')[] {
+    const results: ('null-hash' | 'duplicate' | 'inserted')[] = [];
+    this.sqlite.transaction(() => {
+      for (const { input, embedding, hash } of items) {
+        if (this.hasNullContentHash()) { results.push('null-hash'); continue; }
+        const candidates = this.findImportCandidates(hash);
+        if (candidates.some((row) => row.title.normalize('NFC').replace(/\r\n?/g, '\n').trim() === input.title.normalize('NFC').replace(/\r\n?/g, '\n').trim()
+          && row.content.normalize('NFC').replace(/\r\n?/g, '\n').trim() === input.content.normalize('NFC').replace(/\r\n?/g, '\n').trim())) {
+          results.push('duplicate'); continue;
+        }
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        this.sqlite.prepare(`INSERT INTO knowledge_entries
+          (id,title,content,content_hash,tags,type,scope,source,version,expires_at,confidence_score,related_ids,agent_id,platform,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?, ?,1,?,?,?,?,?,?,?)`).run(
+          id, input.title, input.content, hash, JSON.stringify(input.tags ?? []), input.type, input.scope,
+          input.source || 'import', input.expiresAt ? input.expiresAt.toISOString() : null,
+          input.confidenceScore ?? 1, input.relatedIds ? JSON.stringify(input.relatedIds) : null,
+          input.agentId ?? null, input.platform ?? null, now, now,
+        );
+        insertEmbedding(this.sqlite, id, embedding);
+        try { insertFts(this.sqlite, { id, title: input.title, content: input.content, tags: ftsTags(input.tags) }); } catch { /* FTS optional */ }
+        results.push('inserted');
+      }
+    }).immediate();
+    return results;
+  }
+
+
+  async update(id: string, updates: UpdateKnowledgeInput & { embedding?: number[] }, claims = this.prepareUpdateSupersession(id, updates), expectedVersion?: number) {
     const { embedding, ...rest } = updates;
-
-    const values: Record<string, unknown> = {
-      ...rest,
-      updatedAt: new Date().toISOString(),
+    const columns: Record<string, string> = {
+      title: 'title', content: 'content', tags: 'tags', type: 'type', scope: 'scope', source: 'source',
+      expiresAt: 'expires_at', confidenceScore: 'confidence_score', relatedIds: 'related_ids',
+      agentId: 'agent_id', platform: 'platform',
     };
-
-    // Convert Date to ISO string for SQLite
-    if (rest.expiresAt !== undefined) {
-      values.expiresAt = rest.expiresAt ? rest.expiresAt.toISOString() : null;
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, column] of Object.entries(columns)) {
+      const value = (rest as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+      sets.push(`${column} = ?`);
+      params.push(key === 'tags' || key === 'relatedIds' ? (value == null ? null : JSON.stringify(value))
+        : key === 'expiresAt' && value instanceof Date ? value.toISOString() : value);
     }
-
-    const [entry] = await this.db
-      .update(knowledgeEntries)
-      .set({
-        ...values,
-        version: sql`${knowledgeEntries.version} + 1`,
-      })
-      .where(eq(knowledgeEntries.id, id))
-      .returning();
-
-    // Keep the FTS5 index in sync unconditionally — title/content/tags may change
-    // even when the embedding is recomputed separately. Best-effort.
-    if (entry) {
-      try {
-        updateFts(this.sqlite, {
-          id,
-          title: entry.title ?? '',
-          content: entry.content ?? '',
-          tags: ftsTags(entry.tags),
-        });
-      } catch { /* FTS optional */ }
+    const writesContent = rest.title !== undefined || rest.content !== undefined;
+    if (writesContent) {
+      const titleExpression = rest.title !== undefined ? '?' : 'title';
+      const contentExpression = rest.content !== undefined ? '?' : 'content';
+      sets.push(`content_hash = cognistore_content_hash(${titleExpression}, ${contentExpression})`);
+      if (rest.title !== undefined) params.push(rest.title);
+      if (rest.content !== undefined) params.push(rest.content);
     }
-
-    // Update embedding in virtual table if provided
-    if (embedding) {
-      updateEmbedding(this.sqlite, id, embedding);
-    }
+    sets.push('updated_at = ?', 'version = version + 1');
+    params.push(new Date().toISOString(), id);
+    const updateTxn = this.sqlite.transaction(() => {
+      const current = this.sqlite.prepare('SELECT * FROM knowledge_entries WHERE id=?').get(id) as any;
+      if (!current) { if (claims.length) throw new Error('Missing supersession source'); return false; }
+      if (expectedVersion !== undefined && current.version !== expectedVersion) throw new Error('Stale knowledge update');
+      const source = { type: rest.type ?? current.type, tags: rest.tags ?? JSON.parse(current.tags), scope: rest.scope ?? current.scope };
+      this.validateSupersession(id, source, claims);
+      const before = claims.length ? new CurationRepository(this.sqlite).captureSnapshot([id, ...claims.map(row => row.id)]) : null;
+      const result = this.sqlite.prepare(`UPDATE knowledge_entries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      if (result.changes) {
+        updateFts(this.sqlite, { id, title: rest.title ?? current.title, content: rest.content ?? current.content, tags: ftsTags(source.tags) });
+        if (embedding) updateEmbedding(this.sqlite, id, embedding);
+        this.applySupersession(id, claims, before, new Date().toISOString());
+      }
+      return result.changes > 0;
+    });
+    const changed = updateTxn.immediate();
+    const entry = changed ? await this.findById(id) : null;
 
     return entry ?? null;
   }
 
   /**
-   * Record that these entries were actually retrieved. Feeds the cleanup cycle's
-   * "unread" detection.
+   * Record that these entries were actually retrieved, from the service's
+   * buffered read marks. Feeds the cleanup cycle's "unread" detection.
    *
    * Deliberately touches ONLY last_read_at / read_count — never updated_at or
    * version. A read is not an edit: bumping updated_at here would corrupt
    * findStaleEntries and silently reorder duplicate-group canonicals.
    *
-   * Chunked because SQLite caps bound variables per statement.
+   * ONE transaction: `read_count += count`, `last_read_at = at`. Waits at most
+   * `busyTimeoutMs` for the write lock (the caller drops the batch if it
+   * throws), then restores the connection's busy_timeout.
    */
-  markRead(ids: string[]): void {
-    if (ids.length === 0) return;
-    const now = new Date().toISOString();
-    const CHUNK = 500;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const chunk = ids.slice(i, i + CHUNK);
-      const placeholders = chunk.map(() => '?').join(',');
-      this.sqlite
-        .prepare(
-          `UPDATE knowledge_entries
-              SET last_read_at = ?, read_count = read_count + 1
-            WHERE id IN (${placeholders})`
-        )
-        .run(now, ...chunk);
+  markReadBatch(batch: { id: string; count: number; at: string }[], busyTimeoutMs: number): void {
+    if (batch.length === 0) return;
+    const stmt = this.sqlite.prepare(
+      'UPDATE knowledge_entries SET last_read_at = ?, read_count = read_count + ? WHERE id = ?'
+    );
+    this.withBusyTimeout(busyTimeoutMs, () => {
+      this.sqlite.transaction(() => {
+        for (const r of batch) stmt.run(r.at, r.count, r.id);
+      })();
+    });
+  }
+
+  /** Run `fn` with a temporary lock wait, restoring the connection's own afterwards. */
+  private withBusyTimeout(busyTimeoutMs: number, fn: () => void): void {
+    const previous = this.sqlite.pragma('busy_timeout', { simple: true }) as number;
+    try {
+      this.sqlite.pragma(`busy_timeout = ${busyTimeoutMs}`);
+      fn();
+    } finally {
+      try { this.sqlite.pragma(`busy_timeout = ${previous}`); } catch { /* closed */ }
     }
   }
 
@@ -179,9 +346,30 @@ export class KnowledgeRepository {
     const limit = options?.limit ?? DEFAULT_SEARCH_LIMIT;
     const threshold = options?.threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
 
-    // Fetch more candidates than needed to account for metadata filtering
-    const candidateLimit = limit * 5;
-    const knnResults = searchKnn(this.sqlite, queryEmbedding, candidateLimit);
+    const candidateLimit = Math.max(limit * 5, limit);
+    const filters: string[] = ["status = 'active'", "type != 'system'", '(expires_at IS NULL OR expires_at > ?)'];
+    const filterParams: unknown[] = [new Date().toISOString()];
+    if (options?.scope) { filters.push("(scope = 'global' OR scope = ?)"); filterParams.push(options.scope); }
+    if (options?.tags?.length) { filters.push(`(${options.tags.map(() => "EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = ?)").join(' OR ')})`); filterParams.push(...options.tags); }
+    if (options?.type) { filters.push('type = ?'); filterParams.push(options.type); }
+    // sqlite-vec KNN is not metadata-aware: widen the window until enough ACTIVE,
+    // filter-matching candidates survive (inactive entries keep their vectors so undo works).
+    const maxK = Math.max(4096, candidateLimit);
+    let knnResults: { id: string; distance: number }[] = [];
+    for (let k = candidateLimit; ; k = Math.min(k * 2, maxK)) {
+      const raw = searchKnn(this.sqlite, queryEmbedding, k);
+      const allowed = new Set<string>();
+      for (let from = 0; from < raw.length; from += 500) {
+        const ids = raw.slice(from, from + 500).map((r) => r.id);
+        const rows = this.sqlite.prepare(
+          `SELECT id FROM knowledge_entries WHERE id IN (${ids.map(() => '?').join(',')}) AND ${filters.join(' AND ')}`,
+        ).all(...ids, ...filterParams) as { id: string }[];
+        for (const r of rows) allowed.add(r.id);
+      }
+      knnResults = raw.filter((r) => allowed.has(r.id));
+      if (knnResults.length >= candidateLimit || raw.length < k || k >= maxK) break;
+    }
+    knnResults.splice(candidateLimit);
 
     // Build a distance lookup map (cosine distance from sqlite-vec)
     const distanceMap = new Map(knnResults.map((r) => [r.id, r.distance]));
@@ -191,7 +379,7 @@ export class KnowledgeRepository {
     // pure semantic so search never breaks.
     let ftsResults: FtsResult[] = [];
     if (options?.queryText) {
-      try { ftsResults = searchFts(this.sqlite, options.queryText, candidateLimit); } catch { ftsResults = []; }
+      try { ftsResults = searchFtsActive(this.sqlite, options.queryText, candidateLimit); } catch { ftsResults = []; }
     }
     const bm25Map = new Map(ftsResults.map((r) => [r.id, r.bm25]));
 
@@ -203,7 +391,7 @@ export class KnowledgeRepository {
     const candidateIds = [...new Set([...knnResults.map((r) => r.id), ...ftsResults.map((r) => r.id)])];
 
     // Fetch full entries for candidates
-    const conditions = [];
+    const conditions: SQL[] = [sql`${knowledgeEntries.status} = 'active'`];
 
     // Filter to only candidates from KNN
     conditions.push(
@@ -215,12 +403,11 @@ export class KnowledgeRepository {
 
     // Scope filter: always include global + specific scope
     if (options?.scope) {
-      conditions.push(
-        or(
-          eq(knowledgeEntries.scope, 'global'),
-          eq(knowledgeEntries.scope, options.scope)
-        )
+      const scopeCondition = or(
+        eq(knowledgeEntries.scope, 'global'),
+        eq(knowledgeEntries.scope, options.scope)
       );
+      if (scopeCondition) conditions.push(scopeCondition);
     }
 
     // Tag filter: check if any requested tag is in the JSON tags array
@@ -228,7 +415,8 @@ export class KnowledgeRepository {
       const tagConditions = options.tags.map(
         (tag) => sql`EXISTS (SELECT 1 FROM json_each(${knowledgeEntries.tags}) WHERE value = ${tag})`
       );
-      conditions.push(or(...tagConditions));
+      const tagCondition = or(...tagConditions);
+      if (tagCondition) conditions.push(tagCondition);
     }
 
     // Type filter
@@ -240,12 +428,11 @@ export class KnowledgeRepository {
     conditions.push(ne(knowledgeEntries.type, 'system'));
 
     // Exclude expired entries
-    conditions.push(
-      or(
-        isNull(knowledgeEntries.expiresAt),
-        sql`${knowledgeEntries.expiresAt} > ${new Date().toISOString()}`
-      )
+    const expirationCondition = or(
+      isNull(knowledgeEntries.expiresAt),
+      sql`${knowledgeEntries.expiresAt} > ${new Date().toISOString()}`
     );
+    if (expirationCondition) conditions.push(expirationCondition);
 
     const whereClause = and(...conditions);
 
@@ -278,7 +465,9 @@ export class KnowledgeRepository {
     filters?: { type?: string; scope?: string; tags?: string[]; agent?: string; platform?: string },
     offset = 0,
   ) {
-    const conditions: any[] = [ne(knowledgeEntries.type, 'system')];
+    // `+status` keeps the planner on idx_knowledge_created_at (walk newest-first, no temp sort)
+    // instead of the status index, which forced a full sort at deep offsets.
+    const conditions: any[] = [ne(knowledgeEntries.type, 'system'), sql`+${knowledgeEntries.status} = 'active'`];
     if (filters?.type) conditions.push(sql`${knowledgeEntries.type} = ${filters.type}`);
     if (filters?.scope) conditions.push(sql`${knowledgeEntries.scope} = ${filters.scope}`);
     // Provenance filters round-trip the chart sentinel labels back to the stored
@@ -321,14 +510,14 @@ export class KnowledgeRepository {
     if (from && to) {
       const result = await this.db.all<{ value: string }>(
         sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags)
-            WHERE knowledge_entries.type != 'system'
+            WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active'
               AND knowledge_entries.created_at >= ${from}
               AND knowledge_entries.created_at < ${to}`
       );
       return result.map((r) => r.value);
     }
     const result = await this.db.all<{ value: string }>(
-      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system'`
+      sql`SELECT DISTINCT value FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active'`
     );
     return result.map((r) => r.value);
   }
@@ -338,7 +527,7 @@ export class KnowledgeRepository {
     if (from && to) {
       const result = await this.db.all<{ tag: string; count: number }>(
         sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags)
-            WHERE knowledge_entries.type != 'system'
+            WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active'
               AND knowledge_entries.created_at >= ${from}
               AND knowledge_entries.created_at < ${to}
             GROUP BY value ORDER BY count DESC LIMIT ${limit}`
@@ -346,7 +535,7 @@ export class KnowledgeRepository {
       return result;
     }
     const result = await this.db.all<{ tag: string; count: number }>(
-      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' GROUP BY value ORDER BY count DESC LIMIT ${limit}`
+      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active' GROUP BY value ORDER BY count DESC LIMIT ${limit}`
     );
     return result;
   }
@@ -354,7 +543,7 @@ export class KnowledgeRepository {
   /** Usage count for every tag (no limit/range) — feeds merge-keeper defaults. */
   async tagCounts() {
     const result = await this.db.all<{ tag: string; count: number }>(
-      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' GROUP BY value`
+      sql`SELECT value as tag, COUNT(*) as count FROM knowledge_entries, json_each(knowledge_entries.tags) WHERE knowledge_entries.type != 'system' AND knowledge_entries.status = 'active' GROUP BY value`
     );
     return result;
   }
@@ -398,7 +587,7 @@ export class KnowledgeRepository {
     const rows = this.sqlite.prepare(
       `SELECT id, title, type, scope, confidence_score AS confidenceScore, updated_at AS updatedAt, expires_at AS expiresAt
          FROM knowledge_entries
-        WHERE type != 'system'
+        WHERE type != 'system' AND status = 'active'
           AND (updated_at < @cutoff OR (expires_at IS NOT NULL AND expires_at < @now) OR confidence_score < @minConfidence)
         ORDER BY updated_at ASC
         LIMIT @limit`
@@ -420,7 +609,7 @@ export class KnowledgeRepository {
     return this.sqlite.prepare(
       `SELECT id, title, type, scope, updated_at AS updatedAt, last_read_at AS lastReadAt
          FROM knowledge_entries
-        WHERE type != 'system'
+        WHERE type != 'system' AND status = 'active'
           AND EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'deprecated')
         ORDER BY updated_at ASC
         LIMIT @limit`
@@ -444,7 +633,7 @@ export class KnowledgeRepository {
       `SELECT id, title, type, scope, updated_at AS updatedAt, last_read_at AS lastReadAt
          FROM knowledge_entries
         WHERE type != 'system'
-          AND created_at < @cutoff
+          AND status = 'active' AND created_at < @cutoff
           AND COALESCE(last_read_at, created_at) < @cutoff
           AND NOT EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'keep')
         ORDER BY COALESCE(last_read_at, created_at) ASC
@@ -464,7 +653,7 @@ export class KnowledgeRepository {
     if (category === 'deprecated') {
       const row = this.sqlite.prepare(
         `SELECT 1 AS ok FROM knowledge_entries
-          WHERE id = @id AND type != 'system'
+          WHERE id = @id AND status = 'active' AND type != 'system'
             AND EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'deprecated')`
       ).get({ id }) as { ok: number } | undefined;
       return row?.ok === 1;
@@ -472,7 +661,7 @@ export class KnowledgeRepository {
     const cutoff = new Date(Date.now() - unreadDays * 24 * 60 * 60 * 1000).toISOString();
     const row = this.sqlite.prepare(
       `SELECT 1 AS ok FROM knowledge_entries
-        WHERE id = @id AND type != 'system'
+        WHERE id = @id AND status = 'active' AND type != 'system'
           AND created_at < @cutoff
           AND COALESCE(last_read_at, created_at) < @cutoff
           AND NOT EXISTS (SELECT 1 FROM json_each(knowledge_entries.tags) WHERE value = 'keep')`
@@ -510,150 +699,73 @@ export class KnowledgeRepository {
   }
 
   /**
-   * Find near-duplicate entry pairs via per-entry KNN (avoids an O(n²) full scan).
-   * The embedding MUST be read from the vec table (listAll() blanks it). Canonical
-   * `id < neighborId` filter dedups pairs and drops the self-match. Returns [] when
-   * there are no embeddings yet.
+   * Near-duplicate entry pairs (similarity DESC), from the exact, cooperative
+   * scan in services/duplicate-scan.ts — see there for the incremental state.
+   * Returns [] when there are no embeddings yet.
    */
   async findDuplicatePairs(opts: { threshold?: number; limit?: number } = {}) {
     const threshold = opts.threshold ?? 0.9;
     const limit = opts.limit ?? 100;
-    const { pairs } = await this.collectDuplicatePairs(threshold, 5, limit);
+    const { pairs, meta } = await scanDuplicatePairs(this.sqlite, threshold);
     return pairs
-      .map((p) => ({ a: { id: p.a.id, title: p.a.title }, b: { id: p.b.id, title: p.b.title }, similarity: p.similarity }))
+      .filter((p) => meta.has(p.a) && meta.has(p.b))
       .sort((x, y) => y.similarity - x.similarity)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((p) => ({
+        a: { id: p.a, title: meta.get(p.a)!.title },
+        b: { id: p.b, title: meta.get(p.b)!.title },
+        similarity: p.similarity,
+      }));
   }
 
   /**
-   * Shared KNN pair collection for findDuplicatePairs/findDuplicateGroups.
-   * `pairCap` exists only as a runaway safety net — group callers pass a large cap
-   * (a truncated pair graph would split/lose cluster members in union-find).
-   */
-  private async collectDuplicatePairs(threshold: number, k: number, pairCap: number) {
-    type Meta = { id: string; title: string; scope: string; type: string; version: number; updatedAt: string };
-    const entries = await this.listAll();
-    const meta = new Map<string, Meta>(entries.map((e) => [e.id, {
-      id: e.id, title: e.title, scope: e.scope, type: e.type,
-      version: (e as { version?: number }).version ?? 1, updatedAt: e.updatedAt,
-    }]));
-    const pairs: { a: Meta; b: Meta; similarity: number }[] = [];
-    for (const entry of entries) {
-      const emb = getEmbeddingById(this.sqlite, entry.id);
-      if (!emb) continue;
-      const neighbors = searchKnn(this.sqlite, emb, k);
-      for (const n of neighbors) {
-        if (entry.id >= n.id) continue; // canonical order + drops self
-        if (!meta.has(n.id)) continue;  // skip system / missing
-        const similarity = 1 - n.distance;
-        if (similarity >= threshold) {
-          pairs.push({ a: meta.get(entry.id)!, b: meta.get(n.id)!, similarity });
-        }
-      }
-      if (pairs.length >= pairCap) break;
-    }
-    return { pairs, meta };
-  }
-
-  // KNN width for duplicate GROUPING. Per-entry KNN keeps a cluster of up to
-  // ~DUP_KNN_K identical members fully connected; raise if users report a giant
-  // duplicate cluster rendering as two cards.
-  private static readonly DUP_KNN_K = 20;
-  // Safety net only — never intended to truncate a real pair graph (105 pairs for
-  // a 15-member cluster; 5000 covers pathological DBs without unbounded memory).
-  private static readonly DUP_PAIR_CAP = 5000;
-
-  /**
-   * Cluster near-duplicate pairs into connected components (union-find) so N
-   * copies of one entry render as ONE group, not N(N-1)/2 repeated pair rows.
-   * `limit` applies to the GROUP list (size DESC, then similarity DESC) — never
-   * to the underlying pair collection.
+   * Cluster near-duplicate pairs into connected components so N copies of one
+   * entry render as ONE group, not N(N-1)/2 repeated pair rows. `limit` applies
+   * to the GROUP list (size DESC, then similarity DESC). Runs without blocking
+   * the event loop for more than a few ms at a time (plan v2.6, 1C.3).
    */
   async findDuplicateGroups(opts: { threshold?: number; limit?: number } = {}) {
     const threshold = opts.threshold ?? 0.9;
     const limit = opts.limit ?? 100;
-    const { pairs } = await this.collectDuplicatePairs(
-      threshold, KnowledgeRepository.DUP_KNN_K, KnowledgeRepository.DUP_PAIR_CAP,
-    );
+    const { pairs, meta } = await scanDuplicatePairs(this.sqlite, threshold);
+    return groupPairs(pairs, meta, limit);
+  }
 
-    // Union-find with path compression over pair endpoints.
-    const parent = new Map<string, string>();
-    const find = (x: string): string => {
-      let root = x;
-      while (parent.get(root) !== undefined && parent.get(root) !== root) root = parent.get(root)!;
-      // path compression
-      let cur = x;
-      while (cur !== root) { const next = parent.get(cur)!; parent.set(cur, root); cur = next; }
-      return root;
-    };
-    const union = (a: string, b: string) => {
-      if (!parent.has(a)) parent.set(a, a);
-      if (!parent.has(b)) parent.set(b, b);
-      const ra = find(a); const rb = find(b);
-      if (ra !== rb) parent.set(rb, ra);
-    };
+  /** Drop the incremental duplicate-scan state (vectors changed without `updated_at`). */
+  invalidateDuplicateScan(): void {
+    this.sqlite.transaction(() => invalidateDuplicateScan(this.sqlite)).immediate();
+  }
 
-    const memberMeta = new Map<string, { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }>();
-    const maxSim = new Map<string, number>(); // tracked per root AFTER all unions below
-    for (const p of pairs) {
-      union(p.a.id, p.b.id);
-      memberMeta.set(p.a.id, p.a);
-      memberMeta.set(p.b.id, p.b);
-    }
-    const grouped = new Map<string, { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[]>();
-    for (const m of memberMeta.values()) {
-      const root = find(m.id);
-      const arr = grouped.get(root) ?? [];
-      arr.push(m);
-      grouped.set(root, arr);
-    }
-    for (const p of pairs) {
-      const root = find(p.a.id);
-      maxSim.set(root, Math.max(maxSim.get(root) ?? 0, p.similarity));
-    }
+  countMissingFts(): number {
+    return (this.sqlite.prepare(`SELECT count(*) AS n FROM knowledge_entries
+      WHERE type != 'system' AND status = 'active' AND id NOT IN (SELECT id FROM knowledge_fts)`).get() as { n: number }).n;
+  }
 
-    const groups = Array.from(grouped.entries()).map(([root, members]) => {
-      members.sort((a, b) => (b.version - a.version) || b.updatedAt.localeCompare(a.updatedAt));
-      const groupId = members.reduce((min, m) => (m.id < min ? m.id : min), members[0].id);
-      return { groupId, maxSimilarity: maxSim.get(root) ?? 0, members };
+  listFtsCoveragePage(afterRowid: number, limit = 250): { rowid: number; id: string }[] {
+    return this.sqlite.prepare(`SELECT rowid, id FROM knowledge_entries
+      WHERE rowid > ? AND type != 'system' AND status = 'active' AND id NOT IN (SELECT id FROM knowledge_fts)
+      ORDER BY rowid LIMIT ?`).all(afterRowid, limit) as { rowid: number; id: string }[];
+  }
+
+  repairFtsIds(ids: string[]): number {
+    if (!ids.length) return 0;
+    const marks = ids.map(() => '?').join(',');
+    const tx = this.sqlite.transaction(() => {
+      const current = this.sqlite.prepare(`SELECT id,title,content,tags FROM knowledge_entries
+        WHERE id IN (${marks}) AND type != 'system' AND status = 'active' AND id NOT IN (SELECT id FROM knowledge_fts)`).all(...ids) as { id: string; title: string; content: string; tags: string }[];
+      for (const row of current) {
+        insertFts(this.sqlite, { id: row.id, title: row.title ?? '', content: row.content ?? '', tags: ftsTags(row.tags) });
+      }
+      return current.length;
     });
-    return groups
-      .sort((x, y) => (y.members.length - x.members.length) || (y.maxSimilarity - x.maxSimilarity))
-      .slice(0, limit);
-  }
-
-  /**
-   * (Re)populate the FTS5 index from knowledge_entries. Used at startup when the
-   * index is empty but entries exist (e.g. after the FTS migration on an existing
-   * DB). Best-effort and idempotent (clears then re-inserts).
-   */
-  backfillFts(): number {
-    const rows = this.sqlite.prepare(
-      `SELECT id, title, content, tags FROM knowledge_entries WHERE type != 'system'`
-    ).all() as { id: string; title: string; content: string; tags: string }[];
-    let count = 0;
-    for (const r of rows) {
-      try {
-        insertFts(this.sqlite, { id: r.id, title: r.title ?? '', content: r.content ?? '', tags: ftsTags(r.tags) });
-        count++;
-      } catch { /* best-effort */ }
-    }
-    return count;
-  }
-
-  /** Backfill the FTS index only when it's empty but entries exist (startup path). */
-  backfillFtsIfNeeded(): number {
-    try {
-      if (ftsCount(this.sqlite) > 0) return 0;
-      return this.backfillFts();
-    } catch { return 0; }
+    return tx.immediate();
   }
 
   async count() {
     const [result] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(knowledgeEntries)
-      .where(ne(knowledgeEntries.type, 'system'));
+      .where(and(ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`));
     return Number(result.count);
   }
 
@@ -666,7 +778,7 @@ export class KnowledgeRepository {
 
   async countByType(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -684,7 +796,7 @@ export class KnowledgeRepository {
 
   async countByScope(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -707,7 +819,7 @@ export class KnowledgeRepository {
    */
   async countByAgent(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -729,7 +841,7 @@ export class KnowledgeRepository {
    */
   async countByPlatform(opts: { from?: string; to?: string } = {}) {
     const { from, to } = opts;
-    const conditions = [ne(knowledgeEntries.type, 'system')];
+    const conditions = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
     if (from && to) {
       conditions.push(sql`${knowledgeEntries.createdAt} >= ${from}`);
       conditions.push(sql`${knowledgeEntries.createdAt} < ${to}`);
@@ -747,7 +859,7 @@ export class KnowledgeRepository {
     return this.db
       .select()
       .from(knowledgeEntries)
-      .where(ne(knowledgeEntries.type, 'system'))
+      .where(and(ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`))
       .orderBy(sql`${knowledgeEntries.createdAt} DESC`);
   }
 
@@ -767,6 +879,84 @@ export class KnowledgeRepository {
     `;
     const stmt = this.sqlite.prepare(sql);
     return (limit ? stmt.all(limit) : stmt.all()) as { id: string; updatedAt: string }[];
+  }
+
+  listKnowledgeEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT id, updated_at AS updatedAt FROM knowledge_entries
+      WHERE id > ? ORDER BY id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  listPlanEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT id, updated_at AS updatedAt FROM plans
+      WHERE id > ? ORDER BY id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  listMissingKnowledgeEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT e.id, e.updated_at AS updatedAt FROM knowledge_entries e
+      LEFT JOIN knowledge_embeddings_rowids r ON r.id = e.id
+      WHERE r.id IS NULL AND e.id > ? ORDER BY e.id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  listMissingPlanEmbeddingPage(afterId: string, limit = 250): { id: string; updatedAt: string }[] {
+    return this.sqlite.prepare(`SELECT p.id, p.updated_at AS updatedAt FROM plans p
+      LEFT JOIN plans_embeddings_rowids r ON r.id = p.id
+      WHERE r.id IS NULL AND p.id > ? ORDER BY p.id LIMIT ?`).all(afterId, limit) as { id: string; updatedAt: string }[];
+  }
+
+  getKnowledgeEntryForEmbedding(id: string): { id: string; title: string; content: string; tags: string; updatedAt: string } | undefined {
+    return this.sqlite.prepare('SELECT id, title, content, tags, updated_at AS updatedAt FROM knowledge_entries WHERE id = ?').get(id) as any;
+  }
+
+  getPlanForEmbedding(id: string): { id: string; title: string; content: string; updatedAt: string } | undefined {
+    return this.sqlite.prepare('SELECT id, title, content, updated_at AS updatedAt FROM plans WHERE id = ?').get(id) as any;
+  }
+
+  publishKnowledgeEmbedding(id: string, updatedAt: string, embedding: number[]): boolean {
+    const publish = this.sqlite.transaction(() => {
+      const row = this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE id = ? AND updated_at = ?').get(id, updatedAt);
+      if (!row) return false;
+      this.upsertEmbeddingById(id, embedding);
+      return true;
+    });
+    return publish.immediate();
+  }
+
+  publishPlanEmbedding(id: string, updatedAt: string, embedding: number[]): boolean {
+    const publish = this.sqlite.transaction(() => {
+      const row = this.sqlite.prepare('SELECT 1 FROM plans WHERE id = ? AND updated_at = ?').get(id, updatedAt);
+      if (!row) return false;
+      this.upsertPlanEmbeddingById(id, embedding);
+      return true;
+    });
+    return publish.immediate();
+  }
+
+  publishKnowledgeEmbeddingBatch(rows: { id: string; updatedAt: string; embedding: number[] }[]): number {
+    if (!rows.length) return 0;
+    return this.sqlite.transaction(() => {
+      let count = 0;
+      const exists = this.sqlite.prepare('SELECT 1 FROM knowledge_entries WHERE id = ? AND updated_at = ?');
+      for (const row of rows) {
+        if (!exists.get(row.id, row.updatedAt)) continue;
+        this.upsertEmbeddingById(row.id, row.embedding);
+        count++;
+      }
+      return count;
+    }).immediate();
+  }
+
+  publishPlanEmbeddingBatch(rows: { id: string; updatedAt: string; embedding: number[] }[]): number {
+    if (!rows.length) return 0;
+    return this.sqlite.transaction(() => {
+      let count = 0;
+      const exists = this.sqlite.prepare('SELECT 1 FROM plans WHERE id = ? AND updated_at = ?');
+      for (const row of rows) {
+        if (!exists.get(row.id, row.updatedAt)) continue;
+        this.upsertPlanEmbeddingById(row.id, row.embedding);
+        count++;
+      }
+      return count;
+    }).immediate();
   }
 
   listMissingPlanEmbeddingIds(limit?: number): { id: string; updatedAt: string }[] {
@@ -827,7 +1017,7 @@ export class KnowledgeRepository {
 
   async listScopes(): Promise<string[]> {
     const rows = this.sqlite.prepare(
-      `SELECT DISTINCT scope FROM knowledge_entries
+      `SELECT DISTINCT scope FROM knowledge_entries WHERE status = 'active'
        UNION
        SELECT DISTINCT scope FROM plans
        ORDER BY scope`
@@ -1241,26 +1431,25 @@ export class KnowledgeRepository {
       .run(day, reads, writes);
   }
 
-  logOperation(operation: 'read' | 'write'): void {
-    const now = new Date().toISOString();
-    const insert = this.sqlite.transaction(() => {
-      this.sqlite
-        .prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)')
-        .run(operation, now);
-      this.bumpOperationsDaily(operation, now, 1);
-    });
-    insert();
-  }
-
-  logOperationBatch(operation: 'read' | 'write', count: number): void {
-    if (count <= 0) return;
-    const now = new Date().toISOString();
+  /**
+   * Write buffered operation counts in ONE transaction: one raw row per counted
+   * operation (same rows the per-call path wrote, timestamped to the second)
+   * plus the daily rollup bump, so every stats view reads the same numbers.
+   */
+  logOperationsBuffered(
+    batch: { operation: 'read' | 'write'; createdAt: string; count: number }[],
+    busyTimeoutMs: number,
+  ): void {
+    if (batch.length === 0) return;
     const stmt = this.sqlite.prepare('INSERT INTO operations_log (operation, created_at) VALUES (?, ?)');
-    const insertMany = this.sqlite.transaction((n: number) => {
-      for (let i = 0; i < n; i++) stmt.run(operation, now);
-      this.bumpOperationsDaily(operation, now, n);
+    this.withBusyTimeout(busyTimeoutMs, () => {
+      this.sqlite.transaction(() => {
+        for (const b of batch) {
+          for (let i = 0; i < b.count; i++) stmt.run(b.operation, b.createdAt);
+          this.bumpOperationsDaily(b.operation, b.createdAt, b.count);
+        }
+      })();
     });
-    insertMany(count);
   }
 
   getOperationCounts(): {

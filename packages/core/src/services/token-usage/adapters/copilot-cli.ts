@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
+import { readdir, stat, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve, basename } from 'node:path';
 import type { ScannedTokenRecord, TokenSourceAdapter } from '../adapter.js';
@@ -35,9 +35,9 @@ interface ParsedShutdown {
  * per-model usage). Returns null when no shutdown is present — the session is
  * still active (or crashed) and will be picked up on a later scan.
  */
-function parseEventsFile(filePath: string): ParsedShutdown | null {
+async function parseEventsFile(filePath: string): Promise<ParsedShutdown | null> {
   let raw: string;
-  try { raw = readFileSync(filePath, 'utf8'); } catch { return null; }
+  try { raw = await readFile(filePath, 'utf8'); } catch { return null; }
 
   let cwd: string | null = null;
   let sessionId: string | null = null;
@@ -98,23 +98,21 @@ export class CopilotCliAdapter implements TokenSourceAdapter {
   }
 
   async *scan(getState: (filePath: string) => ScanState | undefined): AsyncIterable<ScannedTokenRecord> {
-    if (!existsSync(this.sessionStateDir)) return;
-
     let entries: string[];
-    try { entries = readdirSync(this.sessionStateDir); } catch { return; }
+    try { entries = await readdir(this.sessionStateDir); } catch { return; }
 
     for (const entry of entries) {
       const sessionDir = resolve(this.sessionStateDir, entry);
-      let stat;
-      try { stat = statSync(sessionDir); } catch { continue; }
+      let dirStat;
+      try { dirStat = await stat(sessionDir); } catch { continue; }
       // Only the newer v1.x format: <sessionId>/events.jsonl. The top-level
       // <sessionId>.jsonl files (older v0.0.x agent) do not carry per-model
       // usage; we skip them on purpose.
-      if (!stat.isDirectory()) continue;
+      if (!dirStat.isDirectory()) continue;
 
       const filePath = resolve(sessionDir, 'events.jsonl');
       let fstat;
-      try { fstat = statSync(filePath); } catch { continue; }
+      try { fstat = await stat(filePath); } catch { continue; }
       const fileSize = fstat.size;
       const mtime = fstat.mtime.toISOString();
       const state = getState(filePath);
@@ -122,7 +120,7 @@ export class CopilotCliAdapter implements TokenSourceAdapter {
       // append-only). lastOffset is just a tripwire for "anything new?"
       if (state && state.lastOffset >= fileSize) continue;
 
-      const parsed = parseEventsFile(filePath);
+      const parsed = await parseEventsFile(filePath);
       if (!parsed) {
         // No shutdown yet — mark as "seen at this size" so we don't re-read
         // until more bytes arrive.

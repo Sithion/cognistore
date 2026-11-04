@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { api, SIDECAR_TOKEN, type CleanupCandidate, type CleanupReportResponse } from '../api/client.js';
+import { api, SIDECAR_TOKEN } from '../api/client.js';
 import { triggerUpdateCheck, triggerUpdateDownload, onUpdateState, getIsTauri, getLatestReleaseUrl, useAutoUpdateSetting } from '../components/UpdateChecker.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
+import { RetentionField } from '../settings/RetentionField.js';
+import { useSettingsRoute, settingsRoutes } from '../settings/useSettingsRoute.js';
+import { round8Settings } from '../i18n/round8-settings.js';
+import { applyTheme, getThemeMode, type ThemeMode } from '../design/theme.js';
+import type { AppSettings, SetupStatus } from '../api/client.js';
+declare const __APP_VERSION__: string;
 
 interface Health {
   database: { connected: boolean; path?: string; error?: string };
@@ -19,8 +25,23 @@ const languages = [
 ];
 
 export function SettingsPage() {
+  const route = useSettingsRoute();
+  const { i18n } = useTranslation();
+  const copy = round8Settings[i18n.language.split('-')[0] as keyof typeof round8Settings] ?? round8Settings.en;
+  return <div>
+    <h1 style={{ fontSize: 20, fontWeight: 700 }}>{copy[route]}</h1>
+    {(route.startsWith('settings/') || route.startsWith('curation')) && <nav aria-label="Sections" style={{ display: 'flex', gap: 16, margin: '16px 0', flexWrap: 'wrap' }}>
+      {settingsRoutes.filter(path => route.startsWith('settings/') ? path.startsWith('settings/') : path.startsWith('curation')).map(path => <Link key={path} to={'/' + path} aria-current={route === path ? 'page' : undefined}>{copy[path]}</Link>)}
+    </nav>}
+    <SettingsScreen key={route} route={route} />
+  </div>;
+}
+
+function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> }) {
   const { t, i18n } = useTranslation();
   const [health, setHealth] = useState<Health | null>(null);
+  const [healthFailed, setHealthFailed] = useState(false);
+  const [metrics, setMetrics] = useState<Awaited<ReturnType<typeof api.getMetrics>> | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [uninstallStep, setUninstallStep] = useState(0);
   const [updateState, setUpdateState] = useState<string>('idle');
@@ -29,12 +50,13 @@ export function SettingsPage() {
   const [dbSize, setDbSize] = useState<{ sizeFormatted: string; path: string } | null>(null);
 
   useEffect(() => {
+    if (route !== 'system/health') return;
     let cancelled = false;
     api.getMetrics()
-      .then((m) => { if (!cancelled) setDbSize(m.database); })
+      .then((m) => { if (!cancelled) { setDbSize(m.database); setMetrics(m); } })
       .catch(() => { /* ignore */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [route]);
 
   useEffect(() => {
     return onUpdateState((state) => {
@@ -52,14 +74,15 @@ export function SettingsPage() {
   }, []);
 
   const fetchHealth = useCallback(() => {
-    api.getHealth().then(data => setHealth(data as Health)).catch(console.error);
+    api.getHealth().then(data => { setHealth(data as Health); setHealthFailed(false); }).catch(() => { setHealth(null); setHealthFailed(true); });
   }, []);
 
   useEffect(() => {
+    if (route !== 'system/health') return;
     fetchHealth();
     const interval = setInterval(fetchHealth, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [fetchHealth]);
+  }, [fetchHealth, route]);
 
   const allHealthy = health?.database.connected && health?.ollama.connected;
 
@@ -70,7 +93,7 @@ export function SettingsPage() {
       padding: 20, flex: 1, minWidth: 200,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 20 }}>{ok ? '🟢' : '🔴'}</span>
+        <span aria-hidden="true" style={{ fontSize: 20 }}>{ok ? '🟢' : '🔴'}</span>
         <span style={{ fontSize: 16, fontWeight: 600 }}>{title}</span>
       </div>
       <span style={{ color: ok ? 'var(--success)' : 'var(--error)', fontSize: 13 }}>
@@ -80,9 +103,12 @@ export function SettingsPage() {
     </div>
   );
 
-  return (
-    <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{t('monitoring.title')}</h1>
+  if (route === 'knowledge/tags') return <TagSuggestionsSection />;
+  if (route === 'integrations/agents') return <><AgentReadinessSection /><MaintenanceSection redeployOnly /></>;
+  if (route === 'settings/telemetry' || route === 'settings/models' || route === 'settings/curation') return <SettingsFields route={route} />;
+  return <div>
+{route === 'system/health' && <>
+      <h2 style={sectionHeaderStyle}>{t('monitoring.title')}</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 24 }}>{t('monitoring.subtitle')}</p>
 
       {/* ── Infrastructure Monitoring Section ── */}
@@ -109,7 +135,7 @@ export function SettingsPage() {
             padding: 20, flex: 1, minWidth: 200,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 20 }}>💾</span>
+              <span aria-hidden="true" style={{ fontSize: 20 }}>💾</span>
               <span style={{ fontSize: 16, fontWeight: 600 }}>{t('stats.dbSize')}</span>
             </div>
             <span style={{ color: 'var(--accent)', fontSize: 20, fontWeight: 700 }}>
@@ -123,7 +149,7 @@ export function SettingsPage() {
           </div>
         </div>
       ) : (
-        <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>{t('stats.loading')}</p>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }} role={healthFailed ? 'alert' : undefined}>{healthFailed ? 'Health unavailable — database and Ollama status unknown.' : t('stats.loading')}</p>
       )}
 
       {/* Overall Status */}
@@ -132,12 +158,19 @@ export function SettingsPage() {
         border: `1px solid ${allHealthy ? 'var(--success)' : 'var(--border)'}`,
         padding: 16, marginBottom: 24, textAlign: 'center',
       }}>
-        <span style={{ fontSize: 32 }}>{allHealthy ? '✅' : health ? '⚠️' : '⏳'}</span>
+        <span aria-hidden="true" style={{ fontSize: 32 }}>{allHealthy ? '✅' : health ? '⚠️' : '⏳'}</span>
         <p style={{ fontSize: 14, fontWeight: 600, marginTop: 8, color: allHealthy ? 'var(--success)' : 'var(--warning)' }}>
-          {allHealthy ? t('monitoring.allReady') : health ? t('monitoring.degraded') : t('monitoring.checking')}
+          {allHealthy ? t('monitoring.allReady') : health ? t('monitoring.degraded') : healthFailed ? 'Unknown' : t('monitoring.checking')}
         </p>
       </div>
 
+      {metrics && <dl>
+        <dt>Total entries</dt><dd>{metrics.activity.total}</dd>
+        <dt>Reads (24h)</dt><dd>{metrics.operations.readsLastDay}</dd>
+        <dt>Writes (24h)</dt><dd>{metrics.operations.writesLastDay}</dd>
+      </dl>}
+      {!metrics && <p>Database metrics unavailable.</p>}
+</>}
       {/* Action Message */}
       {actionMessage && (
         <div style={{
@@ -151,7 +184,7 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* ── Updates Section ── */}
+{route === 'system/about' && <><p>CogniStore {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'Version unavailable'}</p>      {/* ── Updates Section ── */}
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
         <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
           {t('update.section')}
@@ -207,7 +240,9 @@ export function SettingsPage() {
           {updateState === 'ready' && <span style={{ fontSize: 13, color: 'var(--success)' }}>{t('update.restartToApply')}</span>}
           {checkResult === 'error' && <span style={{ fontSize: 13, color: 'var(--error)' }}>{t('update.checkFailed')}</span>}
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, fontSize: 13, cursor: 'pointer' }}>
+      </div>
+</>}
+{route === 'settings/general' && <>        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, fontSize: 13, cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={autoUpdate}
@@ -220,8 +255,6 @@ export function SettingsPage() {
             <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('update.autoUpdateHint')}</span>
           </span>
         </label>
-      </div>
-
       {/* ── Language Section ── */}
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
         <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
@@ -236,7 +269,7 @@ export function SettingsPage() {
                 padding: '8px 16px', borderRadius: 6,
                 border: i18n.language === lang.code ? '1px solid var(--accent)' : '1px solid var(--border)',
                 backgroundColor: i18n.language === lang.code ? 'var(--accent)' : 'var(--bg-card)',
-                color: i18n.language === lang.code ? '#fff' : 'var(--text-primary)',
+                color: i18n.language === lang.code ? 'var(--primary-foreground)' : 'var(--text-primary)',
                 cursor: 'pointer', fontSize: 13, fontWeight: 500,
               }}
             >
@@ -246,25 +279,8 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* ── Maintenance Section ── */}
-      <MaintenanceSection />
-
-      {/* ── Data Management Section ── */}
-      <DataManagementSection />
-
-      {/* ── Tag Suggestions Section ── */}
-      <TagSuggestionsSection />
-
-      {/* ── Cleanup Report Section ── */}
-      <CleanupReportSection />
-
-      {/* ── Knowledge Health Section ── */}
-      <KnowledgeHealthSection />
-
-      {/* ── Log Viewer ── */}
-      <LogSection />
-
-      {/* ── Uninstall Section ── */}
+<ThemeField /><KnowledgeHealthSection /></>}
+{route === 'settings/advanced' && <><MaintenanceSection /><DataManagementSection /><LogSection />      {/* ── Uninstall Section ── */}
       <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--error)', marginBottom: 16 }}>
         {t('settings.dangerZone')}
@@ -273,7 +289,6 @@ export function SettingsPage() {
       <div style={{
         backgroundColor: 'var(--bg-card)', borderRadius: 10,
         border: '1px solid var(--error)', padding: 20,
-        opacity: 0.8,
       }}>
         {uninstallStep === 3 ? (
           <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('settings.uninstallingMsg')}</p>
@@ -346,8 +361,8 @@ export function SettingsPage() {
         </div>
       )}
       </div>
-    </div>
-  );
+</>}
+</div>;
 }
 
 function LogSection() {
@@ -392,7 +407,7 @@ function LogSection() {
           {t('settings.logs.title')}
         </h2>
         {total > 0 && (
-          <span style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.6 }}>({total} lines)</span>
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>({total} lines)</span>
         )}
       </div>
       {expanded && (
@@ -441,7 +456,7 @@ function LogSection() {
   );
 }
 
-function MaintenanceSection() {
+function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }) {
   const { t } = useTranslation();
   const [cleaning, setCleaning] = useState(false);
   const [cleanResult, setCleanResult] = useState<string | null>(null);
@@ -505,7 +520,7 @@ function MaintenanceSection() {
             {redeploying ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
             ) : (
-              <span style={{ fontSize: 14 }}>🔄</span>
+              <span aria-hidden="true" style={{ fontSize: 14 }}>🔄</span>
             )}
             {t('settings.redeploy')}
           </button>
@@ -515,7 +530,7 @@ function MaintenanceSection() {
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {!redeployOnly && <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={handleCleanup}
             disabled={cleaning}
@@ -531,14 +546,14 @@ function MaintenanceSection() {
             {cleaning ? (
               <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--text-secondary)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
             ) : (
-              <span style={{ fontSize: 14 }}>🗑</span>
+              <span aria-hidden="true" style={{ fontSize: 14 }}>🗑</span>
             )}
             {t('settings.removeEmbeddings')}
           </button>
           {cleanResult && (
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{cleanResult}</span>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );
@@ -692,7 +707,7 @@ function DataManagementSection() {
                 disabled={exporting || (!exportKnowledge && !exportPlans)}
                 style={{
                   padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                  border: 'none', backgroundColor: 'var(--accent)', color: '#fff',
+                  border: 'none', backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
                   cursor: (!exportKnowledge && !exportPlans) ? 'not-allowed' : 'pointer',
                   opacity: (!exportKnowledge && !exportPlans) ? 0.5 : 1,
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -731,7 +746,7 @@ function DataManagementSection() {
                 disabled={importing || (!importKnowledge && !importPlansFlag)}
                 style={{
                   padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                  border: 'none', backgroundColor: 'var(--accent)', color: '#fff',
+                  border: 'none', backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
                   cursor: (!importKnowledge && !importPlansFlag) ? 'not-allowed' : 'pointer',
                   opacity: (!importKnowledge && !importPlansFlag) ? 0.5 : 1,
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -892,6 +907,7 @@ function TagSuggestionsSection() {
             return (
               <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', opacity: applying ? 0.6 : 1 }}>
                 <input
+                  aria-label={`Select tag group: ${g.members.map(m => m.tag).join(', ')}`}
                   type="checkbox"
                   checked={isSelected}
                   onChange={() => toggleGroup(g.key)}
@@ -911,6 +927,7 @@ function TagSuggestionsSection() {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                     <span style={{ color: 'var(--text-secondary)' }}>{t('tagSuggestions.keepLabel')}</span>
                     <select
+                      aria-label={t('tagSuggestions.keepLabel')}
                       value={keep}
                       disabled={applying}
                       onChange={(e) => setKeeper((prev) => ({ ...prev, [g.key]: (e.target as HTMLSelectElement).value }))}
@@ -959,13 +976,16 @@ function TagSuggestionsSection() {
 }
 
 
-type DuplicateGroup = { groupId: string; maxSimilarity: number; members: { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[] };
+type DuplicateGroup = { groupId: string; maxSimilarity: number; memberCount: number; members: { id: string; title: string; scope: string; type: string; version: number; updatedAt: string }[] };
 
 function KnowledgeHealthSection() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [stale, setStale] = useState<{ id: string; title: string; type: string; scope: string; confidenceScore: number; updatedAt: string; expiresAt: string | null }[]>([]);
-  const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
+  // null = not checked yet. Duplicate detection is a full scan of the base, so
+  // it runs only when the user asks for it, never on mount (plan v2.6 1A.5).
+  const [duplicates, setDuplicates] = useState<DuplicateGroup[] | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const [loading, setLoading] = useState(true);
   // Per-group "keep" choice (groupId → member id). Default = first member
   // (server pre-sorts: version DESC, then updatedAt DESC).
@@ -975,16 +995,21 @@ function KnowledgeHealthSection() {
   const [dupMessage, setDupMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getStaleEntries().catch(() => []),
-      api.getDuplicateGroups().catch(() => []),
-    ]).then(([s, d]) => { setStale(s); setDuplicates(d); }).finally(() => setLoading(false));
+    api.getStaleEntries().catch(() => []).then(setStale).finally(() => setLoading(false));
   }, []);
 
   const openEntry = (id: string) => navigate('/?edit=' + encodeURIComponent(id));
 
-  const reloadDuplicates = () =>
-    api.getDuplicateGroups().then(setDuplicates).catch(() => {});
+  const reloadDuplicates = async () => {
+    setCheckingDuplicates(true);
+    try {
+      setDuplicates(await api.getDuplicateGroups());
+    } catch {
+      setDuplicates((prev) => prev ?? []);
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  };
 
   const keeperFor = (g: DuplicateGroup) => keepChoice[g.groupId] ?? g.members[0]?.id;
 
@@ -1037,17 +1062,22 @@ function KnowledgeHealthSection() {
           <div>
             <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('health.duplicates')}</h3>
             {dupMessage && <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>{dupMessage}</p>}
-            {duplicates.length === 0 ? (
+            <div style={{ marginBottom: 8 }}>
+              <button style={ghostButtonStyle} disabled={checkingDuplicates || resolving} onClick={reloadDuplicates} data-testid="check-duplicates">
+                {checkingDuplicates ? t('health.checkingDuplicates') : t('health.checkDuplicates')}
+              </button>
+            </div>
+            {duplicates === null ? null : duplicates.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('health.dupEmpty')}</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {duplicates.map((g) => {
                   const keeperId = keeperFor(g);
-                  const deleteCount = g.members.length - 1;
+                      const deleteCount = (g.memberCount ?? g.members.length) - 1;
                   return (
                     <div key={g.groupId} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {t('health.groupTitle', { count: g.members.length })} · {Math.round(g.maxSimilarity * 100)}%
+                        {t('health.groupTitle', { count: g.memberCount ?? g.members.length })} · {Math.round(g.maxSimilarity * 100)}%
                       </div>
                       {g.members.map((m) => (
                         <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
@@ -1096,349 +1126,116 @@ function KnowledgeHealthSection() {
   );
 }
 
-// ─── Cleanup Report ────────────────────────────────────────────
 
-/**
- * The user-facing half of the cleanup cycle: review what the periodic scan
- * proposed and approve it item by item.
- *
- * Deletions here are irreversible, so the flow is deliberately unhurried —
- * removals need a confirmation, and a consolidation cannot be approved at all
- * until its merged text has been previewed. There is no bulk action that spans
- * categories.
- */
-function CleanupReportSection() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const [data, setData] = useState<CleanupReportResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [previews, setPreviews] = useState<Record<string, { draft: { title: string; content: string }; usedLlm: boolean; tags: string[] }>>({});
-  const [confirm, setConfirm] = useState<
-    | { kind: 'one'; candidate: CleanupCandidate }
-    | { kind: 'all'; candidates: CleanupCandidate[]; label: string }
-    | { kind: 'merge'; candidate: CleanupCandidate }
-    | null
-  >(null);
-
-  const reload = useCallback(
-    () => api.getCleanupReport().then(setData).catch(() => setData(null)),
-    [],
-  );
-
-  useEffect(() => { reload().finally(() => setLoading(false)); }, [reload]);
-
-  const flash = (msg: string) => { setMessage(msg); setTimeout(() => setMessage(null), 6000); };
-
-  const pending = (data?.candidates ?? []).filter((c) => c.status === 'pending');
-  const byCategory = (cat: string) => pending.filter((c) => c.category === cat);
-
-  const runNow = async () => {
-    setRunning(true);
-    try { await api.runCleanupReport(); await reload(); }
-    catch (e: any) { flash(t('cleanup.failed', { error: e?.message ?? '' })); }
-    setRunning(false);
-  };
-
-  const approveOne = async (candidate: CleanupCandidate) => {
-    setBusyId(candidate.id);
-    try {
-      const res = await api.approveCleanupCandidate(candidate.id);
-      flash(
-        (res.skipped ?? 0) > 0
-          ? `${t('cleanup.applied', { count: res.deleted ?? 0 })} · ${t('cleanup.skipped', { count: res.skipped })}`
-          : t('cleanup.applied', { count: res.deleted ?? 0 }),
-      );
-      await reload();
-    } catch (e: any) {
-      flash(t('cleanup.failed', { error: e?.message ?? '' }));
-    }
-    setBusyId(null);
-  };
-
-  const approveMany = async (candidates: CleanupCandidate[]) => {
-    let deleted = 0; let skipped = 0; let failed = 0;
-    setBusyId('bulk');
-    for (const c of candidates) {
-      try {
-        const res = await api.approveCleanupCandidate(c.id);
-        deleted += res.deleted ?? 0;
-        skipped += res.skipped ?? 0;
-      } catch { failed++; }
-    }
-    setBusyId(null);
-    const parts = [t('cleanup.applied', { count: deleted })];
-    if (skipped > 0) parts.push(t('cleanup.skipped', { count: skipped }));
-    if (failed > 0) parts.push(t('cleanup.failed', { error: String(failed) }));
-    flash(parts.join(' · '));
-    await reload();
-  };
-
-  const preview = async (candidate: CleanupCandidate) => {
-    setBusyId(candidate.id);
-    try {
-      const result = await api.previewCleanupCandidate(candidate.id);
-      setPreviews((prev) => ({ ...prev, [candidate.id]: result }));
-    } catch (e: any) {
-      flash(t('cleanup.failed', { error: e?.message ?? '' }));
-    }
-    setBusyId(null);
-  };
-
-  const applyMerge = async (candidate: CleanupCandidate) => {
-    const p = previews[candidate.id];
-    if (!p) return; // guarded by the UI: apply only appears after a preview
-    setBusyId(candidate.id);
-    try {
-      // Report what the server actually deleted, not the group size: members can
-      // disappear between generation and approval.
-      const res = await api.approveCleanupCandidate(candidate.id, { draft: p.draft, usedLlm: p.usedLlm });
-      flash(t('cleanup.applied', { count: res.deleted ?? 0 }));
-      setPreviews((prev) => { const next = { ...prev }; delete next[candidate.id]; return next; });
-      await reload();
-    } catch (e: any) {
-      flash(t('cleanup.failed', { error: e?.message ?? '' }));
-    }
-    setBusyId(null);
-  };
-
-  const dismiss = async (candidate: CleanupCandidate) => {
-    setBusyId(candidate.id);
-    try { await api.dismissCleanupCandidate(candidate.id); await reload(); }
-    catch (e: any) { flash(t('cleanup.failed', { error: e?.message ?? '' })); }
-    setBusyId(null);
-  };
-
-  const closeReport = async () => {
-    if (!data?.report) return;
-    setBusyId('close');
-    try {
-      const res = await api.closeCleanupReport(data.report.id);
-      flash(t('cleanup.closed', { count: res.removed }));
-      await reload();
-    } catch (e: any) { flash(t('cleanup.failed', { error: e?.message ?? '' })); }
-    setBusyId(null);
-  };
-
-  const openEntry = (id: string) => navigate('/?edit=' + encodeURIComponent(id));
-  const busy = busyId !== null || running;
-
-  const removalRow = (c: CleanupCandidate) => (
-    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
-      <span
-        onClick={() => openEntry(c.entryIds[0])}
-        style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textDecoration: 'underline' }}
-      >
-        {c.payload.title || '(untitled)'}
-      </span>
-      <span style={{ color: 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap' }}>
-        {c.payload.scope}
-        {c.category === 'unread' && ` · ${t('cleanup.lastRead', { date: c.payload.lastReadAt?.slice(0, 10) ?? t('cleanup.never') })}`}
-      </span>
-      <button onClick={() => setConfirm({ kind: 'one', candidate: c })} disabled={busy} style={smallDangerButton}>
-        {t('cleanup.approve')}
-      </button>
-      <button onClick={() => dismiss(c)} disabled={busy} style={smallButton}>
-        {t('cleanup.dismiss')}
-      </button>
-    </div>
-  );
-
-  const removalGroup = (cat: 'deprecated' | 'unread', label: string) => {
-    const items = byCategory(cat);
-    return (
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600 }}>{label}</h3>
-          {items.length > 1 && (
-            <button
-              onClick={() => setConfirm({ kind: 'all', candidates: items, label })}
-              disabled={busy}
-              style={smallButton}
-            >
-              {t('cleanup.approveAll', { count: items.length })}
-            </button>
-          )}
-        </div>
-        {items.length === 0 ? (
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('cleanup.emptyCategory')}</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{items.map(removalRow)}</div>
-        )}
-      </div>
-    );
-  };
-
-  const groups = byCategory('duplicate_group');
-
-  return (
-    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
-      <h2 style={sectionHeaderStyle}>{t('cleanup.title')}</h2>
-      <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>{t('cleanup.subtitle')}</p>
-
-      {loading ? (
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('cleanup.loading')}</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <button onClick={runNow} disabled={busy} style={smallButton}>
-              {running ? t('cleanup.running') : t('cleanup.runNow')}
-            </button>
-            {data?.report && (
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                {t('cleanup.generatedAt', { date: data.report.createdAt.slice(0, 10) })}
-                {data.report.stats.counts && ` · ${t('cleanup.counts', {
-                  deprecated: data.report.stats.counts.deprecated,
-                  unread: data.report.stats.counts.unread,
-                  groups: data.report.stats.counts.duplicateGroups,
-                  total: data.report.stats.counts.removableEntries,
-                })}`}
-              </span>
-            )}
-            {/* Offered for ANY open report, including one whose candidates have
-                all been resolved: only one report may be open at a time, so an
-                un-closable empty report would stall the cycle until the
-                auto-close at twice the interval. */}
-            {data?.report?.status === 'open' && (
-              <button onClick={closeReport} disabled={busy} style={smallButton}>{t('cleanup.closeReport')}</button>
-            )}
-          </div>
-
-          {message && <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{message}</p>}
-
-          {!data?.report && <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('cleanup.none')}</p>}
-
-          {/* Unread detection suppresses itself until its signal is trustworthy;
-              say so rather than showing a silently empty bucket. */}
-          {data?.report?.stats.unreadGate && (
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-              {t('cleanup.gate', { reason: data.report.stats.unreadGate })}
-            </p>
-          )}
-
-          {data?.report?.status === 'closed' && typeof data.report.stats.removed === 'number' && (
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {t('cleanup.closed', { count: data.report.stats.removed })}
-            </p>
-          )}
-
-          {data?.report && (
-            <>
-              {removalGroup('deprecated', t('cleanup.deprecated'))}
-              {removalGroup('unread', t('cleanup.unread', { days: data.settings.cleanupUnreadDays }))}
-
-              <div>
-                <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('cleanup.duplicates')}</h3>
-                {groups.length === 0 ? (
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('cleanup.emptyCategory')}</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {groups.map((c) => {
-                      const p = previews[c.id];
-                      const members = c.payload.members ?? [];
-                      return (
-                        <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                            {members.length} · {Math.round((c.payload.maxSimilarity ?? 0) * 100)}%
-                          </div>
-                          {members.map((m, i) => (
-                            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                              <span style={{ fontSize: 11, color: i === 0 ? 'var(--success, #2a2)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                                {i === 0 ? `★ ${t('cleanup.canonical')}` : t('cleanup.willDelete')}
-                              </span>
-                              <span
-                                onClick={() => openEntry(m.id)}
-                                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', textDecoration: 'underline' }}
-                              >
-                                {m.title || '(untitled)'}
-                              </span>
-                              <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{m.updatedAt.slice(0, 10)}</span>
-                            </div>
-                          ))}
-
-                          {p && (
-                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                                {p.usedLlm ? t('cleanup.byModel') : t('cleanup.byFallback')}
-                              </div>
-                              <div style={{ fontSize: 13, fontWeight: 600 }}>{p.draft.title}</div>
-                              <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', background: 'var(--bg-secondary, transparent)', padding: 8, borderRadius: 6, margin: 0 }}>
-                                {p.draft.content}
-                              </pre>
-                              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                                {t('cleanup.mergedTags')}: {p.tags.join(', ') || '—'}
-                              </div>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            {/* Apply only exists once the merged text has been shown:
-                                approving unseen text would delete the other members. */}
-                            {p ? (
-                              <button onClick={() => setConfirm({ kind: 'merge', candidate: c })} disabled={busy} style={smallDangerButton}>
-                                {t('cleanup.applyMerge')}
-                              </button>
-                            ) : (
-                              <button onClick={() => preview(c)} disabled={busy} style={smallButton}>
-                                {busyId === c.id ? t('cleanup.previewing') : t('cleanup.preview')}
-                              </button>
-                            )}
-                            <button onClick={() => dismiss(c)} disabled={busy} style={smallButton}>{t('cleanup.dismiss')}</button>
-                          </div>
-                          {busyId === c.id && !p && (
-                            <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('cleanup.downloadingModel')}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <ConfirmModal
-        isOpen={confirm !== null}
-        onClose={() => { if (!busy) setConfirm(null); }}
-        onConfirm={async () => {
-          const c = confirm;
-          setConfirm(null);
-          if (!c) return;
-          if (c.kind === 'one') await approveOne(c.candidate);
-          else if (c.kind === 'all') await approveMany(c.candidates);
-          else await applyMerge(c.candidate);
-        }}
-        title={t('cleanup.title')}
-        message={
-          confirm?.kind === 'all'
-            ? t('cleanup.confirmApproveAll', { count: confirm.candidates.length })
-            : confirm?.kind === 'merge'
-              ? t('cleanup.confirmMerge', { count: confirm.candidate.entryIds.length })
-              : t('cleanup.confirmApprove')
-        }
-        confirmLabel={confirm?.kind === 'merge' ? t('cleanup.applyMerge') : t('cleanup.approve')}
-        loading={busy}
-      />
-    </div>
-  );
+function ThemeField() {
+  const [theme, setTheme] = useState<ThemeMode>(getThemeMode);
+  return <label>Theme <select value={theme} onChange={event => {
+    const mode = event.target.value as ThemeMode;
+    applyTheme(mode);
+    setTheme(mode);
+  }}>
+    <option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option>
+  </select></label>;
 }
 
-const smallButton: React.CSSProperties = {
-  fontSize: 12,
-  padding: '4px 10px',
-  borderRadius: 6,
-  border: '1px solid var(--border)',
-  background: 'transparent',
-  color: 'var(--text)',
-  cursor: 'pointer',
-};
+function SettingsFields({ route }: { route: 'settings/telemetry' | 'settings/models' | 'settings/curation' }) {
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [error, setError] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const load = () => {
+    setError(false);
+    api.getSettings().then(setSettings).catch(() => setError(true));
+  };
+  useEffect(load, []);
+  if (!settings) return error ? <div role="alert">Could not load settings. <button onClick={load}>Retry</button></div> : <p>Loading settings…</p>;
+  if (route === 'settings/telemetry') return <RetentionField value={settings.tokenUsageRetentionDays ?? 90} onSave={async days => {
+    const confirmed = await api.updateSettings({ tokenUsageRetentionDays: days });
+    if (typeof confirmed.tokenUsageRetentionDays !== 'number') throw new Error('Missing confirmed retention');
+    setSettings(confirmed);
+  }} />;
+  const save = async () => {
+    setSaving(true); setMessage(null); setError(false);
+    try {
+      const patch = route === 'settings/models' ? { cleanupLlmModel: settings.cleanupLlmModel } : {
+        cleanupEnabled: settings.cleanupEnabled, cleanupIntervalDays: settings.cleanupIntervalDays,
+        cleanupUnreadDays: settings.cleanupUnreadDays, cleanupDupThreshold: settings.cleanupDupThreshold,
+        curationAutonomy: settings.curationAutonomy, curationModel: settings.curationModel, curationClusterThreshold: settings.curationClusterThreshold,
+        curationTrashRetentionDays: settings.curationTrashRetentionDays, curationIdleMinutes: settings.curationIdleMinutes,
+      };
+      setSettings(await api.updateSettings(patch));
+      setMessage('Saved.');
+    } catch { setError(true); }
+    finally { setSaving(false); }
+  };
+  return <form onSubmit={event => { event.preventDefault(); void save(); }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    {route === 'settings/models' ? <>
+      <label>Cleanup merge model <input required maxLength={100} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]*(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?" value={settings.cleanupLlmModel} disabled={saving}
+        onChange={event => setSettings({ ...settings, cleanupLlmModel: event.target.value })} /></label>
+      <p>The local merge model is downloaded on demand when previewing a consolidation. Uninstall uses the saved model reference to remove the managed model.</p>
+      <ModelSetupControl />
+    </> : <>
+      <label><input type="checkbox" checked={settings.cleanupEnabled} disabled={saving} onChange={event => setSettings({ ...settings, cleanupEnabled: event.target.checked })} />{t('cleanup.enabled')}</label>
+      {([
+        ['cleanupIntervalDays', 'cleanup.intervalDays', 1, 365, 1],
+        ['cleanupUnreadDays', 'cleanup.unreadDays', 30, 3650, 1],
+        ['cleanupDupThreshold', 'cleanup.dupThreshold', 0.8, 1, 0.01],
+      ] as const).map(([key, label, min, max, step]) => <label key={key}>{t(label)} <input type="number" required min={min} max={max} step={step} disabled={saving} value={settings[key]}
+        onChange={event => setSettings({ ...settings, [key]: event.target.valueAsNumber })} /></label>)}
+      <fieldset className="space-y-3"><legend className="font-semibold">{t('curationPage.settings.title')}</legend>
+        <label>{t('curationPage.settings.autonomy')} <select value={settings.curationAutonomy ?? 'suggest'} disabled={saving}
+          onChange={event => setSettings({ ...settings, curationAutonomy: event.target.value as NonNullable<typeof settings.curationAutonomy> })}>
+          {(['off', 'suggest', 'auto-safe', 'auto'] as const).map(mode => <option key={mode} value={mode}>{t(`curationPage.settings.autonomyOptions.${mode}`)}</option>)}</select></label>
+        <label>{t('curationPage.settings.model')} <input required maxLength={100} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]*(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?" disabled={saving} value={settings.curationModel ?? ''}
+          onChange={event => setSettings({ ...settings, curationModel: event.target.value })} /></label>
+        {([
+          ['curationClusterThreshold', 'curationPage.settings.threshold', 0.8, 1, 0.01, 0.85],
+          ['curationTrashRetentionDays', 'curationPage.settings.trashRetention', 1, 3650, 1, 30],
+          ['curationIdleMinutes', 'curationPage.settings.idle', 10, 1440, 1, 10],
+        ] as const).map(([key, label, min, max, step, fallback]) => <label key={key}>{t(label)} <input type="number" required min={min} max={max} step={step} disabled={saving} value={settings[key] ?? fallback}
+          onChange={event => setSettings({ ...settings, [key]: event.target.valueAsNumber })} /></label>)}
+      </fieldset>
+      <p><Link to="/curation">{t('curationPage.settings.open')}</Link></p>
+    </>}
+    <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+    {error && <p role="alert">Could not save settings. Please try again.</p>}
+    {message && <p role="status">{message}</p>}
+  </form>;
+}
 
-const smallDangerButton: React.CSSProperties = {
-  ...smallButton,
-  borderColor: 'var(--error)',
-  color: 'var(--error)',
-};
+function ModelSetupControl() {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  return <div><button type="button" disabled={busy} onClick={async () => {
+    setBusy(true); setMessage(null);
+    try { const result = await api.setupModel(); setMessage(result.success ? 'Embedding model ready.' : 'Model setup failed.'); }
+    catch { setMessage('Model setup failed.'); }
+    finally { setBusy(false); }
+  }}>{busy ? 'Installing…' : 'Install configured embedding model'}</button>
+    {message && <p role="status">{message}</p>}
+  </div>;
+}
+
+function AgentReadinessSection() {
+  const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    setFailed(false); setStatus(null);
+    api.getSetupStatus().then(setStatus).catch(() => setFailed(true));
+  };
+  useEffect(load, []);
+  return <div>
+    <p>Setup readiness reflects installed dependencies and configuration files. Platform MCP process health: unknown — process information is unavailable.</p>
+    {failed ? <p role="alert">Could not load setup readiness.</p> : status ? <dl>
+      {([
+        ['nodeReady', 'Node runtime'], ['sdkReady', 'SDK'], ['configsReady', 'Agent configuration'],
+        ['databaseReady', 'Database setup'], ['ollamaInstalled', 'Ollama installed'],
+        ['ollamaRunning', 'Ollama reachable'], ['modelAvailable', 'Embedding model'],
+      ] as const).map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{status[key] ? 'Ready' : 'Not ready'}</dd></div>)}
+    </dl> : <p>Loading readiness…</p>}
+    <button onClick={load}>Refresh readiness</button>
+    <p>Redeploy refreshes the managed agent configurations. <Link to="/settings/advanced">Advanced settings</Link> provides the matching uninstall flow.</p>
+  </div>;
+}
+

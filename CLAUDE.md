@@ -1,6 +1,6 @@
 # CogniStore - Agent Rules
 
-## Architecture (v1.0.4 — App-first, Docker-free)
+## Architecture (App-first, Docker-free — current version in `apps/dashboard/package.json`)
 
 - **Entry point**: Tauri desktop app (macOS .dmg, Linux .AppImage/.deb)
 - **Database**: SQLite + sqlite-vec (file at `~/.cognistore/knowledge.db`)
@@ -23,7 +23,8 @@ The Tauri app's setup wizard creates resources; the uninstall button must remove
 | Install Ollama via brew/curl | Uninstall Ollama via brew uninstall or remove binary — **conditional**: only when `settings.installedOllama` records that setup installed it AND the user ticks the uninstall checkbox. Ollama is shared; pre-2.5.0 installs have no record, so the default is to keep it |
 | Start `ollama serve` | Kill the recorded PID of the process we spawned; `pkill -f "ollama serve"` only as a fallback, gated by the same opt-in (it matches the user's own instances too) |
 | Pull embedding model via Ollama API | Remove model via `ollama rm` |
-| Pull cleanup LLM model via Ollama API (first consolidation preview) | Remove via `ollama rm <cleanupLlmModel>` — name read from `settings.json` **before** the directory is removed, re-validated, `llama3.2:3b` fallback; skipped when never pulled |
+| Pull cleanup LLM model via Ollama API (first consolidation preview) | Remove recorded app-installed cleanup models once; read ownership before directory removal, validate names, and preserve pre-existing models |
+| Pull curation model via explicit model preparation | Record each model actually installed by CogniStore in settings; uninstall removes only recorded installations once, preserves pre-existing models, and reads ownership before directory removal |
 | Inject `~/.claude/CLAUDE.md` markers | Remove markers via ConfigManager |
 | Inject `~/.github/copilot-instructions.md` markers | Remove markers via ConfigManager |
 | Inject `~/.copilot/copilot-instructions.md` markers | Remove markers via ConfigManager |
@@ -32,10 +33,11 @@ The Tauri app's setup wizard creates resources; the uninstall button must remove
 | Add `cognistore` to `~/.claude.json` | Remove entry via ConfigManager |
 | Add `cognistore` to `~/.copilot/mcp-config.json` | Remove entry via ConfigManager |
 | Add `cognistore` to `~/.config/opencode/opencode.json` | Remove entry via ConfigManager |
-| Inject `mcp__cognistore` server-scope allow rule + a `permissions.deny` entry for each destructive tool (`deleteKnowledge`, `deletePlanTask`) in `~/.claude/settings.json` | Remove the allow rule, our deny entries, and any legacy `mcp__cognistore__*` allow entries via ConfigManager (the user's own deny rules are left alone) |
+| Inject `mcp__cognistore` server-scope allow rule + a `permissions.deny` entry for each destructive tool (`deleteKnowledge`, `deletePlanTask`, `resolveCuration`) in `~/.claude/settings.json` | Remove the allow rule, our deny entries, and any legacy `mcp__cognistore__*` allow entries via ConfigManager (the user's own deny rules are left alone) |
 | Copy global hook scripts to `~/.cognistore/hooks/{claude-code,copilot}/` | Removed with `~/.cognistore` directory |
 | Inject hooks into `~/.claude/settings.json` (`hooks` key) | Remove cognistore hook entries via `ConfigManager.removeHooks` |
 | Write `~/.copilot/hooks/hooks.json` reminder hooks | Remove cognistore entries via `ConfigManager.removeCopilotHooks` |
+| Copy Claude/Copilot/OpenCode skill `cognistore-maintain` (alongside the other `cognistore-*` skills) | Remove the skill directories with the others |
 | Copy Claude skills to `~/.claude/skills/cognistore-*/` | Remove skill directories |
 | Copy Copilot skills to `~/.copilot/skills/cognistore-*/` | Remove skill directories |
 | App installed in /Applications/ (macOS) | Self-delete via rmSync |
@@ -63,7 +65,7 @@ The sidecar also self-heals at startup: when `~/.cognistore/.artifacts-version` 
 Every change MUST update `PATCH-NOTES.md` at the project root. Group entries by version and category (features, fixes, improvements). This file is linked from README.md.
 
 ### Testing
-Every new feature should have corresponding tests in `packages/tests/`. The test suite runs on CI for every PR and feature branch push.
+Every new feature should have corresponding tests in `packages/tests/` (integration/e2e, Playwright). Core logic also gets unit tests in `packages/core/test/` (Vitest, real temp SQLite + stub embedder; helpers in `test/helpers.ts`), and the sidecar's pure modules in `apps/dashboard/server/test/`. The test suite runs on CI for every PR and feature branch push. `pnpm verify` runs everything CI's build-and-test job does (lint with Biome, type-check, build, unit, the root scripts' `node:test` suite, integration, knip), and the `pre-push` hook runs it too.
 
 ## Path Resolution
 
@@ -73,3 +75,19 @@ The Tauri sidecar sets environment variables for the Fastify server:
 - `DASHBOARD_DIST_PATH` — path to bundled frontend assets
 - `TEMPLATES_PATH` — path to bundled skills/config templates
 - `COGNISTORE_MANAGED` — `1` only when the Tauri shell launched the sidecar; gates the startup artifact self-heal so tests (which spawn the sidecar against the real `HOME`) never rewrite the developer's agent configs
+
+## Working in this repo (agents)
+
+- **Skills** (`.claude/skills/`): `cognistore-dev` — map of the codebase, commands, invariants and performance rules; load it before changing code. `cognistore-phase` — executes the next item of a roadmap in `documentation/plans/`.
+- **Subagents** (`.claude/agents/`): `perf-reviewer` (event-loop blocking, full scans, write contention) and `invariants-reviewer` (migrations, patch notes, setup/uninstall symmetry, templates). Run both on a diff before committing.
+- **Active roadmap**: `documentation/plans/2026-11-performance-e-curadoria.md` — performance (the sidecar freezes on large DBs) + automatic knowledge curation with the local LLM. Tick items and append to its execution log as you go.
+- **DB health**: `node scripts/diagnose-db.mjs [path]` — read-only size/row breakdown of the knowledge DB (telemetry vs knowledge, duplicates, cleanup state).
+
+### Performance rules (MANDATORY)
+
+The sidecar is a single Node process and better-sqlite3 is synchronous; the DB file is shared with one MCP server process per agent session.
+- Never load whole tables with `content` (`listAll()`) or loop one query per row in a request handler or timer.
+- Read paths never write synchronously; batch writes in one transaction.
+- Work that can exceed ~50 ms on a 10k-entry base runs as a background job (worker/chunked with yields), never inline.
+- No sync fs calls in timers. New queries on growing tables need an index or a rollup.
+

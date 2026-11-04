@@ -146,15 +146,41 @@ test.describe('@e2e cleanup scheduling predicate', () => {
     expect(s.current.lastCleanupReportAt).not.toBe(before);
   });
 
-  test('does nothing at all when the cycle is disabled', async () => {
-    const sdk = fakeSdk({
-      getLatestCleanupReport: () => { throw new Error('must not even look'); },
-      generateCleanupReport: async () => { throw new Error('must not generate'); },
-    });
+  test('never generates when the cycle is disabled', async () => {
+    const sdk = fakeSdk({ generateCleanupReport: async () => { throw new Error('must not generate'); } });
     const s = fakeSettings({ cleanupEnabled: false });
     const result = await maybeGenerateReport({ sdk, log: noopLog, ...s });
     expect(result.action).toBe('disabled');
     expect(s.current.lastCleanupReportAt).toBeNull();
+  });
+
+  test('still retires a zombie report when the cycle is disabled (1A.6)', async () => {
+    // A report left open before the user turned cleanup off used to stay open
+    // forever, because the disabled check returned before the auto-close.
+    let closed = false;
+    const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
+    const sdk = fakeSdk({
+      getLatestCleanupReport: () => ({ report: { id: 'zombie', status: 'open', createdAt: old } }),
+      closeCleanupReport: () => { closed = true; return { removed: 0 }; },
+      generateCleanupReport: async () => { throw new Error('must not generate'); },
+    });
+    const s = fakeSettings({ cleanupEnabled: false });
+    const result = await maybeGenerateReport({ sdk, log: noopLog, ...s });
+    expect(closed).toBe(true);
+    expect(result.action).toBe('disabled');
+    expect(s.current.lastCleanupReportAt).toBeNull();
+  });
+
+  test('leaves a recent open report alone when the cycle is disabled', async () => {
+    let closed = false;
+    const sdk = fakeSdk({
+      getLatestCleanupReport: () => ({ report: { id: 'recent', status: 'open', createdAt: new Date().toISOString() } }),
+      closeCleanupReport: () => { closed = true; return { removed: 0 }; },
+    });
+    const s = fakeSettings({ cleanupEnabled: false });
+    const result = await maybeGenerateReport({ sdk, log: noopLog, ...s });
+    expect(closed).toBe(false);
+    expect(result.action).toBe('disabled');
   });
 
   test('never throws when generation fails', async () => {

@@ -120,7 +120,7 @@ The uninstall button requires a 3-step confirmation to prevent accidental data l
 | 1 | Remove instruction markers | Delete `COGNISTORE:BEGIN/END` blocks from CLAUDE.md, copilot-instructions.md |
 | 2 | Remove MCP entries | Delete `cognistore` from all `mcpServers`/`mcp` configs |
 | 3 | Remove skills | Delete `~/.claude/skills/cognistore-*/` directories (query, capture, plan) and `~/.copilot/skills/cognistore-*.md` files |
-| 4 | Uninstall Ollama models | **Opt-in.** `ollama rm <embedding model>` and, when it was pulled, `ollama rm <cleanup model>` — only when `removeOllama` is requested AND `settings.installedOllama` says CogniStore installed it |
+| 4 | Uninstall Ollama models | `ollama rm <embedding model>` (setup always pulls it) and, when it was pulled, `ollama rm <cleanup model>`. Not gated by `removeOllama`: that flag is about the Ollama binary (step 5) |
 | 5 | Uninstall Ollama binary | **Opt-in, same two conditions.** `brew uninstall ollama` (macOS) or remove binary (Linux). Ollama is a shared dependency: an install upgraded from ≤2.4.1 carries no ownership record, so the default there is to leave it alone |
 | 6 | Clear provider secrets | `cleanup_provider_secrets` removes each provider's OS-keychain entry (run before the data dir is deleted) |
 | 7 | Close SDK | Gracefully close database connections |
@@ -154,3 +154,9 @@ Every resource created by setup **must** be removed by uninstall. This is a mand
 | `~/.cognistore/providers.json` | Removed with directory |
 | Provider secrets in OS keychain | `cleanup_provider_secrets` (Tauri) before the directory is deleted |
 | App in /Applications/ | Self-delete via rmSync |
+
+The rule is enforced by `packages/tests/src/e2e/artifacts-lifecycle.test.ts`. It runs setup, setup again, a version upgrade and uninstall through the real sidecar in a sandboxed HOME, both empty and pre-filled with a user's own config. The checks:
+- the second setup and the upgrade change no file;
+- uninstall restores the exact initial file set, except the `*.bak.*` rollback copies.
+
+A new artifact that uninstall does not remove fails that test.

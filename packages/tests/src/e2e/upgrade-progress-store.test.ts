@@ -137,6 +137,8 @@ test.describe('upgrade progress store', () => {
   test('deployWentWell is the replay guard: skipped blocks a replay, warning does not', async () => {
     const { deployWentWell } = await loadStore();
     expect(deployWentWell([{ step: 'database', status: 'success' }])).toBe(true);
+    expect(deployWentWell([{ step: 'incremental-vacuum', status: 'skipped' }])).toBe(true);
+    expect(deployWentWell([{ step: 'skills', status: 'skipped' }])).toBe(false);
     // The global-MCP shadow check is advisory.
     expect(deployWentWell([
       { step: 'database', status: 'success' },
