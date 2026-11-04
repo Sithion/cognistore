@@ -465,7 +465,9 @@ export class KnowledgeRepository {
     filters?: { type?: string; scope?: string; tags?: string[]; agent?: string; platform?: string },
     offset = 0,
   ) {
-    const conditions: any[] = [ne(knowledgeEntries.type, 'system'), sql`${knowledgeEntries.status} = 'active'`];
+    // `+status` keeps the planner on idx_knowledge_created_at (walk newest-first, no temp sort)
+    // instead of the status index, which forced a full sort at deep offsets.
+    const conditions: any[] = [ne(knowledgeEntries.type, 'system'), sql`+${knowledgeEntries.status} = 'active'`];
     if (filters?.type) conditions.push(sql`${knowledgeEntries.type} = ${filters.type}`);
     if (filters?.scope) conditions.push(sql`${knowledgeEntries.scope} = ${filters.scope}`);
     // Provenance filters round-trip the chart sentinel labels back to the stored
