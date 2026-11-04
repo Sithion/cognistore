@@ -22,6 +22,10 @@ export const knowledgeEntries = sqliteTable(
     agentId: text('agent_id'),
     platform: text('platform'),
     contentHash: text('content_hash'),
+    status: text('status').notNull().default('active'),
+    supersededBy: text('superseded_by'),
+    curatedAt: text('curated_at'),
+    trashedAt: text('trashed_at'),
     // Retention signal for the cleanup cycle. Written by markReadBatch() only —
     // never by update(), so it can never be confused with an edit.
     lastReadAt: text('last_read_at'),

@@ -1,6 +1,9 @@
 import { findDuplicateGroupsForJob, findDuplicatePairsForJob, duplicateFingerprint } from '../services/duplicate-scan.js';
 import type { SQLiteDatabase } from '../db/client.js';
 import type { KnowledgeService } from '../services/knowledge.service.js';
+import { CurationRepository } from '../repositories/curation.repository.js';
+import { CurationEngine } from '../services/curation-engine.js';
+import type { CurationJudge } from '../services/curation-types.js';
 import type { JobKind, JobPayloads, JobProgress, JobResults } from './protocol.js';
 import { mkdtemp, open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,7 +14,24 @@ import { randomUUID } from 'node:crypto';
 
 type JobProgressUpdate = JobProgress[JobKind];
 
-export async function dispatchJobWithConnection<K extends JobKind>(kind: K, payload: JobPayloads[K], sqlite: SQLiteDatabase, checkpoint?: (progress: JobProgressUpdate) => Promise<void>, service?: KnowledgeService, signal?: AbortSignal): Promise<JobResults[K]> {
+export async function dispatchJobWithConnection<K extends JobKind>(kind: K, payload: JobPayloads[K], sqlite: SQLiteDatabase, checkpoint?: (progress: JobProgressUpdate) => Promise<void>, service?: KnowledgeService, signal?: AbortSignal, judge?:CurationJudge): Promise<JobResults[K]> {
+  if(kind==='curation.run'||kind==='curation.resume'){
+    const opts=payload as JobPayloads['curation.run']; const engine=new CurationEngine(new CurationRepository(sqlite),judge);
+    const result=kind==='curation.run'?await engine.run(opts,signal,async state=>checkpoint?.(state)):await engine.resume((payload as JobPayloads['curation.resume']).runId,opts,signal,async state=>checkpoint?.(state));
+    return result as JobResults[K];
+  }
+  if(kind==='curation.apply'||kind==='curation.reject'||kind==='curation.undo'){
+    const engine=new CurationEngine(new CurationRepository(sqlite));const id=(payload as {actionId:string}).actionId;
+    if(kind==='curation.apply'){const applied=engine.apply(id);await checkpoint?.({phase:kind,done:1,total:1});return {applied} as JobResults[K];}
+    if(kind==='curation.reject'){engine.reject(id);await checkpoint?.({phase:kind,done:1,total:1});return {rejected:true} as JobResults[K];}
+    const result=engine.undo(id);await checkpoint?.({phase:kind,done:1,total:1});return result as JobResults[K];
+  }
+  if(kind==='curation.purge'){
+    const result=new CurationEngine(new CurationRepository(sqlite)).purge(payload as JobPayloads['curation.purge']);await checkpoint?.({phase:kind,done:result.purged,total:result.purged});return result as JobResults[K];
+  }
+  if(kind==='curation.activity'){
+    const value=(payload as JobPayloads['curation.activity']).lastSeenAt??new Date().toISOString();sqlite.prepare('UPDATE curation_activity SET last_seen_at=? WHERE singleton=1').run(value);await checkpoint?.({phase:kind,done:1,total:1});return {updated:true} as JobResults[K];
+  }
   if (kind === 'duplicates.pairs' || kind === 'duplicates.groups') {
     const opts = payload as JobPayloads['duplicates.pairs'];
     const capturedFingerprint = duplicateFingerprint(sqlite, opts.threshold ?? 0.9);

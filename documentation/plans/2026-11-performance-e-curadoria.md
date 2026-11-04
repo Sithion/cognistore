@@ -309,7 +309,7 @@ Substitui o "relatório a cada 10 dias com aprovação manual de tudo" por um **
 5. **Reestruturação leve:** normalização de tags (LLM propõe mapa de sinônimos → aplica via `renameTag` existente), títulos ruins (vazios/genéricos) reescritos.
 
 ### 2.3 Política de autonomia (settings `curationAutonomy`: `off` | `suggest` | `auto-safe` | `auto`)
-| Ação | `suggest` | `auto-safe` (padrão) | `auto` |
+| Ação | `suggest` (padrão na 2.6.0) | `auto-safe` | `auto` |
 |---|---|---|---|
 | Regras determinísticas | proposta | **aplica** | aplica |
 | Merge/supersede com confiança ≥ 0,85 | proposta | **aplica (undo 30 d)** | aplica |
@@ -330,7 +330,7 @@ Entradas com tag `keep` e `type='system'` nunca são tocadas. Tudo vira linha em
 - [ ] Novo parâmetro `supersedes?: string[]` em `addKnowledge`/`updateKnowledge` → marca as antigas como `superseded` atomicamente.
 
 ### 2.6 Qualidade
-- [ ] Conjunto de avaliação: ~60 pares rotulados à mão do banco real (duplicate/supersedes/complementary/distinct). Teste mede acurácia do juiz por modelo; meta ≥ 85% em `auto-safe` sem falso "duplicate".
+- [ ] Conjunto de avaliação: 60 pares sintéticos e anonimizados, rotulados à mão (duplicate/supersedes/complementary/distinct), versionados em `packages/core/test/fixtures`. Teste mede acurácia do juiz por modelo; meta ≥ 85% em `auto-safe` sem falso "duplicate". Resultados incompletos ou modelos indisponíveis não qualificam o modelo; o padrão da 2.6.0 permanece `suggest`.
 - [ ] Testes e2e: merge aplica e desfaz; supersede; purge; política de autonomia; `keep` respeitado; job interrompido retoma.
 
 ## Fase 3 — Curadoria pelo agente (skills + MCP)

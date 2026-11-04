@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, copyFileSync, unlinkSync } from 'node:fs';
+import { readFile, writeFile, mkdir, rename, copyFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -27,6 +28,13 @@ const INSTALL_DIR = process.env.COGNISTORE_HOME
 const SETTINGS_FILE = resolve(INSTALL_DIR, 'settings.json');
 
 export interface AppSettings {
+  curationAutonomy: 'off' | 'suggest' | 'auto-safe' | 'auto';
+  curationBudgetMs: number; curationMaxClusters: number; curationMaxItems: number;
+  curationTrashRetentionDays: number; curationClusterThreshold: number; curationDeprecatedUnreadDays: number;
+  curationIdleMinutes: number; curationMinIntervalHours: number; curationModel: string;
+  installedCurationModels: string[];
+  installedCleanupModels: string[];
+  pendingModelInstallations: string[];
   autoUpdate: boolean;
   tokenUsageRetentionDays: number;
   dateRangePreset: '1d' | '1w' | '1m' | '1y' | '2y' | 'custom';
@@ -78,6 +86,9 @@ export const CREATED_CONFIG_FILES = ['claude-settings', 'opencode-config'] as co
 export type CreatedConfigFile = (typeof CREATED_CONFIG_FILES)[number];
 
 export const SETTINGS_DEFAULTS: AppSettings = {
+  curationAutonomy: 'suggest', curationBudgetMs: 900000, curationMaxClusters: 50, curationMaxItems: 500,
+  curationTrashRetentionDays: 30, curationClusterThreshold: 0.85, curationDeprecatedUnreadDays: 180,
+  curationIdleMinutes: 10, curationMinIntervalHours: 24, curationModel: 'llama3.2:3b', installedCurationModels: [], installedCleanupModels: [], pendingModelInstallations: [],
   autoUpdate: false,
   tokenUsageRetentionDays: 90,
   dateRangePreset: '1w',
@@ -155,6 +166,17 @@ export function sanitizeSettings<T extends Partial<AppSettings>>(patch: T): T {
       : [];
   }
 
+  if ('curationAutonomy' in out && !['off','suggest','auto-safe','auto'].includes(String(out.curationAutonomy))) out.curationAutonomy = SETTINGS_DEFAULTS.curationAutonomy;
+  const curationInts: [keyof AppSettings, number, number][] = [
+    ['curationBudgetMs',1000,3600000],['curationMaxClusters',1,500],['curationMaxItems',1,5000],
+    ['curationTrashRetentionDays',1,3650],['curationDeprecatedUnreadDays',30,3650],['curationIdleMinutes',10,1440],['curationMinIntervalHours',24,8760],
+  ];
+  for (const [key,min,max] of curationInts) if (key in out) out[key] = clampInt(out[key],min,max,SETTINGS_DEFAULTS[key] as number) as never;
+  if ('curationClusterThreshold' in out) out.curationClusterThreshold=clampFloat(out.curationClusterThreshold,0.8,1,SETTINGS_DEFAULTS.curationClusterThreshold);
+  if ('curationModel' in out && !isValidOllamaModelName(out.curationModel)) out.curationModel=SETTINGS_DEFAULTS.curationModel;
+  for (const key of OWNERSHIP_KEYS) if (key in out) out[key] = Array.isArray(out[key])
+    ? [...new Set((out[key] as unknown[]).filter(isValidOllamaModelName))] : [];
+
   if ('cleanupEnabled' in out) out.cleanupEnabled = Boolean(out.cleanupEnabled);
   if ('tokenUsageRetentionDays' in out) {
     const n = out.tokenUsageRetentionDays;
@@ -191,8 +213,20 @@ export function readSettings(): AppSettings {
   }
 }
 
+const OWNERSHIP_KEYS = ['installedCurationModels', 'installedCleanupModels', 'pendingModelInstallations'] as const;
+let cachedSettings: AppSettings = { ...SETTINGS_DEFAULTS };
+export function getCachedSettings(): AppSettings { return structuredClone(cachedSettings); }
+export async function refreshSettingsCache(): Promise<AppSettings> {
+  cachedSettings = await readSettingsAsync();
+  return getCachedSettings();
+}
+
 export function writeSettings(patch: Partial<AppSettings>): AppSettings {
-  const merged: AppSettings = { ...readSettings(), ...sanitizeSettings(patch) };
+  const safePatch = { ...patch } as Partial<AppSettings>;
+  for (const key of Object.keys(safePatch)) {
+    if (key.startsWith('curation') || (OWNERSHIP_KEYS as readonly string[]).includes(key)) delete (safePatch as any)[key];
+  }
+  const merged: AppSettings = { ...readSettings(), ...sanitizeSettings(safePatch) };
   mkdirSync(INSTALL_DIR, { recursive: true });
   const tmp = SETTINGS_FILE + '.tmp';
   writeFileSync(tmp, JSON.stringify(merged, null, 2));
@@ -203,6 +237,32 @@ export function writeSettings(patch: Partial<AppSettings>): AppSettings {
     try { unlinkSync(tmp); } catch { /* ignore */ }
   }
   return merged;
+}
+
+let asyncWriteQueue: Promise<unknown> = Promise.resolve();
+/** Serialized atomic settings patch for schedulers and model-ownership changes. */
+export function patchSettingsAsync(patch: Partial<AppSettings> | ((current: AppSettings) => Partial<AppSettings>), options: { manageInstalledModels?: boolean } = {}): Promise<AppSettings> {
+  const operation = async () => {
+    const existing = await readSettingsAsync();
+    const safePatch = { ...(typeof patch === 'function' ? patch(existing) : patch) } as Partial<AppSettings>;
+    if (!options.manageInstalledModels) for (const key of OWNERSHIP_KEYS) delete safePatch[key];
+    const merged = { ...existing, ...sanitizeSettings(safePatch) };
+    await mkdir(INSTALL_DIR, { recursive: true });
+    const tmp = `${SETTINGS_FILE}.${process.pid}.${Date.now()}.tmp`;
+    await writeFile(tmp, JSON.stringify(merged, null, 2), { mode: 0o600 });
+    try { await rename(tmp, SETTINGS_FILE); }
+    catch { await copyFile(tmp, SETTINGS_FILE); try { await unlink(tmp); } catch { /* best effort */ } }
+    cachedSettings = merged;
+    return getCachedSettings();
+  };
+  const result = asyncWriteQueue.then(operation, operation);
+  asyncWriteQueue = result.catch(() => undefined);
+  return result;
+}
+
+export async function readSettingsAsync(): Promise<AppSettings> {
+  try { const parsed=JSON.parse(await readFile(SETTINGS_FILE,'utf8')) as Partial<AppSettings>; return { ...SETTINGS_DEFAULTS, ...sanitizeSettings(parsed) }; }
+  catch { return { ...SETTINGS_DEFAULTS }; }
 }
 
 export { SETTINGS_FILE, INSTALL_DIR };

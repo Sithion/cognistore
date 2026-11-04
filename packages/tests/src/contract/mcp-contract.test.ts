@@ -124,16 +124,27 @@ async function exerciseAllTools(): Promise<Record<string, unknown>> {
   return out;
 }
 
-test('tool names, input schemas and annotations are frozen (= v2.5.4)', async () => {
+test('only optional supersedes extensions differ from the frozen input contract', async () => {
   const { tools } = await client.listTools();
   const current = [...tools].sort((a, b) => a.name.localeCompare(b.name));
-  if (UPDATE) {
-    const prev: Partial<Snapshot> = existsSync(SNAPSHOT) ? JSON.parse(readFileSync(SNAPSHOT, 'utf-8')) : {};
-    writeFileSync(SNAPSHOT, JSON.stringify({ ...prev, tools: current }, null, 2) + '\n');
-  }
   const snap: Snapshot = JSON.parse(readFileSync(SNAPSHOT, 'utf-8'));
   expect(current.map((t) => t.name)).toEqual((snap.tools as { name: string }[]).map((t) => t.name));
-  expect(current).toEqual(snap.tools);
+  const stripped = structuredClone(current);
+  const add = stripped.find(tool => tool.name === 'addKnowledge')!.inputSchema as any;
+  const update = stripped.find(tool => tool.name === 'updateKnowledge')!.inputSchema as any;
+  // Only these three exact paths may gain the optional string-array input.
+  const entries = add.properties.entries.anyOf;
+  // The frozen array entry reuses the single-entry object by this exact reference.
+  expect(entries[1].items).toEqual({ $ref: '#/properties/entries/anyOf/0' });
+  const arrayEntry = entries[1].items.$ref === '#/properties/entries/anyOf/0' ? entries[0] : undefined;
+  expect(arrayEntry).toBe(entries[0]);
+  for (const schema of [entries[0], arrayEntry, update]) {
+    expect(schema.properties.supersedes).toEqual({ type: 'array', items: { type: 'string' } });
+    expect(schema.required ?? []).not.toContain('supersedes');
+  }
+  for (const schema of [entries[0], update]) delete schema.properties.supersedes;
+  // Includes every historical required list, annotation and schema value.
+  expect(stripped).toEqual(snap.tools);
 });
 
 test('every tool answers, and no response loses a field the contract recorded', async () => {

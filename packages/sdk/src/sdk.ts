@@ -13,6 +13,7 @@ import {
   type CleanupReport,
   type CleanupCandidate,
   type JobKind,
+  type CurationJobOptions,
   type JobPayloads,
   type JobResults,
   JobRunner,
@@ -30,6 +31,7 @@ import {
   type SearchOptions,
   type SearchResult,
   type KnowledgeEntry,
+  type KnowledgeWriteAdvisory,
   type Plan,
   type CreatePlanInput,
   type UpdatePlanInput,
@@ -80,7 +82,56 @@ export class KnowledgeSDK {
   }
 
   run<K extends JobKind>(kind: K, payload: JobPayloads[K], options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<JobResults[K]> {
+    // Manual caller writes remain independent of autonomous scheduling policy.
+    if ((kind === 'curation.run' || kind === 'curation.resume') &&
+        (payload as CurationJobOptions).trigger !== 'manual' && !this.curationActivityReliable) {
+      const error = new Error('Automatic curation suppressed: shared activity is pending or unavailable');
+      console.error('[CogniStore]', error.message);
+      return Promise.reject(error);
+    }
     return this.getJobRunner().run(kind, payload, options);
+  }
+
+  runCuration(options:CurationJobOptions, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.run',options,jobOptions); }
+  resumeCuration(runId:string, options:CurationJobOptions, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.resume',{...options,runId},jobOptions); }
+  applyCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.apply',{actionId},jobOptions); }
+  rejectCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.reject',{actionId},jobOptions); }
+  undoCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.undo',{actionId},jobOptions); }
+  purgeCurationTrash(payload:JobPayloads['curation.purge'], jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.purge',payload,jobOptions); }
+  private activityPending: string | null = null;
+  private activityFlight: Promise<{ updated: true }> | null = null;
+  private activityReliable = false;
+
+  /** Schedulers must suppress automatic dispatch while this is false. */
+  get curationActivityReliable(): boolean { return this.activityReliable && !this.activityPending && !this.activityFlight; }
+
+  /** Coalesce actual handler calls; persistence is acknowledged by the worker. */
+  recordCurationActivity(lastSeenAt?: string | null): Promise<{ updated: true }> {
+    const at = lastSeenAt ?? new Date().toISOString();
+    if (!this.activityPending || at > this.activityPending) this.activityPending = at;
+    if (this.activityFlight) return this.activityFlight;
+    this.activityFlight = (async () => {
+      // Queue outside the handler's synchronous read path, allowing a burst to coalesce.
+      await new Promise<void>(resolve => setTimeout(resolve, 25));
+      while (this.activityPending) {
+        const latest = this.activityPending;
+        await this.run('curation.activity', { lastSeenAt: latest });
+        if (this.activityPending === latest) this.activityPending = null;
+      }
+      this.activityReliable = true;
+      return { updated: true as const };
+    })().catch(error => {
+      this.activityReliable = false;
+      console.error('[CogniStore] Shared curation activity unavailable; automatic dispatch must remain disabled:', error);
+      throw error;
+    }).finally(() => { this.activityFlight = null; });
+    return this.activityFlight;
+  }
+
+  /** Flush before scheduler shutdown/uninstall closes the worker. */
+  async flushCurationActivity(): Promise<void> {
+    if (this.activityFlight) await this.activityFlight;
+    else if (this.activityPending) await this.recordCurationActivity(this.activityPending);
   }
 
   constructor(config?: Partial<SDKConfig>) {
@@ -187,6 +238,7 @@ export class KnowledgeSDK {
   }
 
   async close(): Promise<void> {
+    try { await this.flushCurationActivity(); } catch { /* close must still release resources */ }
     const jobs = this.jobs;
     this.jobs = undefined;
     await jobs?.close();
@@ -215,7 +267,7 @@ export class KnowledgeSDK {
     await rm(dirname(path), { recursive: true, force: true });
   }
 
-  async addKnowledge(input: CreateKnowledgeInput): Promise<KnowledgeEntry> {
+  async addKnowledge(input: CreateKnowledgeInput): Promise<KnowledgeEntry & KnowledgeWriteAdvisory> {
     this.ensureInitialized();
     const parsed = createKnowledgeSchema.safeParse(input);
     if (!parsed.success) {
@@ -314,7 +366,7 @@ export class KnowledgeSDK {
     }
   }
 
-  async updateKnowledge(id: string, updates: UpdateKnowledgeInput): Promise<KnowledgeEntry | null> {
+  async updateKnowledge(id: string, updates: UpdateKnowledgeInput): Promise<(KnowledgeEntry & KnowledgeWriteAdvisory) | null> {
     this.ensureInitialized();
     const parsed = updateKnowledgeSchema.safeParse(updates);
     if (!parsed.success) {
@@ -482,10 +534,10 @@ export class KnowledgeSDK {
     return this.service!.previewMergedTags(members);
   }
 
-  async applyRemovalCandidate(candidateId: string) {
+  async applyRemovalCandidate(candidateId: string, trashRetentionDays = 30) {
     this.ensureInitialized();
     try {
-      return await this.service!.applyRemovalCandidate(candidateId);
+      return await this.service!.applyRemovalCandidate(candidateId,trashRetentionDays);
     } catch (error) {
       throw this.wrapError(error, 'Failed to apply cleanup removal');
     }
@@ -959,6 +1011,7 @@ export class KnowledgeSDK {
   }
 
   private async cleanup(): Promise<void> {
+    try { await this.flushCurationActivity(); } catch { /* failure already logged; close still releases workers */ }
     const jobs = this.jobs;
     this.jobs = undefined;
     await jobs?.close();

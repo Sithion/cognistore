@@ -55,6 +55,17 @@ export function searchKnn(
   ) as KnnResult[];
 }
 
+/** Page the legacy vec0 table in bounded batches; callers filter authoritative metadata. */
+export function readEmbeddingBatch(sqlite: Database.Database, ids: string[]): { id: string; embedding: Buffer }[] {
+  const found: { id: string; embedding: Buffer }[] = [];
+  const get = sqlite.prepare(`SELECT embedding FROM ${VIRTUAL_TABLE_NAME} WHERE id = ?`);
+  for (const id of ids) {
+    const row = get.get(id) as { embedding?: Buffer } | undefined;
+    if (row?.embedding) found.push({ id, embedding: row.embedding });
+  }
+  return found;
+}
+
 /** One vec0 storage chunk worth of embeddings, decoded. */
 export interface EmbeddingChunk {
   ids: string[];

@@ -28,6 +28,8 @@ export const MAX_TAG_LENGTH = 64;
 export const MAX_TAGS = 50;
 
 export const createKnowledgeSchema = z.object({
+  supersedes: z.array(z.string().uuid()).optional(),
+  skipDedup: z.boolean().optional(),
   title: z.string().min(1, 'Title is required').max(MAX_TITLE_LENGTH),
   content: z.string().min(1, 'Content is required').max(MAX_CONTENT_LENGTH),
   tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).min(1, 'At least one tag is required').max(MAX_TAGS),
@@ -42,6 +44,7 @@ export const createKnowledgeSchema = z.object({
 });
 
 export const updateKnowledgeSchema = z.object({
+  supersedes: z.array(z.string().uuid()).optional(),
   title: z.string().min(1).max(MAX_TITLE_LENGTH).optional(),
   content: z.string().min(1).max(MAX_CONTENT_LENGTH).optional(),
   tags: z.array(z.string().min(1).max(MAX_TAG_LENGTH)).min(1).max(MAX_TAGS).optional(),

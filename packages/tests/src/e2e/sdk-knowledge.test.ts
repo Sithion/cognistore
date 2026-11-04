@@ -203,7 +203,7 @@ test('entry version increments on each update', async () => {
 
 // ─── Fix v1.0.12: Knowledge dedup + scope validation ─────
 
-test('addKnowledge dedup updates existing entry with same scope+type', async () => {
+test('addKnowledge inserts with an advisory for similar existing content', async () => {
   const original = await ctx.service.add({
     title: 'sqlite-vec KNN limitations and query restrictions',
     content: 'sqlite-vec vec0 table only supports MATCH and k= in WHERE clauses, no JOINs or status filters allowed',
@@ -213,7 +213,7 @@ test('addKnowledge dedup updates existing entry with same scope+type', async () 
     source: 'test',
   });
 
-  // Nearly identical content in same scope+type should dedup
+  // Nearly identical content inserts independently and reports its neighbour.
   const duplicate = await ctx.service.add({
     title: 'sqlite-vec KNN limitations and query restrictions',
     content: 'sqlite-vec vec0 table only supports MATCH and k= in WHERE clauses, no JOINs or status filters allowed in queries',
@@ -223,8 +223,11 @@ test('addKnowledge dedup updates existing entry with same scope+type', async () 
     source: 'test',
   });
 
-  expect(duplicate.id).toBe(original.id);
-  expect((duplicate as any).deduplicated).toBe(true);
+  expect(duplicate.id).not.toBe(original.id);
+  expect((duplicate as any).deduplicated).toBeUndefined();
+  expect((await ctx.service.listAll()).filter(e => e.scope === original.scope)).toHaveLength(2);
+  expect(duplicate.similarExisting).toEqual([expect.objectContaining({ id: original.id, title: original.title })]);
+  expect(duplicate.hint).toBe('considere updateKnowledge(id) em vez de criar');
 });
 
 test('addKnowledge does NOT dedup across different scopes', async () => {

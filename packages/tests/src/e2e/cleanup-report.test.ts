@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createControlledContext, destroyTestContext, type TestContext } from '../test-helpers.js';
 import { KnowledgeType } from '@cognistore/shared';
+import { CurationEngine, CurationRepository } from '@cognistore/core';
 
 /**
  * Cleanup cycle: detection, the gates that keep it quiet when its signal is not
@@ -219,10 +220,20 @@ test.describe('@e2e cleanup report — applying removals', () => {
     const result = await ctx.service.applyRemovalCandidate(candidate.id);
 
     expect(result.deleted).toBe(1);
-    expect(await ctx.service.getById(dep.id)).toBeNull();
+    expect(await ctx.service.getById(dep.id)).not.toBeNull();
+    expect((await ctx.service.listAll()).some((entry) => entry.id === dep.id)).toBe(false);
+    expect((ctx.repository as any).sqlite.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(dep.id)?.status).toBe('trashed');
+    expect(JSON.parse(ctx.repository.getCleanupCandidate(candidate.id)!.resolution!).actionId).toBeTruthy();
+    expect(JSON.parse(ctx.repository.getCleanupCandidate(candidate.id)!.resolution!).deletedSnapshot[0].content).toBe('the old way');
 
     const resolution = JSON.parse(ctx.repository.getCleanupCandidate(candidate.id)!.resolution!);
     expect(resolution.deletedSnapshot[0].content).toBe('the old way');
+    expect(resolution.actionId).toBeTruthy();
+    expect((ctx.repository as any).sqlite.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(dep.id)?.status).toBe('trashed');
+    expect((await ctx.service.listAll()).some((entry) => entry.id === dep.id)).toBe(false);
+    new CurationEngine(new CurationRepository(ctx.sqlite)).undo(resolution.actionId);
+    expect((ctx.repository as any).sqlite.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(dep.id)?.status).toBe('active');
+    expect((await ctx.service.listAll()).some((entry) => entry.id === dep.id)).toBe(true);
   });
 
   test('skips an entry that stopped qualifying after the report was generated', async () => {

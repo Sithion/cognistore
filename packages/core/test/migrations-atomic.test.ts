@@ -74,6 +74,16 @@ it('repairs a missing base index on a stamped database', () => {
     .toEqual({ n: 1 });
 });
 
+it('includes 2.4.6 in atomic disk migrations and reopens once', () => {
+  ctx = makeDb();
+  const disk = new URL('../src/db/migrations', import.meta.url).pathname;
+  runMigrations(ctx.sqlite, disk);
+  const version = ctx.sqlite.prepare("SELECT count(*) AS n FROM schema_version WHERE version='2.4.6'").get();
+  runMigrations(ctx.sqlite, disk);
+  expect(version).toEqual({ n: 1 });
+  expect(ctx.sqlite.prepare("SELECT count(*) AS n FROM pragma_table_info('knowledge_entries') WHERE name='status'").get()).toEqual({n:1});
+});
+
 it('an up-to-date open takes no write lock', () => {
   ctx = makeDb();
   const a = new BetterSqlite3(ctx.sqlite.name);

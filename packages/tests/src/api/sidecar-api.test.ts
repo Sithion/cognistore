@@ -129,7 +129,11 @@ const fill = (url: string) => url.replace(/:[^/]+/g, UUID);
 test('the route inventory comes from Fastify and is complete', () => {
   // One route of each registrar: index.ts and cleanup-routes.ts.
   expect(routes.length).toBeGreaterThan(60);
-  for (const known of ['GET /api/health', 'POST /api/knowledge', 'GET /api/plans', 'POST /api/cleanup/candidates/:id/dismiss']) {
+  for (const known of ['GET /api/health', 'POST /api/knowledge', 'GET /api/plans', 'POST /api/cleanup/candidates/:id/dismiss',
+    'POST /api/curation/run', 'GET /api/curation/runs/:id', 'GET /api/curation/queue',
+    'GET /api/curation/actions/:id', 'POST /api/curation/actions/:id/apply',
+    'POST /api/curation/actions/:id/reject', 'POST /api/curation/actions/:id/undo',
+    'POST /api/curation/model/prepare']) {
     expect(routes.map((r) => `${r.method} ${r.url}`)).toContain(known);
   }
 });
