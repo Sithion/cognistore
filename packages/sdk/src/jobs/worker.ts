@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { dispatchJobWithConnection, createDbClient, KnowledgeRepository, KnowledgeService } from '@cognistore/core';
 import type { JobKind, JobPayloads, JobProgress, ParentMessage, WorkerMessage } from '@cognistore/core';
-import { OllamaEmbeddingClient } from '@cognistore/embeddings';
+import { OllamaEmbeddingClient, CurationJudgeClient } from '@cognistore/embeddings';
 
 if (!parentPort) throw new Error('Worker requires a parent port');
 type JobProgressUpdate = JobProgress[JobKind];
@@ -64,6 +64,9 @@ parentPort.on('message', async (message: ParentMessage) => {
       reportProgress,
       service,
       job.controller.signal,
+      message.kind === 'curation.run' || message.kind === 'curation.resume'
+        ? new CurationJudgeClient({ host: workerData.embeddingConfig?.host, model: (message.payload as any)?.model, installedModels: (message.payload as any)?.installedCurationModels })
+        : undefined,
     );
     parentPort!.postMessage({ type: 'done', id: activeJob.id, result } satisfies WorkerMessage);
   } catch (error) {

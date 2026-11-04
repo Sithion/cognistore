@@ -51,6 +51,28 @@ describe('settings defaults and persistence', () => {
 });
 
 describe('sanitizeSettings', () => {
+  it('curation defaults to suggest and clamps every budget and retention setting', async () => {
+    const { sanitizeSettings, SETTINGS_DEFAULTS } = await loadSettings();
+    expect(SETTINGS_DEFAULTS.curationAutonomy).toBe('suggest');
+    expect(sanitizeSettings({ curationBudgetMs:0,curationMaxClusters:9999,curationMaxItems:0,curationTrashRetentionDays:99999,curationClusterThreshold:0,curationDeprecatedUnreadDays:1,curationIdleMinutes:9999,curationMinIntervalHours:1 } as any)).toMatchObject({
+      curationBudgetMs:1000,curationMaxClusters:500,curationMaxItems:1,curationTrashRetentionDays:3650,curationClusterThreshold:0.8,curationDeprecatedUnreadDays:30,curationIdleMinutes:1440,curationMinIntervalHours:24,
+    });
+  });
+
+  it('curation model ownership is validated and cannot be forged by public patches', async () => {
+    const settings=await loadSettings();
+    settings.writeSettings({installedCurationModels:['llama3.2:3b','--bad','llama3.2:3b'] as any});
+    expect(settings.readSettings().installedCurationModels).toEqual([]);
+    await settings.patchSettingsAsync({installedCurationModels:['llama3.2:3b','--bad','llama3.2:3b'] as any},{manageInstalledModels:true});
+    expect(settings.readSettings().installedCurationModels).toEqual(['llama3.2:3b']);
+  });
+
+  it('async settings patches serialize without losing unrelated values', async () => {
+    const settings=await loadSettings();
+    await Promise.all([settings.patchSettingsAsync({curationIdleMinutes:30}),settings.patchSettingsAsync({autoUpdate:true})]);
+    expect(settings.readSettings()).toMatchObject({curationIdleMinutes:30,autoUpdate:true});
+  });
+
   it('drops invalid enum members and deduplicates created config files', async () => {
     const { sanitizeSettings } = await loadSettings();
     expect(sanitizeSettings({ createdConfigFiles: ['claude-settings', 'bogus', 'claude-settings', 'opencode-config'] as any }).createdConfigFiles)

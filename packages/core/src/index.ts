@@ -2,7 +2,7 @@ export { createDbClient, type Database, type SQLiteDatabase } from './db/index.j
 export { JobRunner, type JobRunnerConfig } from './jobs/runner.js';
 export { dispatchJobWithConnection } from './jobs/dispatch.js';
 export { sweepStaleExports } from './jobs/export-files.js';
-export type { JobKind, JobPayloads, JobResults, JobProgress, DuplicateJobOptions, ParentMessage, WorkerMessage } from './jobs/protocol.js';
+export type { JobKind, JobPayloads, JobResults, JobProgress, DuplicateJobOptions, CurationJobOptions, ParentMessage, WorkerMessage } from './jobs/protocol.js';
 export { runMigrations, EMBEDDED_MIGRATIONS } from './db/index.js';
 export { knowledgeEntries, knowledgeTypeEnum } from './db/index.js';
 export {
@@ -14,6 +14,8 @@ export {
 } from './db/index.js';
 export { KnowledgeRepository } from './repositories/index.js';
 export { CurationRepository, type CurationSnapshotV1 } from './repositories/curation.repository.js';
+export { CurationEngine } from './services/curation-engine.js';
+export type { CurationAutonomy, CurationTaskKind, CurationVerdict, JudgeEntryData, JudgeInput, JudgeResult, CurationJudge, CurationOptions, CurationRunResult } from './services/curation-types.js';
 export { KnowledgeService, type EmbeddingProvider } from './services/index.js';
 export type { CleanupReport, CleanupCandidate } from './services/knowledge.service.js';
 

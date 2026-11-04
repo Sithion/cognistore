@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeDb } from './helpers.js';
+import { CurationEngine, CurationRepository } from '../src/index.js';
 
 const input = (overrides: Record<string, unknown> = {}) => ({
   title: 'SQLite WAL guidance', content: 'Use write ahead logging for concurrent readers.',
@@ -167,11 +168,25 @@ describe('KnowledgeService knowledge entries', () => {
     const old = await ctx.service.add(input({ title: 'Deprecated note', tags: ['deprecated'], skipDedup: true }));
     const { report } = await ctx.service.generateCleanupReport();
     const candidate = ctx.service.getLatestCleanupReport()!.candidates.find((c) => c.category === 'deprecated')!;
-    expect(await ctx.service.applyRemovalCandidate(candidate.id)).toEqual({ deleted: 1, skipped: 0, errors: [] });
+    const result = await ctx.service.applyRemovalCandidate(candidate.id);
+    expect(result).toMatchObject({ deleted: 1, skipped: 0, errors: [] });
+    expect(result.actionStatus).toBe('applied');
+    expect(result.deletedSnapshot[0]).toMatchObject({ id: old.id, content: old.content });
     await expect(ctx.service.applyRemovalCandidate(candidate.id)).rejects.toThrow('not pending');
-    expect(await ctx.service.getById(old.id)).toBeNull();
+    expect((await ctx.service.listAll()).map(entry => entry.id)).not.toContain(old.id);
+    expect((await ctx.service.listRecent()).map(entry => entry.id)).not.toContain(old.id);
+    expect((await ctx.service.search(old.title, { threshold: 0 })).map(hit => hit.entry.id)).not.toContain(old.id);
+    expect(await ctx.service.getById(old.id)).toMatchObject({ id: old.id, status: 'trashed' });
+    const curation = new CurationRepository(ctx.sqlite);
+    const action = curation.getAction(result.actionId!);
+    expect(action).toMatchObject({ kind: 'trash', actor: 'user', status: 'applied' });
+    expect(Date.parse(action.undo_expires_at) - Date.parse(action.applied_at)).toBe(30 * 86_400_000);
+    expect(ctx.sqlite.prepare("SELECT count(*) AS n FROM curation_actions WHERE idempotency_key=?").get(`cleanup-removal:${candidate.id}`)).toEqual({ n: 1 });
     expect(ctx.service.closeCleanupReport(report.id, { reviewed: true })).toEqual({ removed: 1 });
     expect(ctx.service.getLatestCleanupReport()?.report.status).toBe('closed');
+    expect(new CurationEngine(curation).undo(result.actionId!)).toMatchObject({ actionId: result.actionId, status: 'undone' });
+    expect(await ctx.service.getById(old.id)).toMatchObject({ id: old.id, status: 'active', tags: old.tags, content: old.content });
+    expect((await ctx.service.search(old.title, { threshold: 0 })).map(hit => hit.entry.id)).toContain(old.id);
   });
 
   it('rejects invalid cleanup candidate actions and unknown report ids', async () => {

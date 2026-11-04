@@ -26,6 +26,7 @@ import { walkAncestors, deriveRoot, isDescendant, buildChain, collectDescendants
 import { PLAN_CHAIN_MAX_ENTRIES } from '@cognistore/shared';
 import type { PlanChain } from '@cognistore/shared';
 import { contentHash } from '../jobs/content-hash.js';
+import { CurationRepository } from '../repositories/curation.repository.js';
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
@@ -128,11 +129,13 @@ function levenshtein(a: string, b: string): number {
 
 export class KnowledgeService {
   private lastArchiveRunMs = 0;
+  private curation: CurationRepository;
 
   constructor(
     private repository: KnowledgeRepository,
-    private embeddingProvider: EmbeddingProvider
-  ) {}
+    private embeddingProvider: EmbeddingProvider,
+    curation?: CurationRepository
+  ) { this.curation=curation??new CurationRepository((repository as any).sqlite); }
 
   // ─── Buffered telemetry writes (plan v2.6, 1A.2 + 1A.3) ─────────
   // Every search used to INSERT into operations_log (and bump the daily
@@ -1059,13 +1062,13 @@ export class KnowledgeService {
   }
 
   /**
-   * Delete the entries behind a `deprecated` / `unread` candidate.
+   * Move the entries behind a `deprecated` / `unread` candidate to reversible trash.
    *
    * Rejects duplicate_group on purpose: that category's entry_ids start with the
    * CANONICAL, so treating it as a removal would delete the very entry meant to
    * survive, along with the whole group.
    */
-  async applyRemovalCandidate(candidateId: string) {
+  async applyRemovalCandidate(candidateId: string, trashRetentionDays = 30) {
     const candidate = this.repository.getCleanupCandidate(candidateId);
     if (!candidate) throw new Error('Cleanup candidate not found');
     if (candidate.category !== 'deprecated' && candidate.category !== 'unread') {
@@ -1073,47 +1076,34 @@ export class KnowledgeService {
     }
     const unreadDays = this.reportUnreadDays(candidate.reportId);
     const ids: string[] = JSON.parse(candidate.entryIds);
+    trashRetentionDays=Math.max(1,Math.min(3650,Math.round(Number.isFinite(trashRetentionDays)?trashRetentionDays:30)));
 
     // Re-validate NOW: the user approved a predicate, and between generation and
     // this click an entry may have been read, un-tagged, or marked `keep`.
-    const qualifying = ids.filter((id) =>
-      this.repository.qualifiesForRemoval(id, candidate.category as 'deprecated' | 'unread', unreadDays)
-    );
+    const qualifying = ids.filter((id) => {
+      const entry=this.curation.getEntry(id);let tags:string[]=[];try{tags=JSON.parse(entry?.tags??'[]')}catch{return false;}
+      return entry?.type!=='system'&&!tags.includes('keep')&&this.repository.qualifiesForRemoval(id,candidate.category as 'deprecated'|'unread',unreadDays);
+    });
     const skipped = ids.filter((id) => !qualifying.includes(id));
 
-    // Snapshot BEFORE deleting and inside the claim, so the only recovery data
-    // for an irreversible delete exists even if the process dies mid-apply.
+    // Preserve the legacy response snapshot while recording a reversible action.
     const snapshot = this.repository.getEntriesByIds(qualifying);
-    if (!this.repository.claimCleanupCandidate(candidateId, {
-      intendedIds: qualifying, skipped, deletedSnapshot: snapshot,
-    })) {
-      throw new Error('Cleanup candidate is not pending (already applied or dismissed)');
-    }
-
-    try {
-      const result = qualifying.length > 0
-        ? await this.bulkDelete(qualifying)
-        : { deleted: 0, errors: [] as string[] };
-      // expectedStatus pins this to the claim we took. Without it, a terminal
-      // write could land on a candidate whose report was sealed meanwhile,
-      // recording deletions the closed report's tally never counted.
-      this.repository.updateCleanupCandidate(candidateId, {
-        status: 'applied',
-        expectedStatus: 'applying',
-        resolution: {
-          deletedIds: qualifying, deleted: result.deleted, skipped,
-          errors: result.errors, deletedSnapshot: snapshot,
-        },
-      });
-      return { deleted: result.deleted, skipped: skipped.length, errors: result.errors };
-    } catch (err: any) {
-      this.repository.updateCleanupCandidate(candidateId, {
-        status: 'failed',
-        expectedStatus: 'applying',
-        resolution: { error: err?.message ?? String(err), intendedIds: qualifying, deletedSnapshot: snapshot },
-      });
-      throw err;
-    }
+    const now=new Date().toISOString(), actionId=qualifying.length?crypto.randomUUID():null;
+    let errors:string[]=[],deleted=0;
+    this.curation.transaction(()=>{
+      if(!this.repository.claimCleanupCandidate(candidateId,{intendedIds:qualifying,skipped,deletedSnapshot:snapshot}))throw new Error('Cleanup candidate is not pending (already applied or dismissed)');
+      if(actionId){
+        const action=this.curation.createAction({id:actionId,kind:'trash',actor:'user',entryIds:qualifying,
+          snapshot:this.curation.captureSnapshot(qualifying),payload:{},versions:Object.fromEntries(qualifying.map(id=>{const e=this.curation.getEntry(id);return[id,{version:e.version,contentHash:e.content_hash,scope:e.scope,status:e.status}]})),
+          key:`cleanup-removal:${candidateId}`,now,undoExpiresAt:new Date(Date.parse(now)+trashRetentionDays*24*60*60*1000).toISOString()});
+        if(this.curation.applyAction(action.id,now,()=>{for(const id of qualifying)this.curation.mutateEntry(id,{status:'trashed'},now);}))deleted=qualifying.length;
+        else {errors=qualifying.map(id=>`Skipped ${id}: entry changed before approval`);this.curation.setActionStatus(action.id,'proposed','rejected',now);}
+      }
+      const resolution={deletedIds:qualifying,deleted,skipped,errors,deletedSnapshot:snapshot,actionId,trashRetentionDays};
+      if(!this.repository.updateCleanupCandidate(candidateId,{status:'applied',expectedStatus:'applying',resolution}))throw new Error('Cleanup candidate claim was lost');
+    });
+    if(deleted>0)this.logOp('write',deleted);
+    return {deleted,skipped:skipped.length,errors,deletedSnapshot:snapshot,actionId,actionStatus:actionId&&deleted?'applied':'skipped'};
   }
 
   /**

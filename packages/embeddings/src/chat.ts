@@ -25,6 +25,8 @@ export interface OllamaChatConfig {
   requestTimeoutMs?: number;
 }
 
+export type JsonSchemaFormat = { type: 'object'; [key: string]: unknown };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -72,7 +74,7 @@ export class OllamaChatClient {
    */
   async chatJson(
     messages: ChatMessage[],
-    opts: { temperature?: number } = {},
+    opts: { temperature?: number; format?: JsonSchemaFormat; keepAlive?: string; signal?: AbortSignal } = {},
   ): Promise<Record<string, unknown> | null> {
     let response: Response;
     try {
@@ -83,10 +85,11 @@ export class OllamaChatClient {
           model: this.model,
           messages,
           stream: false,
-          format: 'json',
+          format: opts.format ?? 'json',
+          keep_alive: opts.keepAlive,
           options: { temperature: opts.temperature ?? 0.2 },
         }),
-        signal: AbortSignal.timeout(this.requestTimeoutMs),
+        signal: combineSignals(opts.signal, AbortSignal.timeout(this.requestTimeoutMs)),
       });
     } catch {
       return null;
@@ -105,4 +108,9 @@ export class OllamaChatClient {
       return null;
     }
   }
+}
+
+function combineSignals(signal: AbortSignal | undefined, timeout: AbortSignal): AbortSignal {
+  if (!signal) return timeout;
+  return AbortSignal.any([signal, timeout]);
 }

@@ -13,6 +13,7 @@ import {
   type CleanupReport,
   type CleanupCandidate,
   type JobKind,
+  type CurationJobOptions,
   type JobPayloads,
   type JobResults,
   JobRunner,
@@ -82,6 +83,14 @@ export class KnowledgeSDK {
   run<K extends JobKind>(kind: K, payload: JobPayloads[K], options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void | Promise<void> }): Promise<JobResults[K]> {
     return this.getJobRunner().run(kind, payload, options);
   }
+
+  runCuration(options:CurationJobOptions, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.run',options,jobOptions); }
+  resumeCuration(runId:string, options:CurationJobOptions, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.resume',{...options,runId},jobOptions); }
+  applyCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.apply',{actionId},jobOptions); }
+  rejectCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.reject',{actionId},jobOptions); }
+  undoCurationAction(actionId:string, jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.undo',{actionId},jobOptions); }
+  purgeCurationTrash(payload:JobPayloads['curation.purge'], jobOptions?:{signal?:AbortSignal;onProgress?:(progress:unknown)=>void|Promise<void>}) { return this.run('curation.purge',payload,jobOptions); }
+  recordCurationActivity(lastSeenAt?:string|null) { return this.run('curation.activity',{lastSeenAt}); }
 
   constructor(config?: Partial<SDKConfig>) {
     this.config = resolveConfig(config);
@@ -482,10 +491,10 @@ export class KnowledgeSDK {
     return this.service!.previewMergedTags(members);
   }
 
-  async applyRemovalCandidate(candidateId: string) {
+  async applyRemovalCandidate(candidateId: string, trashRetentionDays = 30) {
     this.ensureInitialized();
     try {
-      return await this.service!.applyRemovalCandidate(candidateId);
+      return await this.service!.applyRemovalCandidate(candidateId,trashRetentionDays);
     } catch (error) {
       throw this.wrapError(error, 'Failed to apply cleanup removal');
     }
