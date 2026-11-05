@@ -74,4 +74,4 @@ Keep this list ordered; add newly discovered violations with evidence.
 4. Inline styles in Settings/Plans/Upgrade/widgets.
 5. Two token layers: `--design-*` and legacy aliases.
 6. No spacing/radius/type scale tokens.
-7. Settings/Stats visual redesign pending maintainer screenshots.
+7. Advanced settings sections (Maintenance, Data management, Logs, Uninstall) sit in cards since 2.6.1 but keep inline styles inside; migrate them to `SettingsCard`/`SettingsRow` from `apps/dashboard/src/settings/SettingsLayout.tsx`.

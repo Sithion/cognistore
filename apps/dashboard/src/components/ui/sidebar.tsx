@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils';
 
 const SidebarContext = React.createContext<{ open: boolean; toggle: () => void } | null>(null);
 function useSidebar() { const context = React.useContext(SidebarContext); if (!context) throw new Error('useSidebar must be used within SidebarProvider'); return context; }
-function SidebarProvider({ defaultOpen = true, children, className }: React.PropsWithChildren<{ defaultOpen?: boolean; className?: string }>) {
-  const [open, setOpen] = React.useState(defaultOpen);
-  const toggle = React.useCallback(() => setOpen((value) => !value), []);
+function SidebarProvider({ defaultOpen = true, open: controlledOpen, children, className }: React.PropsWithChildren<{ defaultOpen?: boolean; open?: boolean; className?: string }>) {
+  const [internalOpen, setOpen] = React.useState(defaultOpen);
+  const open = controlledOpen ?? internalOpen;
+  const toggle = React.useCallback(() => { if (controlledOpen === undefined) setOpen((value) => !value); }, [controlledOpen]);
   return <SidebarContext.Provider value={{ open, toggle }}><div data-sidebar="wrapper" className={cn('flex min-h-svh w-full', className)}>{children}</div></SidebarContext.Provider>;
 }
 const Sidebar = React.forwardRef<HTMLElement, React.ComponentProps<'aside'>>(({ className, ...props }, ref) => { const { open } = useSidebar(); return <aside ref={ref} data-state={open ? 'expanded' : 'collapsed'} className={cn('flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200', open ? 'w-64' : 'w-[68px]', className)} {...props} />; });

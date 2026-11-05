@@ -17,21 +17,32 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('cognistore.sidebar.collapsed') === 'true');
+  const [narrow, setNarrow] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches);
+  const [peek, setPeek] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(max-width: 767px)');
+    const onChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  useEffect(() => { setPeek(false); }, [narrow]);
+  const compact = narrow ? !peek : collapsed;
   useEffect(() => { localStorage.setItem('cognistore.sidebar.collapsed', String(collapsed)); }, [collapsed]);
   // Pending curation count for the sidebar badge; silent on failure (background read).
   const [pending, setPending] = useState(0);
   useEffect(() => { let live = true; api.getCurationOverview().then(o => { if (live) setPending(o.pending); }).catch(() => {}); return () => { live = false; }; }, [location.pathname, location.search]);
-  return <SidebarProvider defaultOpen={!collapsed}>
+  return <SidebarProvider open={!compact}>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Sidebar data-testid="app-sidebar">
         <SidebarHeader>
-          <span style={{ flex: 1, display: collapsed ? 'none' : undefined, fontWeight: 700, color: 'var(--accent)' }}><span aria-hidden="true">🧠</span> {t('app.title')}</span>
-          <SidebarTrigger onClick={() => setCollapsed((value) => !value)}>{collapsed ? '→' : '←'}</SidebarTrigger>
+          <span style={{ flex: 1, display: compact ? 'none' : undefined, fontWeight: 700, color: 'var(--accent)' }}><span aria-hidden="true">🧠</span> {t('app.title')}</span>
+          <SidebarTrigger onClick={() => narrow ? setPeek(v => !v) : setCollapsed(v => !v)}>{compact ? '→' : '←'}</SidebarTrigger>
         </SidebarHeader>
         <SidebarContent><nav aria-label="Primary"><SidebarMenu>
-          {navItems.map((item) => { const scope = new URLSearchParams(location.search).get('scope'); return <SidebarMenuItem key={item.path}><Link to={{ pathname: item.path, search: scope ? `?${new URLSearchParams({ scope })}` : '' }} aria-current={activePath(location.pathname, item.path) ? 'page' : undefined} className={`sidebar-link${activePath(location.pathname, item.path) ? ' is-active' : ''}`} title={t(`nav.${item.key}`)} aria-label={t(`nav.${item.key}`)}><span aria-hidden="true">{item.icon}</span>{!collapsed && <span>{t(`nav.${item.key}`)}</span>}{item.key === 'curation' && pending > 0 && <span data-testid="curation-badge" className="ml-auto rounded-full bg-primary px-2 text-xs text-primary-foreground">{pending}</span>}</Link></SidebarMenuItem>; })}
+          {navItems.map((item) => { const scope = new URLSearchParams(location.search).get('scope'); return <SidebarMenuItem key={item.path}><Link to={{ pathname: item.path, search: scope ? `?${new URLSearchParams({ scope })}` : '' }} aria-current={activePath(location.pathname, item.path) ? 'page' : undefined} className={`sidebar-link${activePath(location.pathname, item.path) ? ' is-active' : ''}`} title={t(`nav.${item.key}`)} aria-label={t(`nav.${item.key}`)}><span aria-hidden="true">{item.icon}</span>{!compact && <span>{t(`nav.${item.key}`)}</span>}{item.key === 'curation' && pending > 0 && <span data-testid="curation-badge" className="ml-auto rounded-full bg-primary px-2 text-xs text-primary-foreground">{pending}</span>}</Link></SidebarMenuItem>; })}
         </SidebarMenu></nav></SidebarContent>
-        {!collapsed && <div style={{ padding: 12, fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center' }}>v{__APP_VERSION__}</div>}
+        {!compact && <div style={{ padding: 12, fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center' }}>v{__APP_VERSION__}</div>}
       </Sidebar>
       <SidebarInset className="shell-main"><div data-testid="route-content">{children}</div></SidebarInset>
     </div>

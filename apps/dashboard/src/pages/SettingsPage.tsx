@@ -5,7 +5,12 @@ import { api, SIDECAR_TOKEN } from '../api/client.js';
 import { triggerUpdateCheck, triggerUpdateDownload, onUpdateState, getIsTauri, getLatestReleaseUrl, useAutoUpdateSetting } from '../components/UpdateChecker.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog.js';
+import { Button } from '../components/ui/button.js';
+import { Input } from '../components/ui/input.js';
+import { Switch } from '../components/ui/switch.js';
 import { RetentionField } from '../settings/RetentionField.js';
+import { SettingsCard, SettingsRow, fieldClass } from '../settings/SettingsLayout.js';
+import { useSettingsCopy } from '../i18n/settings-v261.js';
 import { useSettingsRoute, settingsRoutes } from '../settings/useSettingsRoute.js';
 import { round8Settings } from '../i18n/round8-settings.js';
 import { applyTheme, getThemeMode, type ThemeMode } from '../design/theme.js';
@@ -40,6 +45,7 @@ export function SettingsPage() {
 
 function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> }) {
   const { t, i18n } = useTranslation();
+  const copy = useSettingsCopy();
   const [health, setHealth] = useState<Health | null>(null);
   const [healthFailed, setHealthFailed] = useState(false);
   const [metrics, setMetrics] = useState<Awaited<ReturnType<typeof api.getMetrics>> | null>(null);
@@ -186,7 +192,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
       )}
 
 {route === 'system/about' && <><p>CogniStore {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'Version unavailable'}</p>      {/* ── Updates Section ── */}
-      <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+      <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
           {t('update.section')}
         </h2>
@@ -243,46 +249,24 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
         </div>
       </div>
 </>}
-{route === 'settings/general' && <>        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, fontSize: 13, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={autoUpdate}
-            onChange={(e) => { void setAutoUpdate(e.target.checked); }}
-            style={{ accentColor: 'var(--accent)' }}
-          />
-          <span>
-            <span style={{ fontWeight: 500 }}>{t('update.autoUpdate')}</span>
-            <br />
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('update.autoUpdateHint')}</span>
-          </span>
-        </label>
-      {/* ── Language Section ── */}
-      <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
-        <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          {t('settings.language')}
-        </h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {languages.map((lang) => (
-            <button
-              key={lang.code}
-              onClick={() => i18n.changeLanguage(lang.code)}
-              style={{
-                padding: '8px 16px', borderRadius: 6,
-                border: i18n.language === lang.code ? '1px solid var(--accent)' : '1px solid var(--border)',
-                backgroundColor: i18n.language === lang.code ? 'var(--accent)' : 'var(--bg-card)',
-                color: i18n.language === lang.code ? 'var(--primary-foreground)' : 'var(--text-primary)',
-                cursor: 'pointer', fontSize: 13, fontWeight: 500,
-              }}
-            >
-              {lang.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-<ThemeField /><KnowledgeHealthSection /></>}
+{route === 'settings/general' && <>
+      <SettingsCard title={copy.appearance} description={copy.appearanceDesc}>
+        <SettingsRow label={copy.language} htmlFor="settings-language">
+          <select id="settings-language" className={fieldClass} value={i18n.language.split('-')[0]} onChange={e => i18n.changeLanguage(e.target.value)}>
+            {languages.map(lang => <option key={lang.code} value={lang.code}>{lang.label}</option>)}
+          </select>
+        </SettingsRow>
+        <SettingsRow label={copy.theme} htmlFor="settings-theme"><ThemeField /></SettingsRow>
+      </SettingsCard>
+      <SettingsCard title={copy.updates}>
+        <SettingsRow label={t('update.autoUpdate')} description={t('update.autoUpdateHint')} htmlFor="settings-auto-update">
+          <Switch id="settings-auto-update" checked={autoUpdate} onCheckedChange={v => { void setAutoUpdate(v); }} />
+        </SettingsRow>
+      </SettingsCard>
+      <KnowledgeHealthSection />
+</>}
 {route === 'settings/advanced' && <><MaintenanceSection /><DataManagementSection /><LogSection />      {/* ── Uninstall Section ── */}
-      <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+      <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--error)', marginBottom: 16 }}>
         {t('settings.dangerZone')}
       </h2>
@@ -396,7 +380,7 @@ function LogSection() {
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+    <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <div
         onClick={() => setExpanded(!expanded)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: expanded ? 16 : 0 }}
@@ -499,7 +483,7 @@ function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+    <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
         {t('settings.maintenance')}
@@ -658,7 +642,7 @@ export function DataManagementSection() {
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+    <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
         {t('settings.dataManagement')}
       </h2>
@@ -883,7 +867,7 @@ function TagSuggestionsSection() {
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+    <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 style={sectionHeaderStyle}>{t('tagSuggestions.title')}</h2>
       {loading ? (
         <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('tagSuggestions.loading')}</p>
@@ -1031,7 +1015,7 @@ function KnowledgeHealthSection() {
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border)', marginTop: 32, paddingTop: 24 }}>
+    <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 style={sectionHeaderStyle}>{t('health.title')}</h2>
       {loading ? (
         <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('health.loading')}</p>
@@ -1123,92 +1107,103 @@ function KnowledgeHealthSection() {
 
 
 function ThemeField() {
+  const copy = useSettingsCopy();
   const [theme, setTheme] = useState<ThemeMode>(getThemeMode);
-  return <label>Theme <select value={theme} onChange={event => {
+  return <select id="settings-theme" className={fieldClass} value={theme} onChange={event => {
     const mode = event.target.value as ThemeMode;
     applyTheme(mode);
     setTheme(mode);
   }}>
-    <option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option>
-  </select></label>;
+    <option value="system">{copy.themeSystem}</option><option value="light">{copy.themeLight}</option><option value="dark">{copy.themeDark}</option>
+  </select>;
 }
 
 function SettingsFields({ route }: { route: 'settings/telemetry' | 'settings/models' | 'settings/curation' }) {
   const { t } = useTranslation();
+  const copy = useSettingsCopy();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState<AppSettings | null>(null);
   const load = () => {
     setError(false);
-    api.getSettings().then(setSettings).catch(() => setError(true));
+    api.getSettings().then(value => { setSettings(value); setBaseline(value); }).catch(() => setError(true));
   };
   useEffect(load, []);
-  if (!settings) return error ? <div role="alert">Could not load settings. <button onClick={load}>Retry</button></div> : <p>Loading settings…</p>;
-  if (route === 'settings/telemetry') return <RetentionField value={settings.tokenUsageRetentionDays ?? 90} onSave={async days => {
+  const patchFor = (s: AppSettings) => route === 'settings/models' ? { cleanupLlmModel: s.cleanupLlmModel } : {
+    cleanupEnabled: s.cleanupEnabled, cleanupIntervalDays: s.cleanupIntervalDays,
+    cleanupUnreadDays: s.cleanupUnreadDays, cleanupDupThreshold: s.cleanupDupThreshold,
+    curationAutonomy: s.curationAutonomy, curationModel: s.curationModel, curationClusterThreshold: s.curationClusterThreshold,
+    curationTrashRetentionDays: s.curationTrashRetentionDays, curationIdleMinutes: s.curationIdleMinutes,
+  };
+  const dirty = settings !== null && baseline !== null && JSON.stringify(patchFor(settings)) !== JSON.stringify(patchFor(baseline));
+  if (!settings) return error
+    ? <div role="alert" className="mt-6 text-sm">{copy.loadFailed} <Button variant="outline" size="sm" onClick={load}>{copy.retry}</Button></div>
+    : <p className="mt-6 text-sm text-muted-foreground">{copy.loading}</p>;
+  if (route === 'settings/telemetry') return <SettingsCard title={copy.tokenHistory} description={copy.tokenHistoryDesc}><RetentionField copy={copy} value={settings.tokenUsageRetentionDays ?? 90} onSave={async days => {
     const confirmed = await api.updateSettings({ tokenUsageRetentionDays: days });
     if (typeof confirmed.tokenUsageRetentionDays !== 'number') throw new Error('Missing confirmed retention');
     setSettings(confirmed);
-  }} />;
+  }} /></SettingsCard>;
   const save = async () => {
     setSaving(true); setMessage(null); setError(false);
     try {
-      const patch = route === 'settings/models' ? { cleanupLlmModel: settings.cleanupLlmModel } : {
-        cleanupEnabled: settings.cleanupEnabled, cleanupIntervalDays: settings.cleanupIntervalDays,
-        cleanupUnreadDays: settings.cleanupUnreadDays, cleanupDupThreshold: settings.cleanupDupThreshold,
-        curationAutonomy: settings.curationAutonomy, curationModel: settings.curationModel, curationClusterThreshold: settings.curationClusterThreshold,
-        curationTrashRetentionDays: settings.curationTrashRetentionDays, curationIdleMinutes: settings.curationIdleMinutes,
-      };
-      setSettings(await api.updateSettings(patch));
-      setMessage('Saved.');
+      const confirmed = await api.updateSettings(patchFor(settings));
+      setSettings(confirmed);
+      setBaseline(confirmed);
+      setMessage(copy.saved);
     } catch { setError(true); }
     finally { setSaving(false); }
   };
-  return <form onSubmit={event => { event.preventDefault(); void save(); }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-    {route === 'settings/models' ? <>
-      <label>Cleanup merge model <input required maxLength={100} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]*(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?" value={settings.cleanupLlmModel} disabled={saving}
-        onChange={event => setSettings({ ...settings, cleanupLlmModel: event.target.value })} /></label>
-      <p>The local merge model is downloaded on demand when previewing a consolidation. Uninstall uses the saved model reference to remove the managed model.</p>
-      <ModelSetupControl />
-    </> : <>
-      <label><input type="checkbox" checked={settings.cleanupEnabled} disabled={saving} onChange={event => setSettings({ ...settings, cleanupEnabled: event.target.checked })} />{t('cleanup.enabled')}</label>
+  const footer = <>{error && <p role="alert" className="text-xs text-destructive">{copy.saveFailed}</p>}{message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}<Button type="submit" size="sm" disabled={saving || !dirty}>{saving ? copy.saving : copy.save}</Button></>;
+  return <form onSubmit={event => { event.preventDefault(); void save(); }}>
+    {route === 'settings/models' ? <SettingsCard title={copy.models} description={copy.modelsDesc} footer={footer}>
+      <SettingsRow label={copy.mergeModel} description={copy.mergeModelDesc} htmlFor="settings-merge-model">
+        <Input id="settings-merge-model" className="sm:w-56" required maxLength={100} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]*(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?" value={settings.cleanupLlmModel} disabled={saving}
+          onChange={event => setSettings({ ...settings, cleanupLlmModel: event.target.value })} />
+      </SettingsRow>
+      <SettingsRow label={copy.embeddingModel} description={copy.embeddingModelDesc}><ModelSetupControl /></SettingsRow>
+    </SettingsCard> : <>
+      <SettingsCard title={copy.reports} description={copy.reportsDesc}>
+        <SettingsRow label={t('cleanup.enabled')} htmlFor="settings-cleanup-enabled">
+          <Switch id="settings-cleanup-enabled" checked={settings.cleanupEnabled} disabled={saving} onCheckedChange={checked => setSettings({ ...settings, cleanupEnabled: checked })} />
+        </SettingsRow>
       {([
         ['cleanupIntervalDays', 'cleanup.intervalDays', 1, 365, 1],
         ['cleanupUnreadDays', 'cleanup.unreadDays', 30, 3650, 1],
         ['cleanupDupThreshold', 'cleanup.dupThreshold', 0.8, 1, 0.01],
-      ] as const).map(([key, label, min, max, step]) => <label key={key}>{t(label)} <input type="number" required min={min} max={max} step={step} disabled={saving} value={settings[key]}
-        onChange={event => setSettings({ ...settings, [key]: event.target.valueAsNumber })} /></label>)}
-      <fieldset className="space-y-3"><legend className="font-semibold">{t('curationPage.settings.title')}</legend>
-        <label>{t('curationPage.settings.autonomy')} <select value={settings.curationAutonomy ?? 'suggest'} disabled={saving}
+      ] as const).map(([key, label, min, max, step]) => <SettingsRow key={key} label={t(label)} htmlFor={`settings-${key}`}><Input id={`settings-${key}`} type="number" className="w-28" required min={min} max={max} step={step} disabled={saving} value={settings[key]}
+        onChange={event => setSettings({ ...settings, [key]: event.target.valueAsNumber })} /></SettingsRow>)}
+      </SettingsCard>
+      <SettingsCard title={copy.autoCuration} description={<>{copy.autoCurationDesc} <Link className="underline" to="/curation">{t('curationPage.settings.open')}</Link></>} footer={footer}>
+        <SettingsRow label={t('curationPage.settings.autonomy')} htmlFor="settings-curationAutonomy"><select id="settings-curationAutonomy" className={fieldClass} value={settings.curationAutonomy ?? 'suggest'} disabled={saving}
           onChange={event => setSettings({ ...settings, curationAutonomy: event.target.value as NonNullable<typeof settings.curationAutonomy> })}>
-          {(['off', 'suggest', 'auto-safe', 'auto'] as const).map(mode => <option key={mode} value={mode}>{t(`curationPage.settings.autonomyOptions.${mode}`)}</option>)}</select></label>
-        <label>{t('curationPage.settings.model')} <input required maxLength={100} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]*(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?" disabled={saving} value={settings.curationModel ?? ''}
-          onChange={event => setSettings({ ...settings, curationModel: event.target.value })} /></label>
+          {(['off', 'suggest', 'auto-safe', 'auto'] as const).map(mode => <option key={mode} value={mode}>{t(`curationPage.settings.autonomyOptions.${mode}`)}</option>)}</select></SettingsRow>
+        <SettingsRow label={t('curationPage.settings.model')} htmlFor="settings-curationModel"><Input id="settings-curationModel" className="sm:w-56" required maxLength={100} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]*(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?" disabled={saving} value={settings.curationModel ?? ''}
+          onChange={event => setSettings({ ...settings, curationModel: event.target.value })} /></SettingsRow>
         {([
           ['curationClusterThreshold', 'curationPage.settings.threshold', 0.8, 1, 0.01, 0.85],
           ['curationTrashRetentionDays', 'curationPage.settings.trashRetention', 1, 3650, 1, 30],
           ['curationIdleMinutes', 'curationPage.settings.idle', 10, 1440, 1, 10],
-        ] as const).map(([key, label, min, max, step, fallback]) => <label key={key}>{t(label)} <input type="number" required min={min} max={max} step={step} disabled={saving} value={settings[key] ?? fallback}
-          onChange={event => setSettings({ ...settings, [key]: event.target.valueAsNumber })} /></label>)}
-      </fieldset>
-      <p><Link to="/curation">{t('curationPage.settings.open')}</Link></p>
+        ] as const).map(([key, label, min, max, step, fallback]) => <SettingsRow key={key} label={t(label)} htmlFor={`settings-${key}`}><Input id={`settings-${key}`} type="number" className="w-28" required min={min} max={max} step={step} disabled={saving} value={settings[key] ?? fallback}
+          onChange={event => setSettings({ ...settings, [key]: event.target.valueAsNumber })} /></SettingsRow>)}
+      </SettingsCard>
     </>}
-    <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-    {error && <p role="alert">Could not save settings. Please try again.</p>}
-    {message && <p role="status">{message}</p>}
   </form>;
 }
 
 function ModelSetupControl() {
+  const copy = useSettingsCopy();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  return <div><button type="button" disabled={busy} onClick={async () => {
+  return <div><Button type="button" variant="outline" size="sm" disabled={busy} onClick={async () => {
     setBusy(true); setMessage(null);
-    try { const result = await api.setupModel(); setMessage(result.success ? 'Embedding model ready.' : 'Model setup failed.'); }
-    catch { setMessage('Model setup failed.'); }
+    try { const result = await api.setupModel(); setMessage(result.success ? copy.modelReady : copy.modelFailed); }
+    catch { setMessage(copy.modelFailed); }
     finally { setBusy(false); }
-  }}>{busy ? 'Installing…' : 'Install configured embedding model'}</button>
-    {message && <p role="status">{message}</p>}
+  }}>{busy ? copy.installing : copy.installModel}</Button>
+    {message && <span role="status" className="text-xs text-muted-foreground">{message}</span>}
   </div>;
 }
 
