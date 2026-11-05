@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "cognistore-dashboard"
-version = "2.6.0"
+version = "2.6.1"
 dependencies = [
  "dirs 6.0.0",
  "getrandom 0.3.4",

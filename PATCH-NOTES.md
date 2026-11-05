@@ -1,8 +1,9 @@
 # Patch Notes
 
-## Unreleased (2.6.1)
+## v2.6.1 (2026-11-05)
 
 ### Fixes
+- Chart tooltips use a compact, theme-aware card: the hovered label on top, one row per series with its color, right-aligned values, and a subtle hover highlight instead of a large grey block.
 - Imports accept backups up to 64 MiB without raising the default request limit for other routes (a real 5.3 MB export used to fail with "Payload Too Large").
 - Import accepts every entry the app can create: the import schema capped `source` at 300 characters while creation allows 500, so a backup containing such an entry was rejected as a whole.
 - Unknown dashboard routes display a translated "page not found" with a link back to the knowledge list.

@@ -47,7 +47,7 @@ The hidden route `/_design` renders `DesignWorkspace.tsx` through the lazy-loade
 | Radix primitive | `apps/dashboard/src/components/ui/tooltip.tsx` styles TooltipContent with `rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md` and `sideOffset` 4. |
 | Gallery | The styled Radix tooltip is used ONLY in `/_design`; its local `TooltipProvider` has `delayDuration` 300. |
 | Real app | Native `title=` attributes appear on collapsed sidebar links in `apps/dashboard/src/components/Layout.tsx`, plus Plans, Stats, Settings, Tokens pages and widgets. OS/WebKitGTK renders these unstyled, theme-unaware tooltips without keyboard-focus access. |
-| Charts | Recharts `<Tooltip>` in StatsPage.tsx and TokenConsumptionPage.tsx has no `contentStyle`, leaving a default white box even in dark mode. |
+| Charts | Every Recharts `<Tooltip>` (StatsPage.tsx, TokenConsumptionPage.tsx) spreads `chartTooltipProps(kind, format)` from `insights/ChartTooltip.tsx`: a compact popover-token card, themed in dark mode, with a subtle cursor (since 2.6.1). |
 | Tray | `apps/dashboard/src-tauri/src/tray.rs` uses the static tray tooltip string "CogniStore". |
 
 ## Icons

@@ -32,7 +32,7 @@ Before starting:
 | Use `components/ui/tooltip.tsx` (Radix) with ONE `TooltipProvider` at the app root. Follow the tooltip values in `principles.md`. | Use native `title=` for anything a user must read, repeat a visible label in a tooltip, or place interactive content in a tooltip; use Popover/toggletip for interaction. |
 | Keep tooltip text short. Give every icon-only button an `aria-label` AND a tooltip. | Make the tooltip the only accessible name or the only place to find required task information. |
 | Use `lucide-react` icons in new UI. | Use emoji as new UI icons. |
-| Style Recharts tooltips with tokens through `contentStyle`/`wrapperStyle` or a custom content component; verify dark mode. | Leave Recharts' default white tooltip box in dark mode. |
+| Give every Recharts `<Tooltip>` the shared `{...chartTooltipProps(kind, format)}` from `insights/ChartTooltip.tsx`; verify dark mode. | Leave Recharts' default white tooltip box in dark mode. |
 | Meet 4.5:1 contrast for normal text and 3:1 for large text and meaningful UI parts. | Rely on color alone to convey meaning. |
 | Make every hover/focus popup dismissible with Escape, hoverable, and persistent under WCAG 1.4.13. | Hide content while the pointer crosses into it or force users to move focus to dismiss it. |
 | Add every user-facing string to en/es/pt and review both themes at 390px width. | Ship untranslated strings, theme-specific breakage, or horizontal overflow at 390px. |
