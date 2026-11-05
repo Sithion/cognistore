@@ -134,14 +134,17 @@ export class CurationEngine {
 
   resume(runId:string, options:CurationOptions, signal?:AbortSignal, checkpoint?:Parameters<CurationEngine['run']>[2]) { return this.run({...options,runId},signal,checkpoint); }
   apply(actionId:string, options?:{actor?:string;draftOverride?:{title:string;content:string}}) {
-    const a=this.repository.getAction(actionId); if(!a)throw new Error('Curation action not found'); const ids=JSON.parse(a.entry_ids);
+    const a=this.repository.getAction(actionId); if(!a)throw new Error('Curation action not found');
     let patch:Record<string,unknown>|undefined;
     if(options?.draftOverride){
       if(a.kind!=='merge')throw new Error('Draft override is only valid for merge actions');
       patch={draft:validateMergeDraft(options.draftOverride)};
     }
+    const now=new Date().toISOString();
+    if(a.kind==='flag')return this.repository.resolveFlag(actionId,now);
+    const ids=JSON.parse(a.entry_ids);
     if(options?.actor)patch={...patch,appliedBy:options.actor};
-    return applyValidatedAction(this.repository,actionId,a.kind,ids,new Date().toISOString(),false,patch);
+    return applyValidatedAction(this.repository,actionId,a.kind,ids,now,false,patch);
   }
   /** Agent-raised contradiction/quality flag: a proposed `flag` action the user sees in the queue. */
   createFlag(input:{entryId:string;reason:string;actor:string}):{id:string} {
@@ -167,7 +170,7 @@ export class CurationEngine {
     return {actions,nextCursor:rows.length>limit&&last?Buffer.from(JSON.stringify([last.created_at,last.id])).toString('base64url'):null};
   }
   reject(actionId:string) { if(!this.repository.setActionStatus(actionId,'proposed','rejected',new Date().toISOString()))throw new Error('Curation action is not pending'); }
-  undo(actionId:string) { if(!this.repository.undoAction(actionId,new Date().toISOString()))throw new Error('Curation action is stale, conflicting, or expired'); return {actionId,status:'undone'}; }
+  undo(actionId:string) { const action=this.repository.getAction(actionId),now=new Date().toISOString(); if(!(action?.kind==='flag'?this.repository.reopenFlag(actionId,now):this.repository.undoAction(actionId,now)))throw new Error('Curation action is stale, conflicting, or expired'); return {actionId,status:'undone'}; }
   purge(options:{autonomy:CurationOptions['autonomy'];retentionDays:number;batchSize?:number}) {
     if(options.autonomy==='off')return {purged:0};const now=new Date().toISOString();if(!this.repository.acquireGlobalLease(this.owner,now,new Date(Date.now()+60_000).toISOString()))throw new Error('Another curation pipeline holds the database lease');
     try{const cutoff=new Date(Date.now()-options.retentionDays*DAY).toISOString(); const rows=this.repository.listExpiredTrash(cutoff,options.batchSize??100); let purged=0;
@@ -177,6 +180,7 @@ export class CurationEngine {
 }
 
 function parse(v:any){try{return typeof v==='string'?JSON.parse(v):v??{}}catch{return {}}}
+function parseList(v:any):string[]{try{const x=typeof v==='string'?JSON.parse(v):v;return Array.isArray(x)?x.filter((i:unknown):i is string=>typeof i==='string'):[];}catch{return [];}}
 function eligible(e:any){let tags:string[]=[];try{tags=parse(e.tags)}catch{}return e.type!=='system'&&e.status==='active'&&!tags.includes('keep')}
 function canonicalOrder(a:any,b:any){return String(b.updated_at??b.updatedAt).localeCompare(String(a.updated_at??a.updatedAt))||String(b.created_at??b.createdAt).localeCompare(String(a.created_at??a.createdAt))||String(a.id).localeCompare(String(b.id))}
 function toJudgeEntry(e:any):JudgeEntryData{return{id:e.id,title:e.title,content:e.content.slice(0,12000),tags:parse(e.tags),scope:e.scope,type:e.type,version:e.version,contentHash:e.content_hash??e.contentHash??null}}
@@ -214,9 +218,9 @@ function applyValidatedAction(repo:CurationRepository,actionId:string,kind:strin
   }); } catch(error) { if(error instanceof InvalidCurationEvidence)return false;throw error; }
 }
 function applyPayload(repo:CurationRepository,kind:string,ids:string[],payload:any){const now=new Date().toISOString();
-  if(kind==='merge'){const canonical=payload.canonicalId as string, others=ids.filter(id=>id!==canonical);const members=ids.map(id=>repo.getEntry(id)).filter(Boolean);const tags=computeMergedTags(members.map(toMergeMember));const draft=validateMergeDraft(payload.draft);const relatedIds=[...new Set(members.flatMap(e=>parse(e.related_ids)).filter((id:string)=>!others.includes(id)&&id!==canonical))];repo.mutateEntry(canonical,{title:draft.title,content:draft.content,tags,relatedIds},now);for(const id of others)repo.mutateEntry(id,{status:'superseded',supersededBy:canonical},now);}
+  if(kind==='merge'){const canonical=payload.canonicalId as string, others=ids.filter(id=>id!==canonical);const members=ids.map(id=>repo.getEntry(id)).filter(Boolean);const tags=computeMergedTags(members.map(toMergeMember));const draft=validateMergeDraft(payload.draft);const relatedIds=[...new Set(members.flatMap(e=>parseList(e.related_ids)).filter((id:string)=>!others.includes(id)&&id!==canonical))];repo.mutateEntry(canonical,{title:draft.title,content:draft.content,tags,relatedIds},now);for(const id of others)repo.mutateEntry(id,{status:'superseded',supersededBy:canonical},now);}
   else if(kind==='supersedes'){repo.mutateEntry(payload.targetId,{status:'superseded',supersededBy:payload.sourceId},now);}
-  else if(kind==='complementary'){for(const id of ids){const e=repo.getEntry(id),related=parse(e.related_ids);repo.mutateEntry(id,{relatedIds:[...new Set([...related,...ids.filter(other=>other!==id)])]},now);}}
+  else if(kind==='complementary'){for(const id of ids){const e=repo.getEntry(id),related=parseList(e.related_ids);repo.mutateEntry(id,{relatedIds:[...new Set([...related,...ids.filter(other=>other!==id)])]},now);}}
   else if(kind==='title')repo.mutateEntry(ids[0],{title:payload.title},now);
   else if(kind==='tags')for(const id of ids)repo.mutateEntry(id,{tags:payload.tags},now);
   else if(['aging','trash','expire','deprecated','duplicate'].includes(kind))for(const id of ids)repo.mutateEntry(id,{status:'trashed'},now);

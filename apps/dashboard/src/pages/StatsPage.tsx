@@ -45,9 +45,12 @@ function useOverview() {
   return { data, error, load };
 }
 
-function ClickableBars({ data, dataKey, nameKey, color, destinationKey }: { data: { name: string; value: number }[]; dataKey: string; nameKey: string; color: string; destinationKey: string }) {
+export function ClickableBars({ data, dataKey, nameKey, color, destinationKey }: { data: { name: string; value: number }[]; dataKey: string; nameKey: string; color: string; destinationKey: string }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   const navigate = useNavigate();
-  const go = (value: string) => navigate(`/?${destinationKey}=${encodeURIComponent(value)}`);
+  const ranked = [...data].sort((a, b) => b.value - a.value);
+  const go = (value: string) => navigate(`/knowledge?${destinationKey}=${encodeURIComponent(value)}`);
   return <div className="space-y-3">
     <div role="img" aria-label={`${data.length} categories. ${data.map((d) => `${d.name}: ${fmt(d.value)}`).join(', ')}`} className="h-56">
       <ResponsiveContainer width="100%" height="100%"><BarChart data={data} layout="vertical" margin={{ left: 18, right: 14 }}>
@@ -55,7 +58,8 @@ function ClickableBars({ data, dataKey, nameKey, color, destinationKey }: { data
         <Tooltip formatter={(value) => fmt(Number(value))} /><Bar dataKey={dataKey} fill={color} radius={[0, 5, 5, 0]} />
       </BarChart></ResponsiveContainer>
     </div>
-    <ul className="flex flex-wrap gap-2">{data.map((item) => <li key={item.name}><button className="rounded-md border px-2.5 py-1.5 text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => go(item.name)}>{item.name} <span className="ml-1 font-mono tabular-nums">{fmt(item.value)}</span></button></li>)}</ul>
+    <ul className="flex flex-wrap gap-2">{(expanded ? ranked : ranked.slice(0, 8)).map((item) => <li key={item.name}><button className="rounded-md border px-2.5 py-1.5 text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => go(item.name)}>{item.name} <span className="ml-1 font-mono tabular-nums">{fmt(item.value)}</span></button></li>)}</ul>
+    {data.length > 8 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? t('stats.showLess') : t('stats.showAll', { count: data.length })}</button>}
   </div>;
 }
 

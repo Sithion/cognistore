@@ -31,7 +31,7 @@ export function SettingsPage() {
   return <div>
     <h1 style={{ fontSize: 20, fontWeight: 700 }}>{copy[route]}</h1>
     {(route.startsWith('settings/') || route.startsWith('curation')) && <nav aria-label="Sections" style={{ display: 'flex', gap: 16, margin: '16px 0', flexWrap: 'wrap' }}>
-      {settingsRoutes.filter(path => route.startsWith('settings/') ? path.startsWith('settings/') : path.startsWith('curation')).map(path => <Link key={path} to={'/' + path} aria-current={route === path ? 'page' : undefined}>{copy[path]}</Link>)}
+      {settingsRoutes.filter(path => route.startsWith('settings/') ? path.startsWith('settings/') : path.startsWith('curation')).map(path => <Link key={path} to={'/' + path} className={`rounded-md px-3 py-1.5 text-sm ${route === path ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:bg-accent/50'}`} aria-current={route === path ? 'page' : undefined}>{copy[path]}</Link>)}
     </nav>}
     <SettingsScreen key={route} route={route} />
   </div>;

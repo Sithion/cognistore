@@ -93,8 +93,8 @@ input::placeholder, textarea::placeholder {
 .command-results button:hover, .command-recent button:hover, .command-results button:focus { outline: none; background: var(--bg-input); }
 .command-results small, .command-recent small, .command-palette footer { color: var(--text-secondary); }
 .command-recent > small, .command-palette footer { padding: 8px 12px; }
-.shell-main { overflow: auto; background: var(--bg-main); }
-.shell-main > main { min-height: 100%; padding: 24px; }
+.shell-main { position: relative; overflow: auto; background: var(--bg-main); }
+.shell-main > [data-testid="route-content"] { min-height: 100%; padding: 24px; }
 .sidebar-link { display: flex; align-items: center; gap: 10px; margin: 2px 0; padding: 10px 12px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; font-size: 14px; }
 .sidebar-link:hover { background: var(--sidebar-accent); color: var(--text-primary); }
 .sidebar-link.is-active { background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); }

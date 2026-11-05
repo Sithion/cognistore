@@ -104,7 +104,7 @@ export function CurationPage() {
   const toggleAll = () => setSelected(previous => previous.size === queue.length ? new Set() : new Set(queue.map(action => action.id)));
   const now = Date.now();
 
-  return <section aria-labelledby="curation-title" className="mx-auto max-w-4xl space-y-4 p-6">
+  return <section aria-labelledby="curation-title" className="mx-auto max-w-4xl space-y-4">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 id="curation-title" className="text-2xl font-semibold">{t('curationPage.title')}</h1>

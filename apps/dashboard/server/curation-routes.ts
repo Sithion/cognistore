@@ -130,7 +130,10 @@ export function registerCurationRoutes(app: FastifyInstance, deps: {
       try {
         const result = await deps.sdk[method](id, { signal: AbortSignal.timeout(60_000) });
         results.push(body.operation === 'apply' && !result.applied ? { id, ok: false, error: 'stale' } : { id, ok: true });
-      } catch { results.push({ id, ok: false, error: 'conflict' }); }
+      } catch (error) {
+        request.log.warn({ err: error, actionId: id }, 'curation batch action failed');
+        results.push({ id, ok: false, error: 'conflict' });
+      }
     }
     refreshState();
     return { results };
@@ -145,7 +148,7 @@ export function registerCurationRoutes(app: FastifyInstance, deps: {
     if (!entry) return fail(reply, 404, 'Entry not found');
     if (entry.status !== 'trashed') return fail(reply, 409, 'Entry is not in the trash');
     const action = db.prepare(`SELECT a.id FROM curation_actions a WHERE a.status='applied' AND (a.undo_expires_at IS NULL OR a.undo_expires_at > ?)
-      AND EXISTS (SELECT 1 FROM json_each(a.entry_ids) WHERE value=?) ORDER BY a.created_at DESC,a.id DESC LIMIT 1`).get(new Date().toISOString(), request.params.id);
+      AND a.kind!='flag' AND EXISTS (SELECT 1 FROM json_each(a.entry_ids) WHERE value=?) ORDER BY a.created_at DESC,a.id DESC LIMIT 1`).get(new Date().toISOString(), request.params.id);
     if (!action) return fail(reply, 409, 'No undoable curation action for this entry');
     try { await deps.sdk.undoCurationAction(action.id, { signal: AbortSignal.timeout(60_000) }); }
     catch (error) { return handleError(reply, error); }

@@ -54,6 +54,10 @@ The index is nonunique and candidates are content-checked. An import matching a
 system entry is stored as a `pattern` entry, since imports cannot create system
 knowledge.
 
+## Data repair (migration 2.6.1)
+
+Migration `2.6.1.sql` changes data only (no DDL), so an older app keeps working on a database a newer MCP server already migrated. It removes non-string values from `knowledge_entries.related_ids` (2.6.0 merges could write `[{},{}]` there) without bumping entry versions, and rewrites the 32-hex ids of the legacy flags carried over by 2.4.6 into the dashed UUID form the curation routes accept. Approving a `flag` action now acknowledges it (status `applied`, entries untouched) and Undo reopens it.
+
 ## Curation schema (migration 2.4.6)
 
 Migration `2.4.6.sql` adds `knowledge_entries.status` (`active`, `superseded`,

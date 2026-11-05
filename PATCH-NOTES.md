@@ -1,5 +1,23 @@
 # Patch Notes
 
+## Unreleased (2.6.1)
+
+### Fixes
+- Complementary curation actions now handle missing relationships, and merges keep only string relationship IDs; a data-only migration repairs existing malformed relationship lists.
+- Legacy curation flag IDs migrate to UUID format, and flags can be acknowledged and reopened without changing knowledge entries.
+- Failed batch curation actions now log their underlying errors while preserving the API response.
+- Emptying the curation trash no longer fails when a legacy flag references a purged entry, and Restore never picks an acknowledged flag.
+- Back to plans returns to the list instead of reopening the selected plan.
+- Plan-chain and relation links can open another plan from the current detail.
+- Statistics chips open the filtered knowledge list.
+- Statistics chip lists initially show the top eight items and offer translated show-all and show-less controls.
+- Dashboard routes receive consistent page padding without doubling Curation page padding.
+- Screen-reader chart summaries no longer create a second document scrollbar with a large blank area.
+- Settings section navigation now displays its active section.
+- Plan-file editor failures use toast feedback instead of native alerts.
+- Failed path-copy requests show translated feedback without an unhandled rejection.
+- The current checkout can be tested locally in an isolated sandbox with scripts/local-test.sh before publishing.
+
 ## v2.6.0 (2026-11-04)
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.

@@ -93,7 +93,7 @@ export class CurationRepository {
     this.sqlite.prepare(`UPDATE knowledge_entries SET related_ids=(SELECT COALESCE(json_group_array(value),'[]') FROM json_each(related_ids) WHERE value!=?) WHERE related_ids IS NOT NULL AND EXISTS(SELECT 1 FROM json_each(related_ids) WHERE value=?)`).run(id,id);
     this.sqlite.prepare('DELETE FROM knowledge_entries WHERE id=?').run(id);
     const rows=this.sqlite.prepare('SELECT id,before_snapshot,after_snapshot FROM curation_actions WHERE entry_ids LIKE ? OR before_snapshot LIKE ? OR after_snapshot LIKE ?').all(`%${id}%`,`%${id}%`,`%${id}%`) as any[];
-    const redact=(raw:string)=>{let obj:any;try{obj=JSON.parse(raw)}catch{return raw} if(obj.entries?.[id]) obj.entries[id]={purged:true}; if(obj.incomingEntries?.[id]) obj.incomingEntries[id]={purged:true}; return JSON.stringify(obj)};
+    const redact=(raw:string)=>{let obj:any;try{obj=JSON.parse(raw)}catch{return raw} if(!obj||typeof obj!=='object')return raw; if(obj.entries?.[id]) obj.entries[id]={purged:true}; if(obj.incomingEntries?.[id]) obj.incomingEntries[id]={purged:true}; return JSON.stringify(obj)};
     for(const row of rows) this.sqlite.prepare('UPDATE curation_actions SET before_snapshot=?,after_snapshot=?,payload=? WHERE id=?').run(redact(row.before_snapshot),redact(row.after_snapshot),'{"purged":true}',row.id);
     return true;
     });
@@ -233,6 +233,12 @@ export class CurationRepository {
       for(const rel of before.planRelations)this.sqlite.prepare('INSERT INTO plan_relations(id,plan_id,knowledge_id,relation_type,created_at) VALUES(?,?,?,?,?)').run(rel.id??null,rel.planId,rel.knowledgeId,rel.relationType,rel.createdAt);
       this.sqlite.prepare("UPDATE curation_actions SET status='undone',updated_at=? WHERE id=?").run(now,id);return true;
     });
+  }
+  resolveFlag(id:string,now:string):boolean {
+    return this.sqlite.prepare("UPDATE curation_actions SET status='applied',applied_at=?,updated_at=? WHERE id=? AND kind='flag' AND status='proposed'").run(now,now,id).changes===1;
+  }
+  reopenFlag(id:string,now:string):boolean {
+    return this.sqlite.prepare("UPDATE curation_actions SET status='proposed',applied_at=NULL,updated_at=? WHERE id=? AND kind='flag' AND status='applied'").run(now,id).changes===1;
   }
   setActionStatus(id:string, from:string, to:string, now:string) { return this.sqlite.prepare('UPDATE curation_actions SET status=?,updated_at=? WHERE id=? AND status=?').run(to,now,id,from).changes===1; }
   getAction(id:string) { return this.sqlite.prepare('SELECT * FROM curation_actions WHERE id=?').get(id) as any; }

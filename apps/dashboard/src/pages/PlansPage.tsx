@@ -724,9 +724,9 @@ export function PlansPage() {
     if (!selectedPlan) return;
     try {
       const r = await api.openPlanFile(selectedPlan.id);
-      if (!r.ok) alert(r.unsupported ? t('planFile.unsupported') : t('planFile.notFound'));
+      if (!r.ok) toast.error(r.unsupported ? t('planFile.unsupported') : t('planFile.notFound'));
     } catch (e) {
-      alert(e instanceof ApiError && e.status === 403 ? t('planFile.disallowed') : t('planFile.notFound'));
+      toast.error(e instanceof ApiError && e.status === 403 ? t('planFile.disallowed') : t('planFile.notFound'));
     }
   };
 
@@ -937,7 +937,7 @@ export function PlansPage() {
                 {t('planFile.openInEditor')}
               </button>
               <button
-                onClick={() => navigator.clipboard?.writeText(selectedPlan.planFilePath!)}
+                onClick={() => { void navigator.clipboard?.writeText(selectedPlan.planFilePath!).catch(() => toast.error(t('planFile.copyFailed'))); }}
                 title={t('planFile.copyPath')}
                 aria-label={t('planFile.copyPath')}
                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}
