@@ -78,7 +78,7 @@ The Tauri sidecar sets environment variables for the Fastify server:
 
 ## Working in this repo (agents)
 
-- **Skills** (`.claude/skills/`): `cognistore-dev` — map of the codebase, commands, invariants and performance rules; load it before changing code. `cognistore-phase` — executes the next item of a roadmap in `documentation/plans/`.
+- **Skills** (`.claude/skills/`): `cognistore-dev` — map of the codebase, commands, invariants and performance rules; load it before changing code. `cognistore-phase` — executes the next item of a roadmap in `documentation/plans/`. `cognistore-design` — design/UX workflow for the dashboard: audit, the web design-learning routine, implementation rules and verification; load it before changing any UI.
 - **Subagents** (`.claude/agents/`): `perf-reviewer` (event-loop blocking, full scans, write contention) and `invariants-reviewer` (migrations, patch notes, setup/uninstall symmetry, templates). Run both on a diff before committing.
 - **Active roadmap**: `documentation/plans/2026-11-performance-e-curadoria.md` — performance (the sidecar freezes on large DBs) + automatic knowledge curation with the local LLM. Tick items and append to its execution log as you go.
 - **DB health**: `node scripts/diagnose-db.mjs [path]` — read-only size/row breakdown of the knowledge DB (telemetry vs knowledge, duplicates, cleanup state).
