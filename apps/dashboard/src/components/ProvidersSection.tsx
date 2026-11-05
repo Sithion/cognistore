@@ -133,7 +133,7 @@ export function ProvidersSection() {
       <h1 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
         {t('providers.section')}
       </h1>
-      <Button type="button" className="mb-3" onClick={() => { setDraft(emptyStdio()); setSecret(''); setError(''); }}>Add provider</Button>
+      <Button type="button" className="mb-3" onClick={() => { setDraft(emptyRemote()); setSecret(''); setError(''); }}>Add provider</Button>
 
       <Card className="mb-3"><CardContent className="flex items-center justify-between gap-4 p-4">
         <Label htmlFor="always-external" className="cursor-pointer"><span>{t('providers.alwaysOn')}</span><span className="mt-1 block text-xs text-muted-foreground">{t('providers.alwaysOnHint')}</span></Label>

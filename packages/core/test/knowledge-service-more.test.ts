@@ -23,13 +23,13 @@ describe('KnowledgeService additional coverage', () => {
     expect(await ctx.service.topTags(10, { from: '2024-12-31', to: '2025-12-31' })).toEqual(expect.arrayContaining([{ tag: 'alpha', count: 1 }]));
   });
 
-  it('suggests near-duplicate tags using normalized edit and token similarity thresholds', async () => {
+  it('suggests canonical tag variants and rejects unrelated spelling changes', async () => {
     ctx = makeDb();
     await ctx.service.add(input('Tags a', { tags: ['redis', 'rediss', 'nest.js'] }));
     await ctx.service.add(input('Tags b', { tags: ['nestjs', 'postgres'] }));
     const suggestions = await ctx.service.suggestTagMerges(0.8);
     expect(suggestions.some((p) => new Set([p.a, p.b]).has('nest.js') && new Set([p.a, p.b]).has('nestjs'))).toBe(true);
-    expect(suggestions.some((p) => p.a === 'redis' && p.b === 'rediss')).toBe(true);
+    expect(suggestions.some((p) => new Set([p.a, p.b]).has('redis') && new Set([p.a, p.b]).has('rediss'))).toBe(false);
     expect((await ctx.service.suggestTagMerges(1.01))).toEqual([]);
   });
 

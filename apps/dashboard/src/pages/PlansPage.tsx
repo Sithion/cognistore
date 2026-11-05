@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownHeadings } from '../lib/markdownHeadings.js';
@@ -583,6 +583,7 @@ export function PlansPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const route = usePlansRoute();
   // Status chips are a multi-select toggle group: an empty selection means "all".
   const statusFilter = route.status;
@@ -684,14 +685,23 @@ export function PlansPage() {
 
   // Open route detail and retain compatibility with legacy ?select= links.
   useEffect(() => {
+    let active = true;
     const selectId = route.id || searchParams.get('select');
     if (selectId && selectedPlan?.id !== selectId) {
       api.getPlan(selectId).then((plan) => {
-        if (plan) selectPlan(plan as PlanEntry);
-      }).catch(() => {});
+        if (active && plan) void selectPlan(plan as PlanEntry);
+      }).catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && error.status === 404) {
+          toast.error(t('missingPlan.notFound'));
+          setSelectedPlan(null);
+          navigate('/plans', { replace: true });
+        }
+      });
     }
     if (!selectId && selectedPlan) setSelectedPlan(null);
-  }, [route.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { active = false; };
+  }, [route.id, searchParams, navigate, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Collapse + clear the file preview when a DIFFERENT plan is selected (keyed on
   // id, so the 5s poll replacing the object identity does NOT reset it).

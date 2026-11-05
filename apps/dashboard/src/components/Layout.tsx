@@ -9,7 +9,7 @@ declare const __APP_VERSION__: string;
 const navItems = applicationRoutes.filter((route) => route.sidebar).map((route) => ({
   path: route.path,
   key: route.id === 'knowledge' ? 'home' : route.id === 'plans' ? 'plans' : route.id === 'curation' ? 'curation' : route.id === 'insights-knowledge' ? 'stats' : route.id === 'providers' ? 'providers' : 'settings',
-  icon: route.id === 'knowledge' ? '🔍' : route.id === 'plans' ? '📋' : route.id === 'curation' ? '🧹' : route.id === 'insights-knowledge' ? '📊' : '🔌',
+  icon: route.id === 'knowledge' ? '🔍' : route.id === 'plans' ? '📋' : route.id === 'curation' ? '🧹' : route.id === 'insights-knowledge' ? '📊' : route.id === 'agents' ? '⚙️' : '🔌',
 }));
 const activePath = (pathname: string, path: string) => path === '/' ? pathname === '/' || pathname.startsWith('/knowledge') : pathname === path || pathname.startsWith(`${path}/`);
 

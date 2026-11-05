@@ -3,6 +3,14 @@
 ## Unreleased (2.6.1)
 
 ### Fixes
+- Imports accept backups up to 64 MiB without raising the default request limit for other routes (a real 5.3 MB export used to fail with "Payload Too Large").
+- Import accepts every entry the app can create: the import schema capped `source` at 300 characters while creation allows 500, so a backup containing such an entry was rejected as a whole.
+- Unknown dashboard routes display a translated "page not found" with a link back to the knowledge list.
+- Missing knowledge and plan deep links show translated feedback and replace the URL with the corresponding list.
+- Tag merge suggestions accept only spelling variants (case, separators, simple plurals) with identical digit sequences, and compare tags within equivalence buckets instead of every pair.
+- Export and Import use accessible dialogs with Escape dismissal and trapped focus.
+- Add provider starts a remote draft; the explicit stdio option remains.
+- Settings uses a gear icon distinct from the Providers plug icon.
 - Complementary curation actions now handle missing relationships, and merges keep only string relationship IDs; a data-only migration repairs existing malformed relationship lists.
 - Legacy curation flag IDs migrate to UUID format, and flags can be acknowledged and reopened without changing knowledge entries.
 - Failed batch curation actions now log their underlying errors while preserving the API response.

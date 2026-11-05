@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownHeadings } from '../lib/markdownHeadings.js';
-import { api, type ExternalSection } from '../api/client.js';
+import { api, ApiError, type ExternalSection } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
 import { Input } from '../components/ui/input.js';
 import { Checkbox } from '../components/ui/checkbox.js';
@@ -99,6 +100,7 @@ function Overview() {
 function KnowledgeBase() {
   const { t } = useTranslation();
   const route = useKnowledgeRoute();
+  const navigate = useNavigate();
   const { params, page } = route;
   const query = params.get('q') || '';
   const scope = params.get('scope') || '';
@@ -193,11 +195,19 @@ function KnowledgeBase() {
     setDetail(null); setRelated(null); setDetailFailed(false); setEditing(false);
     if (!route.selectedId) return;
     void api.getById(route.selectedId).then(entry => { if (active) setDetail(entry as KnowledgeEntry); })
-      .catch(() => { if (active) setDetailFailed(true); });
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && error.status === 404) {
+          toast.error(t('missingKnowledge.notFound'));
+          navigate('/knowledge', { replace: true });
+        } else {
+          setDetailFailed(true);
+        }
+      });
     void api.getKnowledgePlans(route.selectedId).then(plans => { if (active) setRelated(plans); })
       .catch(() => { if (active) setRelated(null); });
     return () => { active = false; };
-  }, [route.selectedId, revision]);
+  }, [route.selectedId, revision, navigate, t]);
 
   useEffect(() => {
     setScrollTop(0);

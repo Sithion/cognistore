@@ -12,6 +12,7 @@ import { CurationPage } from './pages/CurationPage.js';
 import { TokenConsumptionPage } from './pages/TokenConsumptionPage.js';
 import { ProvidersPage } from './pages/ProvidersPage.js';
 import { SetupPage } from './pages/SetupPage.js';
+import { NotFoundPage } from './pages/NotFoundPage.js';
 import { UpgradePage } from './pages/UpgradePage.js';
 import { api } from './api/client.js';
 import { UpdateChecker } from './components/UpdateChecker.js';
@@ -215,6 +216,7 @@ export function App() {
                 <Route path="/integrations/providers" element={<ProvidersPage />} />
                 <Route path="/integrations/widgets" element={<WidgetsPage />} />
                 <Route path="/system/*" element={<SettingsPage />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Layout>
           </>} />

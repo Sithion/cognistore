@@ -7,6 +7,9 @@ const resources = {
   en: {
     translation: {
       app: { title: 'CogniStore', subtitle: 'Semantic knowledge management for AI agents' },
+      notFoundPage: { title: 'Page not found', description: 'The page you requested does not exist.', back: 'Back to knowledge' },
+      missingKnowledge: { notFound: 'Knowledge entry not found.' },
+      missingPlan: { notFound: 'Plan not found.' },
       nav: { home: 'Knowledge Base', add: 'Add Knowledge', tags: 'Tags', plans: 'Plans', tokenConsumption: 'Token Consumption', providers: 'Providers', stats: 'Statistics', statsKnowledge: 'Knowledge', statsPlans: 'Plans', settings: 'Settings', widgets: 'Widgets', quickStats: 'Quick Stats' },
       statsTitle: { knowledge: 'Knowledge Statistics', plans: 'Plan Statistics' },
       search: { placeholder: 'Search knowledge semantically...', button: 'Search', noResults: 'No results found.', resultsCount: '{{count}} result(s) found', recent: 'Recent Knowledge', results: 'Search Results', empty: 'No knowledge entries yet. Add some knowledge to get started.' },
@@ -244,6 +247,9 @@ const resources = {
   es: {
     translation: {
       app: { title: 'CogniStore', subtitle: 'Gestión semántica de conocimiento para agentes de IA' },
+      notFoundPage: { title: 'Página no encontrada', description: 'La página solicitada no existe.', back: 'Volver al conocimiento' },
+      missingKnowledge: { notFound: 'Entrada de conocimiento no encontrada.' },
+      missingPlan: { notFound: 'Plan no encontrado.' },
       nav: { home: 'Base de Conocimiento', add: 'Agregar Conocimiento', tags: 'Etiquetas', plans: 'Planes', tokenConsumption: 'Consumo de Tokens', providers: 'Proveedores', stats: 'Estadísticas', statsKnowledge: 'Conocimiento', statsPlans: 'Planes', settings: 'Configuración', widgets: 'Widgets', quickStats: 'Estadísticas Rápidas' },
       statsTitle: { knowledge: 'Estadísticas de Conocimiento', plans: 'Estadísticas de Planes' },
       search: { placeholder: 'Buscar conocimiento semánticamente...', button: 'Buscar', noResults: 'No se encontraron resultados.', resultsCount: '{{count}} resultado(s) encontrado(s)', recent: 'Conocimiento Reciente', results: 'Resultados de búsqueda', empty: 'Aún no hay entradas. Agrega conocimiento para comenzar.' },
@@ -481,6 +487,9 @@ const resources = {
   pt: {
     translation: {
       app: { title: 'CogniStore', subtitle: 'Gestão semântica de conhecimento para agentes de IA' },
+      notFoundPage: { title: 'Página não encontrada', description: 'A página solicitada não existe.', back: 'Voltar para o conhecimento' },
+      missingKnowledge: { notFound: 'Entrada de conhecimento não encontrada.' },
+      missingPlan: { notFound: 'Plano não encontrado.' },
       nav: { home: 'Base de Conhecimento', add: 'Adicionar Conhecimento', tags: 'Tags', plans: 'Planos', tokenConsumption: 'Consumo de Tokens', providers: 'Provedores', stats: 'Estatísticas', statsKnowledge: 'Conhecimento', statsPlans: 'Planos', settings: 'Configurações', widgets: 'Widgets', quickStats: 'Estatísticas Rápidas' },
       statsTitle: { knowledge: 'Estatísticas de Conhecimento', plans: 'Estatísticas de Planos' },
       search: { placeholder: 'Buscar conhecimento semanticamente...', button: 'Buscar', noResults: 'Nenhum resultado encontrado.', resultsCount: '{{count}} resultado(s) encontrado(s)', recent: 'Conhecimento Recente', results: 'Resultados da busca', empty: 'Nenhuma entrada ainda. Adicione conhecimento para começar.' },

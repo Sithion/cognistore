@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api, SIDECAR_TOKEN } from '../api/client.js';
 import { triggerUpdateCheck, triggerUpdateDownload, onUpdateState, getIsTauri, getLatestReleaseUrl, useAutoUpdateSetting } from '../components/UpdateChecker.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog.js';
 import { RetentionField } from '../settings/RetentionField.js';
 import { useSettingsRoute, settingsRoutes } from '../settings/useSettingsRoute.js';
 import { round8Settings } from '../i18n/round8-settings.js';
@@ -559,7 +560,7 @@ function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }
   );
 }
 
-function DataManagementSection() {
+export function DataManagementSection() {
   const { t } = useTranslation();
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportKnowledge, setExportKnowledge] = useState(true);
@@ -647,12 +648,6 @@ function DataManagementSection() {
     border: '1px solid var(--border)', cursor: 'pointer',
   };
 
-  const modalBackdrop: React.CSSProperties = {
-    position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
-    backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-  };
-
   const modalCard: React.CSSProperties = {
     backgroundColor: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)',
     padding: 24, maxWidth: 400, width: '90%',
@@ -684,10 +679,10 @@ function DataManagementSection() {
 
       {/* Export Modal */}
       {showExportModal && (
-        <div onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }} style={modalBackdrop}>
-          <div onClick={(e) => e.stopPropagation()} style={modalCard}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('settings.exportModalTitle')}</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>{t('settings.exportModalDesc')}</p>
+        <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+          <DialogContent style={modalCard}>
+            <DialogTitle style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('settings.exportModalTitle')}</DialogTitle>
+            <DialogDescription style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>{t('settings.exportModalDesc')}</DialogDescription>
             <div style={{ marginBottom: 20 }}>
               <label style={checkboxRow}>
                 <input type="checkbox" checked={exportKnowledge} onChange={(e) => setExportKnowledge(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
@@ -717,16 +712,16 @@ function DataManagementSection() {
                 {t('settings.exportBtn')}
               </button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Import Modal */}
       {showImportModal && importFile && (
-        <div onClick={(e) => { if (e.target === e.currentTarget) { setShowImportModal(false); setImportFile(null); } }} style={modalBackdrop}>
-          <div onClick={(e) => e.stopPropagation()} style={modalCard}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('settings.importModalTitle')}</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>{t('settings.importModalDesc')}</p>
+        <Dialog open={showImportModal} onOpenChange={(open) => { setShowImportModal(open); if (!open) setImportFile(null); }}>
+          <DialogContent style={modalCard}>
+            <DialogTitle style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('settings.importModalTitle')}</DialogTitle>
+            <DialogDescription style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>{t('settings.importModalDesc')}</DialogDescription>
             <div style={{ marginBottom: 20 }}>
               <label style={{ ...checkboxRow, opacity: importFile.knowledgeCount === 0 ? 0.4 : 1 }}>
                 <input type="checkbox" checked={importKnowledge} disabled={importFile.knowledgeCount === 0} onChange={(e) => setImportKnowledge(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
@@ -756,8 +751,8 @@ function DataManagementSection() {
                 {t('settings.importBtn')}
               </button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
