@@ -6,6 +6,7 @@ import { triggerUpdateCheck, triggerUpdateDownload, onUpdateState, getIsTauri, g
 import { ConfirmModal } from '../components/ConfirmModal.js';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog.js';
 import { Button } from '../components/ui/button.js';
+import { sectionTab, sectionTabList } from '../components/ui/nav-styles.js';
 import { Input } from '../components/ui/input.js';
 import { Switch } from '../components/ui/switch.js';
 import { RetentionField } from '../settings/RetentionField.js';
@@ -36,9 +37,9 @@ export function SettingsPage() {
   const { i18n } = useTranslation();
   const copy = round8Settings[i18n.language.split('-')[0] as keyof typeof round8Settings] ?? round8Settings.en;
   return <div>
-    <h1 style={{ fontSize: 20, fontWeight: 700 }}>{copy[route]}</h1>
-    {(route.startsWith('settings/') || route.startsWith('curation')) && <nav aria-label="Sections" style={{ display: 'flex', gap: 16, margin: '16px 0', flexWrap: 'wrap' }}>
-      {settingsRoutes.filter(path => route.startsWith('settings/') ? path.startsWith('settings/') : path.startsWith('curation')).map(path => <Link key={path} to={'/' + path} className={`rounded-md px-3 py-1.5 text-sm ${route === path ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:bg-accent/50'}`} aria-current={route === path ? 'page' : undefined}>{copy[path]}</Link>)}
+    <h1 className="text-2xl font-semibold tracking-tight">{copy[route]}</h1>
+    {(route.startsWith('settings/') || route.startsWith('curation')) && <nav aria-label="Sections" className={`${sectionTabList} my-4`}>
+      {settingsRoutes.filter(path => route.startsWith('settings/') ? path.startsWith('settings/') : path.startsWith('curation')).map(path => <Link key={path} to={'/' + path} className={sectionTab(route === path)} aria-current={route === path ? 'page' : undefined}>{copy[path]}</Link>)}
     </nav>}
     <SettingsScreen key={route} route={route} />
   </div>;

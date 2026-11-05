@@ -13,16 +13,18 @@ import { useTransientMessage } from '../hooks/useTransientMessage.js';
 import { PLAN_TEMPLATES, type PlanTemplate } from '../data/planTemplates.js';
 import { usePlansRoute } from '../plans/usePlansRoute.js';
 import { Button } from '../components/ui/button.js';
+import { Badge } from '../components/ui/badge.js';
+import { segment, segmentGroup } from '../components/ui/nav-styles.js';
 import { Input } from '../components/ui/input.js';
 import { toast } from 'sonner';
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Circle, FileText, LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog.js';
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'hsl(var(--muted-foreground))',
-  active: 'hsl(var(--primary))',
-  completed: 'hsl(var(--chart-2))',
-  archived: 'hsl(var(--chart-4))',
+const STATUS_CLASSES: Record<string, string> = {
+  draft: 'border-border bg-muted text-muted-foreground',
+  active: 'border-primary/40 bg-primary/10 text-foreground',
+  completed: 'border-chart-2/40 bg-chart-2/10 text-foreground',
+  archived: 'border-chart-4/40 bg-chart-4/10 text-foreground',
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -87,14 +89,9 @@ interface PlanRelation {
 function StatusBadge({ status }: { status: string }) {
   const s = status || 'draft';
   return (
-    <span style={{
-      padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-      backgroundColor: `${STATUS_COLORS[s] || '#6b7280'}22`,
-      color: STATUS_COLORS[s] || '#6b7280',
-      textTransform: 'uppercase', letterSpacing: 0.5,
-    }}>
+    <Badge variant="outline" className={STATUS_CLASSES[s] || STATUS_CLASSES.draft}>
       {s}
-    </span>
+    </Badge>
   );
 }
 
@@ -1270,35 +1267,28 @@ export function PlansPage() {
       )}
 
       {/* ── Status + Scope Filters ── */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className={segmentGroup}>
         {statusFilters.map((s) => {
           const on = statusFilter.includes(s);
           return (
             <button
               key={s}
+              type="button"
               onClick={() => toggleStatus(s)}
               aria-pressed={on}
-              style={{
-                padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                border: on ? '1px solid var(--accent)' : '1px solid var(--border)',
-                backgroundColor: on ? 'var(--accent)' : 'var(--bg-card)',
-                color: on ? 'var(--primary-foreground)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-              }}
+              className={segment(on)}
             >
               {t(STATUS_LABEL_KEY[s])}
             </button>
           );
         })}
+        </div>
         <select
           aria-label="Filter plans by scope"
           value={scopeFilter}
           onChange={(e) => { route.setScope(e.target.value); setSelectedPlan(null); }}
-          style={{
-            marginLeft: 'auto', padding: '6px 10px', borderRadius: 6,
-            backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: scopeFilter ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 12,
-          }}
+          className="ml-auto h-8 rounded-md border border-input bg-background px-2 text-xs"
         >
           <option value="">{t('plans.allScopes')}</option>
           {allScopes.map((sc) => (

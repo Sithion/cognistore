@@ -6,6 +6,7 @@ import { api } from '../api/client.js';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
 import { fetchStats, fetchMetrics } from '../store/statsSlice.js';
 import { DateRangeControl } from '../components/DateRangeControl.js';
+import { Button } from '../components/ui/button.js';
 import { ChartPanel, MetricCard } from '../insights/ChartPanel.js';
 import { chartTooltipProps } from '../insights/ChartTooltip.js';
 import { useInsightsRoute } from '../insights/useInsightsRoute.js';
@@ -59,7 +60,7 @@ export function ClickableBars({ data, dataKey, nameKey, color, destinationKey }:
         <Tooltip {...chartTooltipProps('bar', fmt)} /><Bar dataKey={dataKey} fill={color} radius={[0, 5, 5, 0]} />
       </BarChart></ResponsiveContainer>
     </div>
-    <ul className="flex flex-wrap gap-2">{(expanded ? ranked : ranked.slice(0, 8)).map((item) => <li key={item.name}><button className="rounded-md border px-2.5 py-1.5 text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => go(item.name)}>{item.name} <span className="ml-1 font-mono tabular-nums">{fmt(item.value)}</span></button></li>)}</ul>
+    <ul className="flex flex-wrap gap-2">{(expanded ? ranked : ranked.slice(0, 8)).map((item) => <li key={item.name}><Button type="button" variant="outline" size="sm" onClick={() => go(item.name)}>{item.name} <span className="ml-1 font-mono tabular-nums">{fmt(item.value)}</span></Button></li>)}</ul>
     {data.length > 8 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? t('stats.showLess') : t('stats.showAll', { count: data.length })}</button>}
   </div>;
 }

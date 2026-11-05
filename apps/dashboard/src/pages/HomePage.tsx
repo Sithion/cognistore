@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { markdownHeadings } from '../lib/markdownHeadings.js';
 import { api, ApiError, type ExternalSection } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
+import { segment, segmentGroup } from '../components/ui/nav-styles.js';
 import { Input } from '../components/ui/input.js';
 import { Checkbox } from '../components/ui/checkbox.js';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../components/ui/sheet.js';
@@ -274,8 +275,10 @@ function KnowledgeBase() {
       <label>{t('filters.platform')}<Input value={platform} onChange={event => route.patch({ platform: event.target.value })} /></label>
     </div>
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant={compact ? 'outline' : 'secondary'} aria-pressed={!compact} onClick={() => route.patch({ view: 'cards' }, false)}>{t('knowledgeScreen.cards')}</Button>
-      <Button variant={compact ? 'secondary' : 'outline'} aria-pressed={compact} onClick={() => route.patch({ view: 'compact' }, false)}>{t('knowledgeScreen.compact')}</Button>
+      <div className={segmentGroup}>
+        <button type="button" className={segment(!compact)} aria-pressed={!compact} onClick={() => route.patch({ view: 'cards' }, false)}>{t('knowledgeScreen.cards')}</button>
+        <button type="button" className={segment(compact)} aria-pressed={compact} onClick={() => route.patch({ view: 'compact' }, false)}>{t('knowledgeScreen.compact')}</button>
+      </div>
       <Button variant="ghost" onClick={() => route.patch({ q: null, scope: null, tags: null, tag: null, type: null, agent: null, platform: null })}>{t('filters.clear')}</Button>
       <Button variant="outline" disabled={!entries.length} onClick={() => setSelected(selected.size === entries.length ? new Set() : new Set(entries.map(entry => entry.id)))}>
         {t(selected.size && selected.size === entries.length ? 'actions.deselectAll' : 'knowledgeScreen.selectAll')}

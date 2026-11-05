@@ -4,6 +4,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api, type CurationOverview, type CurationQueueAction, type DbHealth } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
+import { sectionTab, sectionTabList } from '../components/ui/nav-styles.js';
 import { AppliedPanel, HealthPanel, PendingPanel, TrashPanel } from '../curation/CurationPanels.js';
 
 const TABS = ['pending', 'applied', 'trash', 'health'] as const;
@@ -113,9 +114,9 @@ export function CurationPage() {
       <Button data-testid="run-curation" onClick={() => void runNow()} disabled={running || overview?.autonomy === 'off'}>{running ? t('curationPage.running') : t('curationPage.runNow')}</Button>
     </header>
     {overview && <p data-testid="autonomy-banner" role="status" className="rounded-lg border bg-card p-3 text-sm">{t(`curationPage.autonomy.${overview.autonomy}`)}</p>}
-    <div role="tablist" aria-label={t('curationPage.tabs.label')} className="flex flex-wrap gap-2 border-b">
-      {TABS.map(name => <button key={name} role="tab" id={`curation-tab-${name}`} aria-selected={tab === name} aria-controls="curation-panel" data-testid={`tab-${name}`}
-        className={`px-3 py-2 text-sm ${tab === name ? 'border-b-2 border-primary font-semibold' : 'text-muted-foreground'}`} onClick={() => selectTab(name)}>
+    <div role="tablist" aria-label={t('curationPage.tabs.label')} className={sectionTabList}>
+      {TABS.map(name => <button key={name} type="button" role="tab" id={`curation-tab-${name}`} aria-selected={tab === name} aria-controls="curation-panel" data-testid={`tab-${name}`}
+        className={sectionTab(tab === name)} onClick={() => selectTab(name)}>
         {t(`curationPage.tabs.${name}`)}{name === 'pending' && overview ? ` (${overview.pending})` : ''}{name === 'trash' && overview ? ` (${overview.trash.count})` : ''}
       </button>)}
     </div>

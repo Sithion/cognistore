@@ -4,6 +4,7 @@ import { DayPicker, type DateRange as PickerDateRange } from 'react-day-picker';
 import 'react-day-picker/style.css';
 import { useTranslation } from 'react-i18next';
 import { Button } from './ui/button.js';
+import { segment, segmentGroup } from './ui/nav-styles.js';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.js';
 import { api } from '../api/client.js';
 import { useAppDispatch, useAppSelector } from '../store/index.js';
@@ -130,17 +131,17 @@ export function DateRangeControl() {
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: a <fieldset> would add default border/padding to the compact preset bar
-    <div role="group" aria-label="Date range" className="flex flex-wrap items-center gap-1.5">
+    <div role="group" aria-label="Date range" className={segmentGroup}>
       {PRESETS.map(({ key, labelKey, label }) => (
-        <Button key={key} type="button" size="sm" variant={preset === key ? 'default' : 'outline'} aria-label={label} aria-pressed={preset === key} onClick={() => applyPreset(key)}>
+        <button key={key} type="button" className={segment(preset === key)} aria-label={label} aria-pressed={preset === key} onClick={() => applyPreset(key)}>
           {t(labelKey)}
-        </Button>
+        </button>
       ))}
       <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (nextOpen) setDraft(initialSelection); }}>
         <PopoverTrigger asChild>
-          <Button type="button" size="sm" variant={preset === 'custom' ? 'default' : 'outline'} aria-label="Custom range">
+          <button type="button" className={segment(preset === 'custom')} aria-label="Custom range" aria-pressed={preset === 'custom'}>
             {preset === 'custom' ? formatLabel(range.from, range.to) : t('dateRange.custom')}
-          </Button>
+          </button>
         </PopoverTrigger>
         <PopoverContent role="dialog" aria-label="Custom date range" align="end" className="w-auto p-3">
           <DayPicker mode="range" defaultMonth={initialSelection.from} selected={draft} onSelect={setDraft} numberOfMonths={2} />
