@@ -33,7 +33,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState(0);
   useEffect(() => { let live = true; api.getCurationOverview().then(o => { if (live) setPending(o.pending); }).catch(() => {}); return () => { live = false; }; }, [location.pathname, location.search]);
   return <SidebarProvider open={!compact}>
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flex: 1, minWidth: 0, height: '100vh', overflow: 'hidden' }}>
       <Sidebar data-testid="app-sidebar">
         <SidebarHeader>
           <span style={{ flex: 1, display: compact ? 'none' : undefined, fontWeight: 700, color: 'var(--accent)' }}><span aria-hidden="true">🧠</span> {t('app.title')}</span>

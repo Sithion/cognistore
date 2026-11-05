@@ -3,7 +3,7 @@
 ## v2.6.1 (2026-11-05)
 
 ### Fixes
-- Settings are redesigned as cards: each option shows its label and description on the left and the control on the right, every field uses the app's styled inputs, switches and buttons, the Models, Cleanup and Telemetry tabs are translated, and the sidebar collapses automatically on narrow windows.
+- Settings are redesigned as cards: each option shows its label and description on the left and the control on the right, every field uses the app's styled inputs, switches and buttons, the Models, Cleanup and Telemetry tabs are translated, and the sidebar collapses automatically on narrow windows. The same layout now covers Integrations → Agents, System health, About, Tag intelligence, Advanced settings and Knowledge health, with consistent card widths and translated status badges that pair text with icons.
 - Chart tooltips use a compact, theme-aware card: the hovered label on top, one row per series with its color, right-aligned values, and a subtle hover highlight instead of a large grey block.
 - Imports accept backups up to 64 MiB without raising the default request limit for other routes (a real 5.3 MB export used to fail with "Payload Too Large").
 - Import accepts every entry the app can create: the import schema capped `source` at 300 characters while creation allows 500, so a backup containing such an entry was rejected as a whole.

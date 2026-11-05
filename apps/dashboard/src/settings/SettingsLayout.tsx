@@ -1,6 +1,16 @@
 import { useId, type ReactNode } from 'react';
+import { CheckCircle2, CircleDashed, XCircle } from 'lucide-react';
 
 export const fieldClass = 'h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 sm:w-56';
+
+export function StatusBadge({ status, label }: { status: 'ok' | 'error' | 'unknown'; label: string }) {
+  const Icon = status === 'ok' ? CheckCircle2 : status === 'error' ? XCircle : CircleDashed;
+  const color = status === 'ok' ? 'text-success' : status === 'error' ? 'text-destructive' : 'text-muted-foreground';
+  return <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${color}`}>
+    <Icon aria-hidden="true" className="size-4" />
+    {label}
+  </span>;
+}
 
 export function SettingsCard({ title, description, children, footer, tone = 'default' }: { title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode; tone?: 'default' | 'danger' }) {
   const id = useId();
@@ -21,6 +31,6 @@ export function SettingsRow({ label, description, htmlFor, children }: { label: 
       {htmlFor ? <label htmlFor={htmlFor} className="text-sm font-medium">{label}</label> : <span className="text-sm font-medium">{label}</span>}
       {description && <p id={htmlFor ? `${htmlFor}-desc` : undefined} className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
     </div>
-    <div className="flex items-center gap-2 sm:shrink-0">{children}</div>
+    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">{children}</div>
   </div>;
 }
