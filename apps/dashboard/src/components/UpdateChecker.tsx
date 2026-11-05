@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
+import { Button } from './ui/button.js';
 
 declare const __APP_VERSION__: string;
 
@@ -313,15 +314,17 @@ export function UpdateChecker() {
             Version <strong style={{ color: '#e9d5ff' }}>v{version}</strong> {t('update.available').toLowerCase()}
           </span>
           {isTauri && (window as any).__pendingUpdate ? (
-            <button onClick={downloadAndInstall} style={{ backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: 6, padding: '4px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            <Button onClick={downloadAndInstall}>
               Update now
-            </button>
+            </Button>
           ) : (
-            <a href={downloadUrl || 'https://github.com/Sithion/cognistore/releases/latest'} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#8b5cf6', color: 'white', border: 'none', borderRadius: 6, padding: '4px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' }}>
-              {t('update.viewRelease')}
-            </a>
+            <Button asChild>
+              <a href={downloadUrl || 'https://github.com/Sithion/cognistore/releases/latest'} target="_blank" rel="noopener noreferrer">
+                {t('update.viewRelease')}
+              </a>
+            </Button>
           )}
-          <button aria-label="Dismiss update notification" onClick={() => setDismissed(true)} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }} title="Dismiss">×</button>
+          <Button variant="ghost" size="icon" aria-label="Dismiss update notification" onClick={() => setDismissed(true)} title="Dismiss">×</Button>
         </>
       )}
 
@@ -342,7 +345,7 @@ export function UpdateChecker() {
       {state === 'error' && (
         <>
           <span style={{ color: '#fca5a5' }}>Update failed: {error}</span>
-          <button aria-label="Dismiss update error" onClick={() => { broadcastState('idle'); setDismissed(true); }} style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+          <Button variant="ghost" size="icon" aria-label="Dismiss update error" onClick={() => { broadcastState('idle'); setDismissed(true); }}>×</Button>
         </>
       )}
     </div>

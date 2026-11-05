@@ -8,6 +8,7 @@ import { Switch } from '../components/ui/switch.js';
 import { Label } from '../components/ui/label.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select.js';
 import { Badge } from '../components/ui/badge.js';
+import { pageClass, pageTitleClass } from '../components/ui/control-styles.js';
 
 
 // All providers are MCP connectors now. stdio = local subprocess; remote = Streamable HTTP.
@@ -129,8 +130,8 @@ export function ProvidersSection() {
   const isRemote = draft?.transport === 'http';
 
   return (
-    <div style={{ marginBottom: 32 }}>
-      <h1 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
+    <div className={pageClass}>
+      <h1 className={pageTitleClass}>
         {t('providers.section')}
       </h1>
       <Button type="button" className="mb-3" onClick={() => { setDraft(emptyRemote()); setSecret(''); setError(''); }}>Add provider</Button>

@@ -30,7 +30,7 @@ export function RetentionField({ value, onSave, copy = settingsCopy.en }: { valu
       <Input id="retention-days" data-testid="retention-days" type="number" min={0} max={36500} step={1} className="w-28"
         value={draft} disabled={saving} onChange={event => setDraft(event.target.value)}
         aria-describedby={error ? 'retention-days-desc retention-error' : 'retention-days-desc'} />
-      <Button data-testid="retention-save" variant="outline" size="sm" disabled={saving} onClick={() => void submit()}>{saving ? copy.saving : copy.save}</Button>
+      <Button data-testid="retention-save" variant="outline" disabled={saving} onClick={() => void submit()}>{saving ? copy.saving : copy.save}</Button>
     </SettingsRow>
     {error && <p id="retention-error" role="alert" className="pb-3 text-xs text-destructive">{error}</p>}
   </>;

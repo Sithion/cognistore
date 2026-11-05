@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Button } from '../components/ui/button.js';
+import { controlClass, pageClass, pageSubtitleClass, pageTitleClass } from '../components/ui/control-styles.js';
 
 const isTauri = !!(window as any).__TAURI_INTERNALS__ || !!(window as any).__TAURI__;
 
@@ -60,17 +62,17 @@ export function WidgetsPage() {
 
   if (!isTauri) {
     return (
-      <div style={{ color: 'var(--text-secondary)', padding: 40, textAlign: 'center' }}>
-        <h1 className="sr-only">{t('widgets.title')}</h1>
+      <div className={`${pageClass} text-center text-muted-foreground`} style={{ padding: 40 }}>
+        <h1 className={`${pageTitleClass} sr-only`}>{t('widgets.title')}</h1>
         {t('widgets.desktopOnly')}
       </div>
     );
   }
 
   return (
-    <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{t('widgets.title')}</h1>
-      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 24 }}>{t('widgets.subtitle')}</p>
+    <div className={pageClass}>
+      <h1 className={pageTitleClass}>{t('widgets.title')}</h1>
+      <p className={pageSubtitleClass}>{t('widgets.subtitle')}</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
         {WIDGET_DEFS.map((w) => {
@@ -121,26 +123,16 @@ export function WidgetsPage() {
                     max={20}
                     value={maxVisible}
                     onChange={e => handleMaxChange(Number(e.target.value))}
-                    style={{
-                      width: 48, padding: '4px 6px', borderRadius: 4,
-                      border: '1px solid var(--border)', backgroundColor: 'var(--bg-main)',
-                      color: 'var(--text-primary)', fontSize: 12, textAlign: 'center',
-                    }}
+                    className={`${controlClass} w-20 text-center`}
                   />
                 </div>
               )}
 
-              <button
+              <Button
                 onClick={() => openWidget(w.id)}
-                style={{
-                  padding: '8px 16px', borderRadius: 6, border: 'none',
-                  backgroundColor: 'var(--accent)', color: 'var(--primary-foreground)',
-                  cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                  transition: 'all 0.15s ease',
-                }}
               >
                 {t('widgets.open')}
-              </button>
+              </Button>
             </div>
           );
         })}

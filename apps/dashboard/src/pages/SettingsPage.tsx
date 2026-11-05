@@ -7,6 +7,7 @@ import { ConfirmModal } from '../components/ConfirmModal.js';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../components/ui/dialog.js';
 import { Button } from '../components/ui/button.js';
 import { sectionTab, sectionTabList } from '../components/ui/nav-styles.js';
+import { pageClass, pageTitleClass } from '../components/ui/control-styles.js';
 import { Input } from '../components/ui/input.js';
 import { Switch } from '../components/ui/switch.js';
 import { RetentionField } from '../settings/RetentionField.js';
@@ -36,8 +37,8 @@ export function SettingsPage() {
   const route = useSettingsRoute();
   const { i18n } = useTranslation();
   const copy = round8Settings[i18n.language.split('-')[0] as keyof typeof round8Settings] ?? round8Settings.en;
-  return <div>
-    <h1 className="text-2xl font-semibold tracking-tight">{copy[route]}</h1>
+  return <div className={pageClass}>
+    <h1 className={pageTitleClass}>{copy[route]}</h1>
     {(route.startsWith('settings/') || route.startsWith('curation')) && <nav aria-label="Sections" className={`${sectionTabList} my-4`}>
       {settingsRoutes.filter(path => route.startsWith('settings/') ? path.startsWith('settings/') : path.startsWith('curation')).map(path => <Link key={path} to={'/' + path} className={sectionTab(route === path)} aria-current={route === path ? 'page' : undefined}>{copy[path]}</Link>)}
     </nav>}
@@ -111,7 +112,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
       <SettingsFields route={route} />}
 
     {route === 'system/health' && <>
-      <SettingsCard title={copy.services} description={t('monitoring.subtitle')} footer={<Button type="button" variant="outline" size="sm" onClick={fetchHealth}><RefreshCw aria-hidden="true" className="size-4" />{copy.refresh}</Button>}>
+      <SettingsCard title={copy.services} description={t('monitoring.subtitle')} footer={<Button type="button" variant="outline" onClick={fetchHealth}><RefreshCw aria-hidden="true" className="size-4" />{copy.refresh}</Button>}>
         <SettingsRow label={t('monitoring.database')} description={
           health ? (health.database.connected ? health.database.path : health.database.error) : undefined
         }>
@@ -168,7 +169,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
       </SettingsRow>
       <SettingsRow label={t('update.section')}>
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" variant="outline" size="sm"
+          <Button type="button" variant="outline"
             onClick={() => { setCheckResult(null); triggerUpdateCheck(); }}
             disabled={updateState === 'checking'}>
             {updateState === 'checking' && <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />}
@@ -177,9 +178,9 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
           {checkResult === 'upToDate' && <StatusBadge status="ok" label={t('update.upToDate')} />}
           {checkResult === 'available' && updateState !== 'downloading' && updateState !== 'ready' && (
             getIsTauri() && (window as any).__pendingUpdate ? (
-              <Button type="button" size="sm" onClick={triggerUpdateDownload}>{t('update.updateNow')}</Button>
+              <Button type="button" onClick={triggerUpdateDownload}>{t('update.updateNow')}</Button>
             ) : (
-              <Button asChild size="sm">
+              <Button asChild>
                 <a href={getLatestReleaseUrl() || 'https://github.com/Sithion/cognistore/releases/latest'}
                   target="_blank" rel="noopener noreferrer">{t('update.viewRelease')}</a>
               </Button>
@@ -218,7 +219,7 @@ function SettingsScreen({ route }: { route: ReturnType<typeof useSettingsRoute> 
           {uninstallStep === 3 ? (
             <span role="status" className="text-sm text-muted-foreground">{t('settings.uninstallingMsg')}</span>
           ) : (
-            <Button type="button" variant="destructive" size="sm" onClick={() => setUninstallStep(1)}>
+            <Button type="button" variant="destructive" onClick={() => setUninstallStep(1)}>
               <Trash2 aria-hidden="true" className="size-4" />
               {t('settings.uninstallBtn')}
             </Button>
@@ -298,7 +299,7 @@ function LogSection() {
 
   return <SettingsCard title={t('settings.logs.title')}>
     <SettingsRow label={t('settings.logs.title')} description={total > 0 ? `${total} ${copy.logLines}` : undefined}>
-      <Button type="button" variant="ghost" size="sm" aria-expanded={expanded} aria-controls="settings-log-output"
+      <Button type="button" variant="outline" aria-expanded={expanded} aria-controls="settings-log-output"
         onClick={() => setExpanded(!expanded)}>
         {expanded ? <ChevronDown aria-hidden="true" className="size-4" /> : <ChevronRight aria-hidden="true" className="size-4" />}
         {expanded ? copy.hideLog : copy.showLog}
@@ -306,10 +307,10 @@ function LogSection() {
     </SettingsRow>
     {expanded && <div id="settings-log-output" className="pb-4">
       <div className="mb-3 flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={fetchLogs}>
+        <Button type="button" variant="outline" onClick={fetchLogs}>
           <RefreshCw aria-hidden="true" className="size-4" />{t('settings.logs.refresh')}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={handleClear}>
+        <Button type="button" variant="outline" onClick={handleClear}>
           <Trash2 aria-hidden="true" className="size-4" />{t('settings.logs.clear')}
         </Button>
       </div>
@@ -365,7 +366,7 @@ function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }
   return <SettingsCard title={t('settings.maintenance')}>
     <SettingsRow label={t('settings.redeploy')} description={t('settings.redeployTooltip')}>
       <div className="flex flex-col items-start gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={handleRedeploy}
+        <Button type="button" variant="outline" onClick={handleRedeploy}
           disabled={redeploying} title={t('settings.redeployTooltip')}>
           {redeploying ? <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> :
             <RefreshCw aria-hidden="true" className="size-4" />}
@@ -378,7 +379,7 @@ function MaintenanceSection({ redeployOnly = false }: { redeployOnly?: boolean }
     </SettingsRow>
     {!redeployOnly && <SettingsRow label={t('settings.removeEmbeddings')}>
       <div className="flex flex-col items-start gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={handleCleanup}
+        <Button type="button" variant="outline" onClick={handleCleanup}
           disabled={cleaning} title={t('settings.removeEmbeddings')}>
           {cleaning ? <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> :
             <Trash2 aria-hidden="true" className="size-4" />}
@@ -474,13 +475,13 @@ export function DataManagementSection() {
 
   return <SettingsCard title={t('settings.dataManagement')}>
     <SettingsRow label={t('settings.exportBtn')} description={t('settings.exportModalDesc')}>
-      <Button type="button" variant="outline" size="sm"
+      <Button type="button" variant="outline"
         onClick={() => { setExportKnowledge(true); setExportPlans(true); setShowExportModal(true); }}>
         <Download aria-hidden="true" className="size-4" />{t('settings.exportBtn')}
       </Button>
     </SettingsRow>
     <SettingsRow label={t('settings.importBtn')} description={copy.importDesc}>
-      <Button type="button" variant="outline" size="sm" onClick={handleImportClick}>
+      <Button type="button" variant="outline" onClick={handleImportClick}>
         <Upload aria-hidden="true" className="size-4" />{t('settings.importBtn')}
       </Button>
     </SettingsRow>
@@ -503,10 +504,10 @@ export function DataManagementSection() {
           </label>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowExportModal(false)}>
+          <Button type="button" variant="outline" onClick={() => setShowExportModal(false)}>
             {t('actions.cancel')}
           </Button>
-          <Button type="button" size="sm" onClick={handleExport} disabled={exporting || (!exportKnowledge && !exportPlans)}>
+          <Button type="button" onClick={handleExport} disabled={exporting || (!exportKnowledge && !exportPlans)}>
             {exporting && <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />}
             {t('settings.exportBtn')}
           </Button>
@@ -532,11 +533,11 @@ export function DataManagementSection() {
           </label>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="outline" size="sm"
+          <Button type="button" variant="outline"
             onClick={() => { setShowImportModal(false); setImportFile(null); }}>
             {t('actions.cancel')}
           </Button>
-          <Button type="button" size="sm" onClick={handleImport} disabled={importing || (!importKnowledge && !importPlansFlag)}>
+          <Button type="button" onClick={handleImport} disabled={importing || (!importKnowledge && !importPlansFlag)}>
             {importing && <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />}
             {t('settings.importBtn')}
           </Button>
@@ -668,7 +669,7 @@ function TagSuggestionsSection() {
   return <SettingsCard title={t('tagSuggestions.title')} footer={
     !loading && groups.length > 0 ? <>
       <span className="text-xs text-muted-foreground">{t('tagSuggestions.selectedCount', { count: selected.size })}</span>
-      <Button type="button" size="sm" disabled={selectedMerges.length === 0 || applying} onClick={() => setConfirmOpen(true)}>
+      <Button type="button" disabled={selectedMerges.length === 0 || applying} onClick={() => setConfirmOpen(true)}>
         {applying && <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />}
         {applying ? t('tagSuggestions.applying') : t('tagSuggestions.applyN', { count: selectedMerges.length })}
       </Button>
@@ -789,7 +790,7 @@ function KnowledgeHealthSection() {
         </Button>
       </SettingsRow>)}
       <SettingsRow label={t('health.duplicates')}>
-        <Button type="button" variant="outline" size="sm" disabled={checkingDuplicates || resolving}
+        <Button type="button" variant="outline" disabled={checkingDuplicates || resolving}
           onClick={reloadDuplicates} data-testid="check-duplicates">
           {checkingDuplicates && <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />}
           {checkingDuplicates ? t('health.checkingDuplicates') : t('health.checkDuplicates')}
@@ -873,7 +874,7 @@ function SettingsFields({ route }: { route: 'settings/telemetry' | 'settings/mod
   };
   const dirty = settings !== null && baseline !== null && JSON.stringify(patchFor(settings)) !== JSON.stringify(patchFor(baseline));
   if (!settings) return error
-    ? <div role="alert" className="mt-6 text-sm">{copy.loadFailed} <Button variant="outline" size="sm" onClick={load}>{copy.retry}</Button></div>
+    ? <div role="alert" className="mt-6 text-sm">{copy.loadFailed} <Button variant="outline" onClick={load}>{copy.retry}</Button></div>
     : <p className="mt-6 text-sm text-muted-foreground">{copy.loading}</p>;
   if (route === 'settings/telemetry') return <SettingsCard title={copy.tokenHistory} description={copy.tokenHistoryDesc}><RetentionField copy={copy} value={settings.tokenUsageRetentionDays ?? 90} onSave={async days => {
     const confirmed = await api.updateSettings({ tokenUsageRetentionDays: days });
@@ -890,7 +891,7 @@ function SettingsFields({ route }: { route: 'settings/telemetry' | 'settings/mod
     } catch { setError(true); }
     finally { setSaving(false); }
   };
-  const footer = <>{error && <p role="alert" className="text-xs text-destructive">{copy.saveFailed}</p>}{message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}<Button type="submit" size="sm" disabled={saving || !dirty}>{saving ? copy.saving : copy.save}</Button></>;
+  const footer = <>{error && <p role="alert" className="text-xs text-destructive">{copy.saveFailed}</p>}{message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}<Button type="submit" disabled={saving || !dirty}>{saving ? copy.saving : copy.save}</Button></>;
   return <form onSubmit={event => { event.preventDefault(); void save(); }}>
     {route === 'settings/models' ? <SettingsCard title={copy.models} description={copy.modelsDesc} footer={footer}>
       <SettingsRow label={copy.mergeModel} description={copy.mergeModelDesc} htmlFor="settings-merge-model">
@@ -931,7 +932,7 @@ function ModelSetupControl() {
   const copy = useSettingsCopy();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  return <div><Button type="button" variant="outline" size="sm" disabled={busy} onClick={async () => {
+  return <div><Button type="button" variant="outline" disabled={busy} onClick={async () => {
     setBusy(true); setMessage(null);
     try { const result = await api.setupModel(); setMessage(result.success ? copy.modelReady : copy.modelFailed); }
     catch { setMessage(copy.modelFailed); }
@@ -953,7 +954,7 @@ export function AgentReadinessSection() {
   useEffect(load, []);
 
   return <SettingsCard title={copy.readiness} description={copy.readinessDesc}
-    footer={<Button type="button" variant="outline" size="sm" onClick={load}>
+    footer={<Button type="button" variant="outline" onClick={load}>
       <RefreshCw aria-hidden="true" className="size-4" />{copy.refreshReadiness}
     </Button>}>
     {([

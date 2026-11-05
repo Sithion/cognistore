@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Button } from '../components/ui/button.js';
 
 export type ChartPanelState = 'loading' | 'ready' | 'empty' | 'error';
 
@@ -23,7 +24,7 @@ export function ChartPanel({
       </header>
       {state === 'loading' && <div className="h-44 animate-pulse rounded-md bg-muted" role="status" aria-label="Loading chart" />}
       {state === 'empty' && <p className="py-12 text-center text-sm text-muted-foreground">{emptyText}</p>}
-      {state === 'error' && <div data-testid="section-error" role="alert" className="flex flex-col items-center gap-3 py-10 text-sm text-destructive"><p>{errorText}</p>{onRetry && <button type="button" className="rounded-md border px-3 py-1.5 text-foreground" onClick={onRetry}>Retry</button>}</div>}
+      {state === 'error' && <div data-testid="section-error" role="alert" className="flex flex-col items-center gap-3 py-10 text-sm text-destructive"><p>{errorText}</p>{onRetry && <Button type="button" variant="outline" onClick={onRetry}>Retry</Button>}</div>}
       {state === 'ready' && <>{summary && <p className="sr-only" aria-live="polite">{summary}</p>}{children}</>}
     </section>
   );

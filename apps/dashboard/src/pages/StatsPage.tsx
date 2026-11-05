@@ -7,6 +7,7 @@ import { useAppDispatch, useAppSelector } from '../store/index.js';
 import { fetchStats, fetchMetrics } from '../store/statsSlice.js';
 import { DateRangeControl } from '../components/DateRangeControl.js';
 import { Button } from '../components/ui/button.js';
+import { pageClass, pageHeaderClass, pageSubtitleClass, pageTitleClass } from '../components/ui/control-styles.js';
 import { ChartPanel, MetricCard } from '../insights/ChartPanel.js';
 import { chartTooltipProps } from '../insights/ChartTooltip.js';
 import { useInsightsRoute } from '../insights/useInsightsRoute.js';
@@ -61,7 +62,7 @@ export function ClickableBars({ data, dataKey, nameKey, color, destinationKey }:
       </BarChart></ResponsiveContainer>
     </div>
     <ul className="flex flex-wrap gap-2">{(expanded ? ranked : ranked.slice(0, 8)).map((item) => <li key={item.name}><Button type="button" variant="outline" size="sm" onClick={() => go(item.name)}>{item.name} <span className="ml-1 font-mono tabular-nums">{fmt(item.value)}</span></Button></li>)}</ul>
-    {data.length > 8 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? t('stats.showLess') : t('stats.showAll', { count: data.length })}</button>}
+    {data.length > 8 && <Button type="button" variant="outline" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>{expanded ? t('stats.showLess') : t('stats.showAll', { count: data.length })}</Button>}
   </div>;
 }
 
@@ -77,8 +78,8 @@ export function StatsPage() {
   const totalWrites = activity.reduce((sum, d) => sum + d.writes, 0);
   const activitySeries = activity.map((d) => ({ ...d, total: d.reads + d.writes }));
   const notice = scopeNotice(scope, '/api/metrics/activity, /api/metrics/top-tags, /api/tags, /api/metrics/by-type, /api/metrics/by-scope, /api/metrics/by-agent and /api/metrics/by-platform');
-  return <div className="space-y-6">
-    <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">{t('statsTitle.knowledge')}</h1><p className="text-sm text-muted-foreground">{isRefreshing ? t('stats.loading') : t('stats.thisPeriod')}</p></div><DateRangeControl /></header>
+  return <div className={pageClass}>
+    <header className={pageHeaderClass}><div><h1 className={pageTitleClass}>{t('statsTitle.knowledge')}</h1><p className={pageSubtitleClass}>{isRefreshing ? t('stats.loading') : t('stats.thisPeriod')}</p></div><DateRangeControl /></header>
     {notice && <p role="note" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-muted-foreground">{notice}</p>}
     <div className="flex flex-wrap gap-3"><MetricCard label={t('stats.totalEntries')} value={fmt(stats?.total ?? 0)} detail={t('stats.totalEntries')} /><MetricCard label={t('stats.consulted')} value={fmt(totalReads)} detail={t('stats.consultedSub')} /><MetricCard label={t('stats.written')} value={fmt(totalWrites)} detail={t('stats.writtenSub')} /></div>
     <div className="grid gap-4 xl:grid-cols-2">
@@ -109,7 +110,7 @@ export function PlanStatsPage() {
   const planDistribution = p ? [{ name: 'Draft', value: p.draft }, { name: 'Active', value: p.active }, { name: 'Completed', value: p.completed }, { name: 'Archived', value: p.archived }].filter((x) => x.value > 0) : [];
   const taskDistribution = tasks ? [{ name: 'Pending', value: tasks.pending }, { name: 'In Progress', value: tasks.inProgress }, { name: 'Completed', value: tasks.completed }].filter((x) => x.value > 0) : [];
   const notice = scopeNotice(scope, '/api/metrics/plans');
-  return <div className="space-y-6"><header className="flex flex-wrap items-center justify-between gap-4"><h1 className="text-2xl font-semibold tracking-tight">{t('statsTitle.plans')}</h1><DateRangeControl /></header>
+  return <div className={pageClass}><header className={pageHeaderClass}><h1 className={pageTitleClass}>{t('statsTitle.plans')}</h1><DateRangeControl /></header>
     {notice && <p role="note" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-muted-foreground">{notice}</p>}
     {data && <div className="flex flex-wrap gap-3"><MetricCard label={t('stats.totalPlans')} value={fmt(p?.total ?? 0)} /><MetricCard label={t('stats.activePlans')} value={fmt(p?.active ?? 0)} /><MetricCard label={t('stats.completedPlans')} value={fmt(p?.completed ?? 0)} /><MetricCard label={t('stats.avgTasksPerPlan')} value={fmt(tasks?.avgPerPlan ?? 0)} /></div>}
     <div className="grid gap-4 xl:grid-cols-2"><ChartPanel title={t('stats.planStatus')} state={error ? 'error' : !data ? 'loading' : planDistribution.length ? 'ready' : 'empty'} onRetry={load} summary={`Plans by status: ${planDistribution.map((x) => `${x.name} ${fmt(x.value)}`).join(', ')}`}><div role="img" aria-label={`Plan status: ${planDistribution.map((x) => `${x.name} ${x.value}`).join(', ')}`} className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={planDistribution} dataKey="value" nameKey="name" innerRadius={62} outerRadius={95}>{planDistribution.map((x) => <Cell key={x.name} fill={PLAN_COLORS[x.name]} />)}</Pie><Tooltip {...chartTooltipProps('pie', fmt)} /><Legend /></PieChart></ResponsiveContainer></div></ChartPanel>

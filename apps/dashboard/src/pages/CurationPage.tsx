@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { api, type CurationOverview, type CurationQueueAction, type DbHealth } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
 import { sectionTab, sectionTabList } from '../components/ui/nav-styles.js';
+import { pageClass, pageHeaderClass, pageSubtitleClass, pageTitleClass } from '../components/ui/control-styles.js';
 import { AppliedPanel, HealthPanel, PendingPanel, TrashPanel } from '../curation/CurationPanels.js';
 
 const TABS = ['pending', 'applied', 'trash', 'health'] as const;
@@ -105,11 +106,11 @@ export function CurationPage() {
   const toggleAll = () => setSelected(previous => previous.size === queue.length ? new Set() : new Set(queue.map(action => action.id)));
   const now = Date.now();
 
-  return <section aria-labelledby="curation-title" className="mx-auto max-w-4xl space-y-4">
-    <header className="flex flex-wrap items-start justify-between gap-3">
+  return <section aria-labelledby="curation-title" className={`${pageClass} mx-auto max-w-4xl`}>
+    <header className={pageHeaderClass}>
       <div>
-        <h1 id="curation-title" className="text-2xl font-semibold">{t('curationPage.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('curationPage.subtitle')}</p>
+        <h1 id="curation-title" className={pageTitleClass}>{t('curationPage.title')}</h1>
+        <p className={pageSubtitleClass}>{t('curationPage.subtitle')}</p>
       </div>
       <Button data-testid="run-curation" onClick={() => void runNow()} disabled={running || overview?.autonomy === 'off'}>{running ? t('curationPage.running') : t('curationPage.runNow')}</Button>
     </header>
@@ -121,7 +122,7 @@ export function CurationPage() {
       </button>)}
     </div>
     <div id="curation-panel" role="tabpanel" aria-labelledby={`curation-tab-${tab}`} className="space-y-3">
-      {failed && <div role="alert" className="flex items-center gap-3"><span>{t('curationPage.loadFailed')}</span><Button size="sm" variant="outline" onClick={() => { setFailed(false); void load(); }}>{t('curationPage.retry')}</Button></div>}
+      {failed && <div role="alert" className="flex items-center gap-3"><span>{t('curationPage.loadFailed')}</span><Button variant="outline" onClick={() => { setFailed(false); void load(); }}>{t('curationPage.retry')}</Button></div>}
       {!overview && !failed && <p className="text-sm text-muted-foreground">…</p>}
       {overview && tab === 'pending' && <PendingPanel actions={queue} selected={selected} busy={busy} onToggle={toggle} onToggleAll={toggleAll}
         onApprove={id => void batch('apply', [id])} onReject={id => void batch('reject', [id])} onBatch={operation => void batch(operation, [...selected])} />}

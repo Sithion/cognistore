@@ -2,6 +2,7 @@ import { useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
+import { Button } from './ui/button.js';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -58,28 +59,17 @@ export function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confi
           <p style={{ fontSize: 13, color: 'var(--error, #ef4444)', marginBottom: 16 }}>{errorText}</p>
         )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button
+          <Button
+            variant="outline"
             onClick={onClose}
             disabled={loading}
-            style={{
-              padding: '8px 16px', borderRadius: 6, fontSize: 13,
-              border: '1px solid var(--border)', backgroundColor: 'transparent',
-              color: 'var(--text-secondary)', cursor: 'pointer',
-              opacity: loading ? 0.5 : 1,
-            }}
           >
             {t('actions.cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="destructive"
             onClick={onConfirm}
             disabled={loading}
-            style={{
-              padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: 'none', backgroundColor: 'var(--destructive-background)',
-              color: '#fff', cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
           >
             {loading && (
               <span style={{
@@ -89,7 +79,7 @@ export function ConfirmModal({ isOpen, onClose, onConfirm, title, message, confi
               }} />
             )}
             {confirmLabel || t('actions.confirm')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>,
