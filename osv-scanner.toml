@@ -69,12 +69,3 @@ reason = "Unmaintained (merged into zbus 6), no patched version; same path as RU
 [[IgnoredVulns]]
 id = "GHSA-qwgh-2vcv-g2f7"
 reason = "block-buffer 0.10 via digest 0.10 (tauri-codegen, keyring); fix only in 0.12 (digest 0.11); requires a panic caught inside a hash compress callback, not reachable here."
-
-# pin-utils 0.1.0 (RUSTSEC-2026-0441): "unmaintained" informational advisory —
-# the upstream repository was archived on 2026-10-01; no patched version. It is
-# pulled only by hyper 1.x (via reqwest/hyper-util/hyper-rustls); nothing in our
-# code uses pin-utils directly. Not a vulnerability; it goes away once hyper
-# drops the dependency (re-evaluate on the next reqwest/hyper bump).
-[[IgnoredVulns]]
-id = "RUSTSEC-2026-0441" # pin-utils — unmaintained (repo archived); transitive via hyper 1.x
-reason = "Unmaintained (upstream archived 2026-10-01), no patched version; transitive via reqwest -> hyper 1.x, not used directly."

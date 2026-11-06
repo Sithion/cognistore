@@ -29,7 +29,7 @@
 - Plan-file editor failures use toast feedback instead of native alerts.
 - Failed path-copy requests show translated feedback without an unhandled rejection.
 - The current checkout can be tested locally in an isolated sandbox with scripts/local-test.sh before publishing.
-- The dependency audit acknowledges the new "unmaintained" advisory for pin-utils (RUSTSEC-2026-0441), pulled indirectly by the HTTP client; it is not a vulnerability and has no patched version.
+- The desktop app's HTTP stack is updated (hyper 1.12), which drops the unmaintained pin-utils crate flagged by the dependency audit (RUSTSEC-2026-0441).
 
 ## v2.6.0 (2026-11-04)
 
