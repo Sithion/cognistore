@@ -4,6 +4,8 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api, type CurationOverview, type CurationQueueAction, type DbHealth } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
+import { sectionTab, sectionTabList } from '../components/ui/nav-styles.js';
+import { pageClass, pageHeaderClass, pageSubtitleClass, pageTitleClass } from '../components/ui/control-styles.js';
 import { AppliedPanel, HealthPanel, PendingPanel, TrashPanel } from '../curation/CurationPanels.js';
 
 const TABS = ['pending', 'applied', 'trash', 'health'] as const;
@@ -104,23 +106,23 @@ export function CurationPage() {
   const toggleAll = () => setSelected(previous => previous.size === queue.length ? new Set() : new Set(queue.map(action => action.id)));
   const now = Date.now();
 
-  return <section aria-labelledby="curation-title" className="mx-auto max-w-4xl space-y-4 p-6">
-    <header className="flex flex-wrap items-start justify-between gap-3">
+  return <section aria-labelledby="curation-title" className={`${pageClass} mx-auto max-w-4xl`}>
+    <header className={pageHeaderClass}>
       <div>
-        <h1 id="curation-title" className="text-2xl font-semibold">{t('curationPage.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('curationPage.subtitle')}</p>
+        <h1 id="curation-title" className={pageTitleClass}>{t('curationPage.title')}</h1>
+        <p className={pageSubtitleClass}>{t('curationPage.subtitle')}</p>
       </div>
       <Button data-testid="run-curation" onClick={() => void runNow()} disabled={running || overview?.autonomy === 'off'}>{running ? t('curationPage.running') : t('curationPage.runNow')}</Button>
     </header>
     {overview && <p data-testid="autonomy-banner" role="status" className="rounded-lg border bg-card p-3 text-sm">{t(`curationPage.autonomy.${overview.autonomy}`)}</p>}
-    <div role="tablist" aria-label={t('curationPage.tabs.label')} className="flex flex-wrap gap-2 border-b">
-      {TABS.map(name => <button key={name} role="tab" id={`curation-tab-${name}`} aria-selected={tab === name} aria-controls="curation-panel" data-testid={`tab-${name}`}
-        className={`px-3 py-2 text-sm ${tab === name ? 'border-b-2 border-primary font-semibold' : 'text-muted-foreground'}`} onClick={() => selectTab(name)}>
+    <div role="tablist" aria-label={t('curationPage.tabs.label')} className={sectionTabList}>
+      {TABS.map(name => <button key={name} type="button" role="tab" id={`curation-tab-${name}`} aria-selected={tab === name} aria-controls="curation-panel" data-testid={`tab-${name}`}
+        className={sectionTab(tab === name)} onClick={() => selectTab(name)}>
         {t(`curationPage.tabs.${name}`)}{name === 'pending' && overview ? ` (${overview.pending})` : ''}{name === 'trash' && overview ? ` (${overview.trash.count})` : ''}
       </button>)}
     </div>
     <div id="curation-panel" role="tabpanel" aria-labelledby={`curation-tab-${tab}`} className="space-y-3">
-      {failed && <div role="alert" className="flex items-center gap-3"><span>{t('curationPage.loadFailed')}</span><Button size="sm" variant="outline" onClick={() => { setFailed(false); void load(); }}>{t('curationPage.retry')}</Button></div>}
+      {failed && <div role="alert" className="flex items-center gap-3"><span>{t('curationPage.loadFailed')}</span><Button variant="outline" onClick={() => { setFailed(false); void load(); }}>{t('curationPage.retry')}</Button></div>}
       {!overview && !failed && <p className="text-sm text-muted-foreground">…</p>}
       {overview && tab === 'pending' && <PendingPanel actions={queue} selected={selected} busy={busy} onToggle={toggle} onToggleAll={toggleAll}
         onApprove={id => void batch('apply', [id])} onReject={id => void batch('reject', [id])} onBatch={operation => void batch(operation, [...selected])} />}

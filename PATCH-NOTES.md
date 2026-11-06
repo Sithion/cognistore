@@ -1,5 +1,36 @@
 # Patch Notes
 
+## v2.6.1 (2026-11-05)
+
+### Fixes
+- Settings are redesigned as cards: each option shows its label and description on the left and the control on the right, every field uses the app's styled inputs, switches and buttons, the Models, Cleanup and Telemetry tabs are translated, and the sidebar collapses automatically on narrow windows. The same layout now covers Integrations → Agents, System health, About, Tag intelligence, Advanced settings and Knowledge health, with consistent card widths and translated status badges that pair text with icons.
+- One navigation pattern across the app: section navigation (Settings, Curation) uses underline tabs, single-choice and filter controls (knowledge view, date ranges, token providers, plan status) use one segmented control, and badges are reserved for non-clickable status, including plan status.
+- Every dropdown, text field and button in toolbars, forms and dialogs now shares one height, border and spacing, native dropdowns no longer look different from text fields, and page titles and headers use the same size and spacing on every screen.
+- Chart tooltips use a compact, theme-aware card: the hovered label on top, one row per series with its color, right-aligned values, and a subtle hover highlight instead of a large grey block.
+- Imports accept backups up to 64 MiB without raising the default request limit for other routes (a real 5.3 MB export used to fail with "Payload Too Large").
+- Import accepts every entry the app can create: the import schema capped `source` at 300 characters while creation allows 500, so a backup containing such an entry was rejected as a whole.
+- Unknown dashboard routes display a translated "page not found" with a link back to the knowledge list.
+- Missing knowledge and plan deep links show translated feedback and replace the URL with the corresponding list.
+- Tag merge suggestions accept only spelling variants (case, separators, simple plurals) with identical digit sequences, and compare tags within equivalence buckets instead of every pair.
+- Export and Import use accessible dialogs with Escape dismissal and trapped focus.
+- Add provider starts a remote draft; the explicit stdio option remains.
+- Settings uses a gear icon distinct from the Providers plug icon.
+- Complementary curation actions now handle missing relationships, and merges keep only string relationship IDs; a data-only migration repairs existing malformed relationship lists.
+- Legacy curation flag IDs migrate to UUID format, and flags can be acknowledged and reopened without changing knowledge entries.
+- Failed batch curation actions now log their underlying errors while preserving the API response.
+- Emptying the curation trash no longer fails when a legacy flag references a purged entry, and Restore never picks an acknowledged flag.
+- Back to plans returns to the list instead of reopening the selected plan.
+- Plan-chain and relation links can open another plan from the current detail.
+- Statistics chips open the filtered knowledge list.
+- Statistics chip lists initially show the top eight items and offer translated show-all and show-less controls.
+- Dashboard routes receive consistent page padding without doubling Curation page padding.
+- Screen-reader chart summaries no longer create a second document scrollbar with a large blank area.
+- Settings section navigation now displays its active section.
+- Plan-file editor failures use toast feedback instead of native alerts.
+- Failed path-copy requests show translated feedback without an unhandled rejection.
+- The current checkout can be tested locally in an isolated sandbox with scripts/local-test.sh before publishing.
+- The desktop app's HTTP stack is updated (hyper 1.12), which drops the unmaintained pin-utils crate flagged by the dependency audit (RUSTSEC-2026-0441).
+
 ## v2.6.0 (2026-11-04)
 
 **Performance and knowledge curation.** Work in progress on `release/2.6` — see `documentation/plans/2026-11-performance-e-curadoria.md`.

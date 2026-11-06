@@ -19,8 +19,8 @@ export function PendingPanel({ actions, selected, busy, onToggle, onToggleAll, o
         <input type="checkbox" data-testid="select-all" checked={selected.size === actions.length} onChange={onToggleAll} aria-label={t('curationPage.selectAll')} />
         <span>{t('curationPage.selectedCount', { count: selected.size })}</span>
       </label>
-      <Button size="sm" data-testid="batch-approve" disabled={busy || none} onClick={() => onBatch('apply')}>{t('curationPage.approveSelected')}</Button>
-      <Button size="sm" variant="outline" data-testid="batch-reject" disabled={busy || none} onClick={() => onBatch('reject')}>{t('curationPage.rejectSelected')}</Button>
+      <Button data-testid="batch-approve" disabled={busy || none} onClick={() => onBatch('apply')}>{t('curationPage.approveSelected')}</Button>
+      <Button variant="outline" data-testid="batch-reject" disabled={busy || none} onClick={() => onBatch('reject')}>{t('curationPage.rejectSelected')}</Button>
     </div>
     <ul className="space-y-3">{actions.map(action => {
       const title = titleOf(action, t('curationPage.untitled'));

@@ -1,6 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
+export const searchWithout = (search: string) => {
+  const next = new URLSearchParams(search);
+  next.delete('select');
+  const s = next.toString();
+  return s ? `?${s}` : '';
+};
+
 /** URL-backed state for the plans list and its full-page detail route. */
 export function usePlansRoute() {
   const { id } = useParams<{ id: string }>();
@@ -20,7 +27,11 @@ export function usePlansRoute() {
   const setScope = useCallback((value: string) => patch({ scope: value || null, page: '1' }), [patch]);
   const setSort = useCallback((value: string) => patch({ sort: value }), [patch]);
   const setPage = useCallback((value: number) => patch({ page: String(Math.max(1, value)) }), [patch]);
-  const openPlan = useCallback((planId: string) => navigate({ pathname: `/plans/${encodeURIComponent(planId)}`, search: location.search }), [location.search, navigate]);
-  const backToList = useCallback(() => navigate({ pathname: '/plans', search: location.search }), [location.search, navigate]);
+  const openPlan = useCallback((planId: string) => {
+    const next = new URLSearchParams(searchWithout(location.search));
+    next.set('select', planId);
+    navigate({ pathname: `/plans/${encodeURIComponent(planId)}`, search: `?${next}` });
+  }, [location.search, navigate]);
+  const backToList = useCallback(() => navigate({ pathname: '/plans', search: searchWithout(location.search) }), [location.search, navigate]);
   return { id, status, scope, sort, page, setStatuses, setScope, setSort, setPage, openPlan, backToList, patch };
 }

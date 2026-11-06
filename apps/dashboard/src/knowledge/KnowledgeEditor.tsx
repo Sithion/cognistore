@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input.js';
 import { Button } from '../components/ui/button.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select.js';
 import { registerKnowledgeResources } from '../i18n/round8-knowledge.js';
+import { textareaClass } from '../components/ui/control-styles.js';
 
 export type KnowledgeEntry = {
   id: string; title: string; content: string; tags: string[]; type: string;
@@ -57,7 +58,7 @@ export function KnowledgeEditor({ entry, onSaved, onCancel }: {
         <label htmlFor={`${id}-${field}`} className="mb-1 block text-sm font-medium">{t(`knowledgeScreen.${field}`)}</label>
         {field === 'content'
           ? <textarea id={`${id}-${field}`} required rows={10} maxLength={500000}
-            className="w-full rounded-md border border-input bg-background p-3 font-mono text-sm focus-visible:ring-2 focus-visible:ring-ring"
+            className={`${textareaClass} font-mono`}
             value={form[field]} onChange={event => setForm({ ...form, [field]: event.target.value })} />
           : <Input id={`${id}-${field}`} required maxLength={field === 'title' || field === 'source' ? 500 : undefined}
             value={form[field]} onChange={event => setForm({ ...form, [field]: event.target.value })} />}

@@ -15,7 +15,7 @@ test.beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'legacy-cleanup-r10-'));
   db = new BetterSqlite3(join(dir, 'legacy.db'));
   db.exec(`CREATE TABLE schema_version(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL);
-    CREATE TABLE knowledge_entries(id TEXT PRIMARY KEY,title TEXT NOT NULL DEFAULT '',content TEXT NOT NULL,tags TEXT NOT NULL DEFAULT '[]',type TEXT NOT NULL,scope TEXT NOT NULL,source TEXT NOT NULL,updated_at TEXT NOT NULL,created_at TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,content_hash TEXT);
+    CREATE TABLE knowledge_entries(id TEXT PRIMARY KEY,title TEXT NOT NULL DEFAULT '',content TEXT NOT NULL,tags TEXT NOT NULL DEFAULT '[]',type TEXT NOT NULL,scope TEXT NOT NULL,source TEXT NOT NULL,updated_at TEXT NOT NULL,created_at TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,related_ids TEXT,content_hash TEXT);
     CREATE TABLE cleanup_reports(id TEXT PRIMARY KEY,created_at TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',stats TEXT NOT NULL DEFAULT '{}');
     CREATE TABLE cleanup_candidates(id TEXT PRIMARY KEY,report_id TEXT NOT NULL REFERENCES cleanup_reports(id) ON DELETE CASCADE,category TEXT NOT NULL,entry_ids TEXT NOT NULL,payload TEXT NOT NULL DEFAULT '{}',status TEXT NOT NULL DEFAULT 'pending',resolution TEXT,updated_at TEXT NOT NULL);
     INSERT INTO schema_version(version,applied_at) VALUES('0.8.0','x'),('0.9.0','x'),('1.3.0','x'),('2.0.0','x'),('2.1.0','x'),('2.3.0','x'),('2.3.2','x'),('2.4.0','x'),('2.4.1','x'),('2.4.2','x'),('2.4.3','x'),('2.4.5','x');

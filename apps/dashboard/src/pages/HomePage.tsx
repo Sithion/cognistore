@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownHeadings } from '../lib/markdownHeadings.js';
-import { api, type ExternalSection } from '../api/client.js';
+import { api, ApiError, type ExternalSection } from '../api/client.js';
 import { Button } from '../components/ui/button.js';
+import { segment, segmentGroup } from '../components/ui/nav-styles.js';
+import { pageClass, pageHeaderClass, pageTitleClass, selectClass } from '../components/ui/control-styles.js';
 import { Input } from '../components/ui/input.js';
 import { Checkbox } from '../components/ui/checkbox.js';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '../components/ui/sheet.js';
@@ -58,9 +61,9 @@ function Overview() {
   }, [scope]);
   const scoped = (path: string) => scope ? `${path}?scope=${encodeURIComponent(scope)}` : path;
   const unavailable = t('knowledgeScreen.unavailable');
-  return <div className="space-y-6">
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-2xl font-semibold">{t('knowledgeScreen.overview')}</h1>
+  return <div className={pageClass}>
+    <header className={pageHeaderClass}>
+      <h1 className={pageTitleClass}>{t('knowledgeScreen.overview')}</h1>
       <Button asChild><Link to={route.listUrl}>{t('knowledgeScreen.viewBase')}</Link></Button>
     </header>
     <div className="grid gap-6 lg:grid-cols-2">
@@ -99,6 +102,7 @@ function Overview() {
 function KnowledgeBase() {
   const { t } = useTranslation();
   const route = useKnowledgeRoute();
+  const navigate = useNavigate();
   const { params, page } = route;
   const query = params.get('q') || '';
   const scope = params.get('scope') || '';
@@ -193,11 +197,19 @@ function KnowledgeBase() {
     setDetail(null); setRelated(null); setDetailFailed(false); setEditing(false);
     if (!route.selectedId) return;
     void api.getById(route.selectedId).then(entry => { if (active) setDetail(entry as KnowledgeEntry); })
-      .catch(() => { if (active) setDetailFailed(true); });
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && error.status === 404) {
+          toast.error(t('missingKnowledge.notFound'));
+          navigate('/knowledge', { replace: true });
+        } else {
+          setDetailFailed(true);
+        }
+      });
     void api.getKnowledgePlans(route.selectedId).then(plans => { if (active) setRelated(plans); })
       .catch(() => { if (active) setRelated(null); });
     return () => { active = false; };
-  }, [route.selectedId, revision]);
+  }, [route.selectedId, revision, navigate, t]);
 
   useEffect(() => {
     setScrollTop(0);
@@ -244,9 +256,9 @@ function KnowledgeBase() {
     [t('knowledgeScreen.curationHistory'), null],
   ] : [];
 
-  return <div className="space-y-4">
-    <header className="flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-2xl font-semibold">{t('knowledgeScreen.base')}</h1>
+  return <div className={pageClass}>
+    <header className={pageHeaderClass}>
+      <h1 className={pageTitleClass}>{t('knowledgeScreen.base')}</h1>
       <Button onClick={route.newEntry}>{t('knowledgeScreen.new')}</Button>
     </header>
     <div className="grid gap-3 md:grid-cols-3">
@@ -256,7 +268,7 @@ function KnowledgeBase() {
         onChange={event => route.patch({ scope: event.target.value })} /></label>
       <datalist id="knowledge-scopes">{scopes.map(item => <option key={item} value={item} />)}</datalist>
       <label>{t('knowledgeScreen.filterByTag')}<Input value={tags} onChange={event => route.patch({ tags: event.target.value, tag: null })} /></label>
-      <label>{t('knowledgeScreen.type')}<select className="h-9 w-full rounded-md border bg-background px-3" value={type}
+      <label>{t('knowledgeScreen.type')}<select className={`${selectClass} w-full`} value={type}
         onChange={event => route.patch({ type: event.target.value })}>
         <option value="">{t('filters.all')}</option>{types.map(value => <option key={value} value={value}>{t(`types.${value}`)}</option>)}
       </select></label>
@@ -264,9 +276,11 @@ function KnowledgeBase() {
       <label>{t('filters.platform')}<Input value={platform} onChange={event => route.patch({ platform: event.target.value })} /></label>
     </div>
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant={compact ? 'outline' : 'secondary'} aria-pressed={!compact} onClick={() => route.patch({ view: 'cards' }, false)}>{t('knowledgeScreen.cards')}</Button>
-      <Button variant={compact ? 'secondary' : 'outline'} aria-pressed={compact} onClick={() => route.patch({ view: 'compact' }, false)}>{t('knowledgeScreen.compact')}</Button>
-      <Button variant="ghost" onClick={() => route.patch({ q: null, scope: null, tags: null, tag: null, type: null, agent: null, platform: null })}>{t('filters.clear')}</Button>
+      <div className={segmentGroup}>
+        <button type="button" className={segment(!compact)} aria-pressed={!compact} onClick={() => route.patch({ view: 'cards' }, false)}>{t('knowledgeScreen.cards')}</button>
+        <button type="button" className={segment(compact)} aria-pressed={compact} onClick={() => route.patch({ view: 'compact' }, false)}>{t('knowledgeScreen.compact')}</button>
+      </div>
+      <Button variant="outline" onClick={() => route.patch({ q: null, scope: null, tags: null, tag: null, type: null, agent: null, platform: null })}>{t('filters.clear')}</Button>
       <Button variant="outline" disabled={!entries.length} onClick={() => setSelected(selected.size === entries.length ? new Set() : new Set(entries.map(entry => entry.id)))}>
         {t(selected.size && selected.size === entries.length ? 'actions.deselectAll' : 'knowledgeScreen.selectAll')}
       </Button>

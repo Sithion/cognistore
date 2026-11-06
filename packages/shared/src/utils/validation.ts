@@ -158,7 +158,7 @@ const importKnowledgeEntrySchema = z.object({
   tags: z.array(z.string().max(200)).max(200).optional().default([]),
   type: knowledgeTypeSchema,
   scope: z.string().min(1).max(300),
-  source: z.string().max(300).optional(),
+  source: z.string().max(MAX_SOURCE_LENGTH).optional(),
   confidenceScore: z.number().min(0).max(1).optional(),
   expiresAt: z.string().max(64).nullable().optional(),
   relatedIds: z.array(z.string().max(64)).nullable().optional(),

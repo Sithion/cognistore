@@ -2245,7 +2245,7 @@ Pass an array to addKnowledge to create multiple entries at once.
 
   // ─── Import endpoint ──────────────────────────────────────
 
-  app.post('/api/import', async (request, reply) => {
+  app.post('/api/import', { bodyLimit: 64 * 1024 * 1024 }, async (request, reply) => {
     const err = ensureReady(reply);
     if (err) return err;
     const parsed = importSchema.safeParse(request.body ?? {});

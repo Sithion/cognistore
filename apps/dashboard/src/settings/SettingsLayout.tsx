@@ -1,0 +1,38 @@
+import { useId, type ReactNode } from 'react';
+import { CheckCircle2, CircleDashed, XCircle } from 'lucide-react';
+
+import { selectClass } from '../components/ui/control-styles.js';
+
+export const fieldClass = `${selectClass} w-full sm:w-56`;
+
+export function StatusBadge({ status, label }: { status: 'ok' | 'error' | 'unknown'; label: string }) {
+  const Icon = status === 'ok' ? CheckCircle2 : status === 'error' ? XCircle : CircleDashed;
+  const color = status === 'ok' ? 'text-success' : status === 'error' ? 'text-destructive' : 'text-muted-foreground';
+  return <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${color}`}>
+    <Icon aria-hidden="true" className="size-4" />
+    {label}
+  </span>;
+}
+
+export function SettingsCard({ title, description, children, footer, tone = 'default' }: { title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode; tone?: 'default' | 'danger' }) {
+  const id = useId();
+  const danger = tone === 'danger';
+  return <section aria-labelledby={id} className={'mt-6 rounded-xl border bg-card shadow-sm ' + (danger ? 'border-destructive/60' : 'border-border')}>
+    <div className="px-5 pt-5">
+      <h2 id={id} className={'text-sm font-semibold' + (danger ? ' text-destructive' : '')}>{title}</h2>
+      {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+    </div>
+    <div className="divide-y divide-border px-5">{children}</div>
+    {footer && <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border px-5 py-3">{footer}</div>}
+  </section>;
+}
+
+export function SettingsRow({ label, description, htmlFor, children }: { label: ReactNode; description?: ReactNode; htmlFor?: string; children?: ReactNode }) {
+  return <div className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+    <div className="min-w-0 sm:max-w-[60%]">
+      {htmlFor ? <label htmlFor={htmlFor} className="text-sm font-medium">{label}</label> : <span className="text-sm font-medium">{label}</span>}
+      {description && <p id={htmlFor ? `${htmlFor}-desc` : undefined} className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+    </div>
+    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">{children}</div>
+  </div>;
+}

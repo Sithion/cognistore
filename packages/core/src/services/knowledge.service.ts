@@ -110,22 +110,20 @@ function toCleanupCandidate(row: {
   };
 }
 
-/** Levenshtein edit distance (two-row DP). No external dependency. */
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  if (!a.length) return b.length;
-  if (!b.length) return a.length;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  let curr = new Array<number>(b.length + 1);
-  for (let i = 1; i <= a.length; i++) {
-    curr[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
-    }
-    [prev, curr] = [curr, prev];
-  }
-  return prev[b.length];
+/** Join separators while preserving every other character and token order. */
+function joinedTag(tag: string): string {
+  return tag.trim().toLowerCase().replace(/[-_. /]/g, '');
+}
+
+/** Apply the contract's single trailing plural reduction to an already joined tag. */
+function singularTag(joined: string): string {
+  if (/(?:s|x|z|ch|sh)es$/.test(joined)) return joined.slice(0, -2);
+  if (joined.length > 3 && joined.endsWith('s') && !joined.endsWith('ss')) return joined.slice(0, -1);
+  return joined;
+}
+
+function digitSequences(tag: string): string[] {
+  return tag.match(/\d+/g) ?? [];
 }
 
 export class KnowledgeService {
@@ -716,23 +714,29 @@ export class KnowledgeService {
     return this.repository.listTags(opts);
   }
 
-  /**
-   * Suggest near-duplicate tag pairs to merge (e.g. nest.js ↔ nestjs, redis ↔ Redis).
-   * Compares lowercased forms via max(normalized Levenshtein, token-set Jaccard).
-   * O(n²) over the small DISTINCT tag set.
-   */
+  /** Suggest canonical tag variants with matching digit sequences. */
   async suggestTagMerges(threshold = 0.82): Promise<{ a: string; b: string; similarity: number; countA: number; countB: number }[]> {
     const counts = new Map((await this.repository.tagCounts()).map((r) => [r.tag, r.count]));
-    const tags = Array.from(counts.keys());
+    const buckets = new Map<string, string[]>();
+    for (const tag of counts.keys()) {
+      const joined = joinedTag(tag);
+      if (!joined) continue;
+      const key = `${singularTag(joined)}|${JSON.stringify(digitSequences(tag))}`;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(tag);
+      else buckets.set(key, [tag]);
+    }
     const out: { a: string; b: string; similarity: number; countA: number; countB: number }[] = [];
-    for (let i = 0; i < tags.length; i++) {
-      for (let j = i + 1; j < tags.length; j++) {
-        const sim = this.tagSimilarity(tags[i], tags[j]);
-        if (sim >= threshold) {
-          out.push({
-            a: tags[i], b: tags[j], similarity: Math.round(sim * 100) / 100,
-            countA: counts.get(tags[i]) ?? 0, countB: counts.get(tags[j]) ?? 0,
-          });
+    for (const tags of buckets.values()) {
+      for (let i = 0; i < tags.length; i++) {
+        for (let j = i + 1; j < tags.length; j++) {
+          const sim = this.tagSimilarity(tags[i], tags[j]);
+          if (sim > 0 && sim >= threshold) {
+            out.push({
+              a: tags[i], b: tags[j], similarity: sim,
+              countA: counts.get(tags[i]) ?? 0, countB: counts.get(tags[j]) ?? 0,
+            });
+          }
         }
       }
     }
@@ -744,16 +748,12 @@ export class KnowledgeService {
     const lb = b.trim().toLowerCase();
     if (!la || !lb) return 0;
     if (la === lb) return 1;
-    // Normalized Levenshtein
-    const lev = 1 - levenshtein(la, lb) / Math.max(la.length, lb.length);
-    // Token-set Jaccard (split on non-alphanumerics) — catches nest.js vs nestjs
-    const ta = new Set(la.split(/[^a-z0-9]+/).filter(Boolean));
-    const tb = new Set(lb.split(/[^a-z0-9]+/).filter(Boolean));
-    let inter = 0;
-    for (const t of ta) if (tb.has(t)) inter++;
-    const union = new Set([...ta, ...tb]).size;
-    const jaccard = union ? inter / union : 0;
-    return Math.max(lev, jaccard);
+    if (JSON.stringify(digitSequences(a)) !== JSON.stringify(digitSequences(b))) return 0;
+    const joinedA = joinedTag(a);
+    const joinedB = joinedTag(b);
+    if (!joinedA || !joinedB) return 0;
+    if (joinedA === joinedB) return 0.95;
+    return singularTag(joinedA) === joinedB || joinedA === singularTag(joinedB) ? 0.95 : 0;
   }
 
   /**

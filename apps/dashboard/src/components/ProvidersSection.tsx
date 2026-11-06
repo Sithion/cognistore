@@ -8,6 +8,7 @@ import { Switch } from '../components/ui/switch.js';
 import { Label } from '../components/ui/label.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select.js';
 import { Badge } from '../components/ui/badge.js';
+import { pageClass, pageTitleClass } from '../components/ui/control-styles.js';
 
 
 // All providers are MCP connectors now. stdio = local subprocess; remote = Streamable HTTP.
@@ -129,11 +130,11 @@ export function ProvidersSection() {
   const isRemote = draft?.transport === 'http';
 
   return (
-    <div style={{ marginBottom: 32 }}>
-      <h1 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 16 }}>
+    <div className={pageClass}>
+      <h1 className={pageTitleClass}>
         {t('providers.section')}
       </h1>
-      <Button type="button" className="mb-3" onClick={() => { setDraft(emptyStdio()); setSecret(''); setError(''); }}>Add provider</Button>
+      <Button type="button" className="mb-3" onClick={() => { setDraft(emptyRemote()); setSecret(''); setError(''); }}>Add provider</Button>
 
       <Card className="mb-3"><CardContent className="flex items-center justify-between gap-4 p-4">
         <Label htmlFor="always-external" className="cursor-pointer"><span>{t('providers.alwaysOn')}</span><span className="mt-1 block text-xs text-muted-foreground">{t('providers.alwaysOnHint')}</span></Label>

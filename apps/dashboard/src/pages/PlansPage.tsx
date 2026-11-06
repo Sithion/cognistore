@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownHeadings } from '../lib/markdownHeadings.js';
@@ -13,16 +13,19 @@ import { useTransientMessage } from '../hooks/useTransientMessage.js';
 import { PLAN_TEMPLATES, type PlanTemplate } from '../data/planTemplates.js';
 import { usePlansRoute } from '../plans/usePlansRoute.js';
 import { Button } from '../components/ui/button.js';
+import { Badge } from '../components/ui/badge.js';
+import { segment, segmentGroup } from '../components/ui/nav-styles.js';
+import { controlClass, pageClass, pageHeaderClass, pageTitleClass, selectClass, textareaClass } from '../components/ui/control-styles.js';
 import { Input } from '../components/ui/input.js';
 import { toast } from 'sonner';
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Circle, FileText, LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog.js';
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'hsl(var(--muted-foreground))',
-  active: 'hsl(var(--primary))',
-  completed: 'hsl(var(--chart-2))',
-  archived: 'hsl(var(--chart-4))',
+const STATUS_CLASSES: Record<string, string> = {
+  draft: 'border-border bg-muted text-muted-foreground',
+  active: 'border-primary/40 bg-primary/10 text-foreground',
+  completed: 'border-chart-2/40 bg-chart-2/10 text-foreground',
+  archived: 'border-chart-4/40 bg-chart-4/10 text-foreground',
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -87,14 +90,9 @@ interface PlanRelation {
 function StatusBadge({ status }: { status: string }) {
   const s = status || 'draft';
   return (
-    <span style={{
-      padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-      backgroundColor: `${STATUS_COLORS[s] || '#6b7280'}22`,
-      color: STATUS_COLORS[s] || '#6b7280',
-      textTransform: 'uppercase', letterSpacing: 0.5,
-    }}>
+    <Badge variant="outline" className={STATUS_CLASSES[s] || STATUS_CLASSES.draft}>
       {s}
-    </span>
+    </Badge>
   );
 }
 
@@ -150,21 +148,15 @@ function MiniProgress({ completed, total }: { completed: number; total: number }
 function OriginChip({ parentPlanId, onOpenParent }: { parentPlanId: string; onOpenParent: (planId: string) => void }) {
   const { t } = useTranslation();
   return (
-    <button
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0"
       onClick={(e) => { e.stopPropagation(); onOpenParent(parentPlanId); }}
       title={t('plans.chain.origin')}
-      style={{
-        padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
-        border: 'none', cursor: 'pointer', flexShrink: 0,
-        // `var(--accent)22` does NOT work — var() substitutes a whole token, so
-        // the trailing alpha digits make the declaration invalid and it is
-        // dropped. (Several older spots in this file have that bug.)
-        backgroundColor: 'color-mix(in srgb, var(--accent) 13%, transparent)',
-        color: 'var(--accent)',
-      }}
     >
       ↳ {t('plans.chain.continuation')}
-    </button>
+    </Button>
   );
 }
 
@@ -231,11 +223,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
             onChange={(e) => setEditDesc(e.target.value)}
             onBlur={saveDesc}
             onKeyDown={(e) => { if (e.key === 'Enter') saveDesc(); if (e.key === 'Escape') { setEditDesc(task.description); setEditingDesc(false); } }}
-            style={{
-              width: '100%', fontSize: 12, padding: '2px 6px', borderRadius: 4,
-              border: '1px solid var(--accent)', backgroundColor: 'var(--bg-input)',
-              color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
-            }}
+            className={`${controlClass} w-full`}
           />
         ) : (
           <span
@@ -252,17 +240,13 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
         {/* Priority badge (clickable) */}
         {onUpdateTask && (
           <span style={{ position: 'relative', display: 'inline-block', marginLeft: 6 }}>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={(e) => { e.stopPropagation(); setShowPriorityMenu(!showPriorityMenu); }}
-              style={{
-                padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 600,
-                border: 'none', cursor: 'pointer',
-                backgroundColor: `${PRIORITY_COLORS[task.priority] || '#6b7280'}22`,
-                color: PRIORITY_COLORS[task.priority] || '#6b7280',
-              }}
             >
               {task.priority}
-            </button>
+            </Button>
             {showPriorityMenu && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, zIndex: 20,
@@ -270,14 +254,10 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
                 borderRadius: 6, marginTop: 2, overflow: 'hidden',
               }}>
                 {['high', 'medium', 'low'].map(p => (
-                  <button key={p} onClick={(e) => { e.stopPropagation(); setPriority(p); }}
-                    style={{
-                      display: 'block', width: '100%', padding: '4px 12px', textAlign: 'left',
-                      background: p === task.priority ? 'var(--accent-muted)' : 'none',
-                      border: 'none', color: PRIORITY_COLORS[p], cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                    }}>
+                  <Button key={p} variant="outline" size="sm" className="w-full justify-start"
+                    onClick={(e) => { e.stopPropagation(); setPriority(p); }}>
                     {p}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -287,12 +267,14 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
         {/* Notes */}
         {(task.notes || onUpdateTask) && (
           <>
-            <button
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-1.5"
               onClick={(e) => { e.stopPropagation(); onToggleNotes(); }}
-              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 9, marginLeft: 6, padding: 0 }}
             >
               {expandedNotes ? '▼' : '▶'} {t('plans.notes')}
-            </button>
+            </Button>
             {expandedNotes && (
               editingNotes && onUpdateTask ? (
                 <textarea
@@ -303,12 +285,7 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
                   onBlur={saveNotes}
                   onKeyDown={(e) => { if (e.key === 'Escape') { setEditNotes(task.notes || ''); setEditingNotes(false); } }}
                   rows={2}
-                  style={{
-                    width: '100%', fontSize: 11, padding: '4px 6px', borderRadius: 4, marginTop: 4,
-                    border: '1px solid var(--accent)', backgroundColor: 'var(--bg-input)',
-                    color: 'var(--text-secondary)', outline: 'none', resize: 'vertical',
-                    fontFamily: 'inherit', boxSizing: 'border-box',
-                  }}
+                  className={`${textareaClass} mt-1 resize-y`}
                 />
               ) : (
                 <p
@@ -325,21 +302,19 @@ function TaskItem({ task, expandedNotes, onToggleNotes, onUpdateTask, onDeleteTa
         )}
       </div>
       {onDeleteTask && (
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0 self-start text-destructive"
           onClick={(e) => { e.stopPropagation(); onDeleteTask(task); }}
           title={t('plans.deleteTask')}
           aria-label={t('plans.deleteTask')}
-          style={{
-            width: 24, height: 24, flexShrink: 0, alignSelf: 'flex-start',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backgroundColor: '#ef4444', border: 'none', borderRadius: 4, cursor: 'pointer',
-          }}
         >
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -415,18 +390,11 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
     setSaving(false);
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '10px 12px', borderRadius: 8,
-    border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
-    color: 'var(--text-primary)', fontSize: 13, outline: 'none',
-    boxSizing: 'border-box',
-  };
-
   return (
       <div className="rounded-xl border bg-card p-5 text-card-foreground mb-5">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 16, fontWeight: 700 }}>{t('plans.newPlan')}</h1>
-        <button aria-label={t('actions.cancel')} onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+      <div className={`${pageHeaderClass} mb-5`}>
+        <h1 className={pageTitleClass}>{t('plans.newPlan')}</h1>
+        <Button variant="ghost" size="icon" aria-label={t('actions.cancel')} onClick={onCancel}>×</Button>
       </div>
 
       {/* Template Selector */}
@@ -436,7 +404,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
         </label>
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
           {PLAN_TEMPLATES.map((tpl) => (
-          <Button variant={selectedTemplate === tpl.id ? 'secondary' : 'outline'} size="sm"
+          <Button variant={selectedTemplate === tpl.id ? 'secondary' : 'outline'}
               key={tpl.id}
               type="button"
               onClick={() => applyTemplate(tpl)}
@@ -456,7 +424,6 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
         <Input id="plan-title"
           value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={t('plans.planTitlePlaceholder')}
-          className="h-auto py-2.5"
         />
       </div>
 
@@ -469,7 +436,7 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
           value={content} onChange={(e) => setContent(e.target.value)}
           placeholder={t('plans.planContentPlaceholder')}
           rows={5}
-          className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className={textareaClass}
         />
       </div>
 
@@ -489,7 +456,6 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
             aria-label={t('knowledge.tags')}
             value={tagsInput} onChange={(e) => setTagsInput(e.target.value)}
             placeholder={t('plans.tagsPlaceholder')}
-            className="h-auto py-2.5"
           />
         </div>
       </div>
@@ -500,13 +466,9 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
           <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
             {t('plans.tasks')}
           </label>
-          <button onClick={addTask} style={{
-            padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-            border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
-            color: 'var(--text-secondary)', cursor: 'pointer',
-          }}>
+          <Button variant="outline" onClick={addTask}>
             + {t('plans.addTask')}
-          </button>
+          </Button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {newTasks.map((task, i) => (
@@ -522,17 +484,14 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
                 aria-label={`Task ${i + 1} priority`}
                 value={task.priority}
                 onChange={(e) => updateTask(i, 'priority', e.target.value)}
-                style={{ ...inputStyle, width: 100, flex: 'none' }}
+                className={`${selectClass} w-25 flex-none`}
               >
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
               {newTasks.length > 1 && (
-                <button aria-label={`Remove task ${i + 1}`} onClick={() => removeTask(i)} style={{
-                  background: 'none', border: 'none', color: 'var(--text-secondary)',
-                  cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1,
-                }}>×</button>
+                <Button variant="ghost" size="icon" aria-label={`Remove task ${i + 1}`} onClick={() => removeTask(i)}>×</Button>
               )}
             </div>
           ))}
@@ -541,13 +500,9 @@ function CreatePlanForm({ onCreated, onCancel }: { onCreated: (planId: string) =
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-        <button onClick={onCancel} style={{
-          padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-          border: '1px solid var(--border)', backgroundColor: 'var(--bg-input)',
-          color: 'var(--text-secondary)', cursor: 'pointer',
-        }}>
+        <Button variant="outline" onClick={onCancel}>
           {t('actions.cancel')}
-        </button>
+        </Button>
         <Button
           onClick={handleSubmit}
           disabled={saving || !title.trim() || !content.trim()}
@@ -583,6 +538,7 @@ export function PlansPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const route = usePlansRoute();
   // Status chips are a multi-select toggle group: an empty selection means "all".
   const statusFilter = route.status;
@@ -684,14 +640,23 @@ export function PlansPage() {
 
   // Open route detail and retain compatibility with legacy ?select= links.
   useEffect(() => {
+    let active = true;
     const selectId = route.id || searchParams.get('select');
     if (selectId && selectedPlan?.id !== selectId) {
       api.getPlan(selectId).then((plan) => {
-        if (plan) selectPlan(plan as PlanEntry);
-      }).catch(() => {});
+        if (active && plan) void selectPlan(plan as PlanEntry);
+      }).catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && error.status === 404) {
+          toast.error(t('missingPlan.notFound'));
+          setSelectedPlan(null);
+          navigate('/plans', { replace: true });
+        }
+      });
     }
     if (!selectId && selectedPlan) setSelectedPlan(null);
-  }, [route.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { active = false; };
+  }, [route.id, searchParams, navigate, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Collapse + clear the file preview when a DIFFERENT plan is selected (keyed on
   // id, so the 5s poll replacing the object identity does NOT reset it).
@@ -724,9 +689,9 @@ export function PlansPage() {
     if (!selectedPlan) return;
     try {
       const r = await api.openPlanFile(selectedPlan.id);
-      if (!r.ok) alert(r.unsupported ? t('planFile.unsupported') : t('planFile.notFound'));
+      if (!r.ok) toast.error(r.unsupported ? t('planFile.unsupported') : t('planFile.notFound'));
     } catch (e) {
-      alert(e instanceof ApiError && e.status === 403 ? t('planFile.disallowed') : t('planFile.notFound'));
+      toast.error(e instanceof ApiError && e.status === 403 ? t('planFile.disallowed') : t('planFile.notFound'));
     }
   };
 
@@ -864,50 +829,39 @@ export function PlansPage() {
   // ── Detail View (full page) ──
   if (selectedPlan) {
     return (
-      <div data-testid="plan-detail">
-        <button
+      <div data-testid="plan-detail" className={pageClass}>
+        <Button
+          variant="outline"
           onClick={() => { setSelectedPlan(null); route.backToList(); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
-            background: 'none', border: 'none', color: 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: 13, padding: 0,
-          }}
         >
           ← {t('plans.backToPlans')}
-        </button>
+        </Button>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div className={pageHeaderClass}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <StatusBadge status={selectedPlan.status} />
             <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedPlan.scope}</span>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             {selectedPlan.status === 'completed' && (
-              <button
+              <Button
+                variant="outline"
                 onClick={() => setConfirmArchive(true)}
-                style={{
-                  padding: '6px 12px', borderRadius: 6, fontSize: 12,
-                  border: '1px solid var(--text-secondary)', backgroundColor: 'transparent',
-                  color: 'var(--text-secondary)', cursor: 'pointer',
-                }}
               >
                 {t('plans.archive')}
-              </button>
+              </Button>
             )}
-            <button
+            <Button
+              variant="outline"
+              className="text-destructive"
               onClick={() => setConfirmDelete(true)}
-              style={{
-                padding: '6px 12px', borderRadius: 6, fontSize: 12,
-                border: '1px solid var(--error, #ef4444)', backgroundColor: 'transparent',
-                color: 'var(--error, #ef4444)', cursor: 'pointer',
-              }}
             >
               {t('plans.delete')}
-            </button>
+            </Button>
           </div>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{selectedPlan.title}</h1>
+        <h1 className={pageTitleClass}>{selectedPlan.title}</h1>
 
         {/* Local plan file path (if this plan was authored from a plan-mode file).
             Click to toggle an inline preview; buttons to open in the OS editor / copy. */}
@@ -929,21 +883,22 @@ export function PlansPage() {
                 <span aria-hidden>📄</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedPlan.planFilePath}</span>
               </span>
-              <button
+              <Button
+                variant="outline"
                 onClick={openPlanInEditor}
                 title={t('planFile.openInEditor')}
-                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}
               >
                 {t('planFile.openInEditor')}
-              </button>
-              <button
-                onClick={() => navigator.clipboard?.writeText(selectedPlan.planFilePath!)}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { void navigator.clipboard?.writeText(selectedPlan.planFilePath!).catch(() => toast.error(t('planFile.copyFailed'))); }}
                 title={t('planFile.copyPath')}
                 aria-label={t('planFile.copyPath')}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}
               >
                 ⧉
-              </button>
+              </Button>
             </div>
             {filePreviewOpen && (
               <div
@@ -1021,17 +976,14 @@ export function PlansPage() {
             <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)' }}>
               {t('plans.chain.origin')}
             </span>
-            <button
+            <Button
+              variant="outline"
+              className="max-w-full justify-start truncate text-left"
               onClick={() => selectPlanById(selectedPlan.parentPlanId!)}
               title={parentTitle ?? undefined}
-              style={{
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                fontSize: 13, color: 'var(--accent)', textAlign: 'left',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
-              }}
             >
               {parentTitle ?? `${selectedPlan.parentPlanId.slice(0, 8)}…`}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -1043,20 +995,14 @@ export function PlansPage() {
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {chain.map((node) => (
-                <button
+                <Button
                   key={node.id}
+                  variant="outline"
+                  size="sm"
+                  className={`justify-start text-left ${['ml-0', 'ml-4', 'ml-8', 'ml-12', 'ml-16', 'ml-20', 'ml-24', 'ml-28', 'ml-32'][Math.min(node.depth, 8)]}`}
                   onClick={() => { if (!node.isCurrent) selectPlanById(node.id); }}
                   disabled={node.isCurrent}
                   title={node.title}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
-                    marginLeft: Math.min(node.depth, 8) * 16,
-                    padding: '6px 10px', borderRadius: 6, fontSize: 12,
-                    border: '1px solid var(--border)',
-                    backgroundColor: node.isCurrent ? 'var(--bg-input)' : 'transparent',
-                    color: 'var(--text-primary)',
-                    cursor: node.isCurrent ? 'default' : 'pointer',
-                  }}
                 >
                   {node.depth === 0 && (
                     <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: 0.5, backgroundColor: 'var(--accent)22', color: 'var(--accent)' }}>
@@ -1068,7 +1014,7 @@ export function PlansPage() {
                   {node.isCurrent && (
                     <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{t('plans.chain.current')}</span>
                   )}
-                </button>
+                </Button>
               ))}
             </div>
             {chainTruncated && (
@@ -1176,19 +1122,15 @@ export function PlansPage() {
 
   // ── List View ──
   return (
-    <div>
+    <div className={pageClass}>
       {showCreateForm ? (
         <>
-          <button
+          <Button
+            variant="outline"
             onClick={() => setShowCreateForm(false)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20,
-              background: 'none', border: 'none', color: 'var(--text-secondary)',
-              cursor: 'pointer', fontSize: 13, padding: 0,
-            }}
           >
             ← {t('plans.title')}
-          </button>
+          </Button>
           <CreatePlanForm
             onCreated={(planId) => {
               setShowCreateForm(false);
@@ -1201,8 +1143,8 @@ export function PlansPage() {
         </>
       ) : (
         <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700 }}>{t('plans.title')}</h1>
+      <div className={pageHeaderClass}>
+        <h1 className={pageTitleClass}>{t('plans.title')}</h1>
       </div>
 
       {/* ── Active Plans Section ── */}
@@ -1260,42 +1202,35 @@ export function PlansPage() {
       )}
 
       {/* ── Status + Scope Filters ── */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className={segmentGroup}>
         {statusFilters.map((s) => {
           const on = statusFilter.includes(s);
           return (
             <button
               key={s}
+              type="button"
               onClick={() => toggleStatus(s)}
               aria-pressed={on}
-              style={{
-                padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                border: on ? '1px solid var(--accent)' : '1px solid var(--border)',
-                backgroundColor: on ? 'var(--accent)' : 'var(--bg-card)',
-                color: on ? 'var(--primary-foreground)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-              }}
+              className={segment(on)}
             >
               {t(STATUS_LABEL_KEY[s])}
             </button>
           );
         })}
+        </div>
         <select
           aria-label="Filter plans by scope"
           value={scopeFilter}
           onChange={(e) => { route.setScope(e.target.value); setSelectedPlan(null); }}
-          style={{
-            marginLeft: 'auto', padding: '6px 10px', borderRadius: 6,
-            backgroundColor: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: scopeFilter ? 'var(--text-primary)' : 'var(--text-secondary)', fontSize: 12,
-          }}
+          className={`${selectClass} ml-auto`}
         >
           <option value="">{t('plans.allScopes')}</option>
           {allScopes.map((sc) => (
             <option key={sc} value={sc}>{sc}</option>
           ))}
         </select>
-        <select aria-label={t('plans.sort', { defaultValue: 'Sort plans' })} value={route.sort} onChange={(e) => route.setSort(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+        <select aria-label={t('plans.sort', { defaultValue: 'Sort plans' })} value={route.sort} onChange={(e) => route.setSort(e.target.value)} className={selectClass}>
           <option value="updated">Recently updated</option>
           <option value="created">Recently created</option>
           <option value="title">Title</option>
